@@ -54,7 +54,7 @@
         if (!original) note = status === 'accepted' ? '已收款' : '已退还';
         else if (status === 'accepted') note = '已被接受';
         else if (status === 'declined') note = '已被退还';
-        else note = m.isUser ? `转账给${ctx.sanitize(ctx.charName)}` : '转账给你';
+        else note = m.isUser ? '你发起了一笔转账' : '转账给你';
 
         const glyph = status === 'declined'
             ? `<svg class="wx-pay-glyph" viewBox="0 0 24 24" aria-hidden="true"><path d="${REFUNDED_GLYPH}" transform="translate(2 2)" fill="#fff" fill-rule="evenodd"/></svg>`
@@ -65,7 +65,7 @@
         const actionAttrs = p.actionable
             ? ` data-et-action="transfer-respond" data-amount="${ctx.escapeHtml(p.displayAmount)}" role="button" tabindex="0"`
             : '';
-        return `<div class="wx-pay${stateClass}" data-side="${side}"${actionAttrs}><span class="wx-pay-tail"></span><div class="wx-pay-body">${glyph}<div class="wx-pay-text"><div class="wx-pay-title">${ctx.escapeHtml(p.displayAmount || '¥')}</div><div class="wx-pay-note">${note}</div></div></div><div class="wx-pay-footer">微信转账</div></div>`;
+        return `<div class="wx-pay${stateClass}" data-side="${side}"${actionAttrs}><span class="wx-pay-tail"></span><div class="wx-pay-body">${glyph}<div class="wx-pay-text"><div class="wx-pay-title">${ctx.escapeHtml(p.displayAmount || '¥')}</div><div class="wx-pay-note">${note}</div></div></div><div class="wx-pay-footer">转账</div></div>`;
     }
 
     /** A photo is a picture frame; tapping it shows the description inside the frame. */

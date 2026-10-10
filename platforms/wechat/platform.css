@@ -636,10 +636,12 @@
 
 /* ── Transfer card ──────────────────────────────────────────── */
 
+/* Sizes from a current iOS WeChat screenshot (about 267 × 86 pt); soloshow's card
+   (233 × 88) is an older, smaller one */
 [data-platform="wechat"] .wx-pay {
     position: relative;
     display: block;
-    width: 233.333333px;
+    width: 267px;
     max-width: 100%;
     box-sizing: border-box;
     border-radius: 5px;
@@ -686,9 +688,9 @@
 [data-platform="wechat"] .wx-pay-body {
     display: flex;
     align-items: center;
-    gap: 10px;
-    height: 64px;
-    padding: 0 12.666667px;
+    gap: 9px;
+    height: 58px;
+    padding: 0 10px;
     box-sizing: border-box;
     border-radius: 5px 5px 0 0;
     background: inherit;
@@ -696,9 +698,9 @@
 
 [data-platform="wechat"] .wx-pay-glyph {
     display: block;
-    flex: 0 0 40px;
-    width: 40px;
-    height: 40px;
+    flex: 0 0 43px;
+    width: 43px;
+    height: 43px;
     background-size: cover;
 }
 
@@ -718,21 +720,20 @@
 }
 
 [data-platform="wechat"] .wx-pay-title {
-    margin-top: -1.666667px;
     overflow: hidden;
-    font-size: 16px;
+    font-size: 18px;
     font-weight: 500;
-    line-height: 20px;
+    line-height: 22px;
     white-space: nowrap;
     text-overflow: ellipsis;
 }
 
 [data-platform="wechat"] .wx-pay-note {
-    margin-top: 1.333333px;
+    margin-top: 1px;
     overflow: hidden;
-    font-size: 12px;
+    font-size: 14px;
     font-weight: 400;
-    line-height: 16px;
+    line-height: 18px;
     white-space: nowrap;
     text-overflow: ellipsis;
 }
@@ -740,13 +741,13 @@
 [data-platform="wechat"] .wx-pay-footer {
     display: flex;
     align-items: center;
-    height: 23.666667px;
-    padding: 0 12.666667px;
+    height: 28px;
+    padding: 0 10px;
     box-sizing: border-box;
     border-radius: 0 0 5px 5px;
     color: #faecda;
     background: inherit;
-    font-size: 12px;
+    font-size: 11px;
     line-height: 16px;
 }
 

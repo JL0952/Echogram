@@ -6331,8 +6331,8 @@
      * a bubble's controls on touch screens only when asked (WeChat's "⋯").
      */
     function onBubbleTap(e) {
-        // The revealed control itself
-        if (e.target.closest('[data-et-action="menu"], [data-et-action="part-menu"]')) return;
+        // A revealed control itself
+        if (e.target.closest('[data-et-action="menu"], [data-et-action="part-menu"], [data-et-action="react"]')) return;
         const bubble = e.target.closest('[data-et-role~="bubble"]');
         const wasRevealed = !!bubble?.hasAttribute('data-et-revealed');
         this.querySelectorAll('[data-et-revealed]').forEach(b => b.removeAttribute('data-et-revealed'));
