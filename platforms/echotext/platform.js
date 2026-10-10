@@ -14,7 +14,9 @@
      *   sanitize(text)        plain text with any tags stripped
      *   formatText(text)      message text as safe HTML (markdown, emoticons)
      *   reaction(id)          { icon, color, label }, or null for an unknown id
-     *   avatar(m)           a sender's avatar as data: { url (or null), initial, color }
+     *   avatar(m)             a sender's avatar as data: { url (or null), initial, color }; the
+     *                         character's may be one picked in EchoText. A template can give its
+     *                         avatar data-et-action="avatar" to open the avatar menu (view / change)
      *   groupChat             a group chat in combine mode (show who sent what)
      *
      * No event code: clickable elements carry data-et-action, and the elements

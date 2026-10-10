@@ -34,7 +34,9 @@ const env = { settings: { ...sc.settings, autoScroll: true, defaultPlatform: 'we
     getUserName: () => '我', getCharacterKey: () => 'mira.png', getCharAvatarUrl: () => null, _pickerAvatarBg: () => '#7c6f9c',
     isMobileDevice: () => false, getChatHistory: () => history, getUserAvatarUrl: () => null, isCombinedGroupMode: () => false,
     setComposeMode: mode => calls.push(['setComposeMode', mode]),
-    closeAllDotMenus: () => jQuery('.et-attach-menu').remove() };
+    closeAllDotMenus: () => jQuery('.et-dots-menu').remove(),
+    panelOpen: true, saveSettings: () => calls.push(['saveSettings']),
+    pickImageFile: () => Promise.resolve(window.__nextFile || null) };
 const r = window.EchoTextHarness.chrome(env);
 document.getElementById('host').innerHTML = r.buildPanelHtml();
 r.bindAttachPanel();
@@ -110,6 +112,84 @@ window.runPanelTest = async function () {
     env.settings.defaultPlatform = 'wechat';
     await sleep(0);
     r.renderMessages(history);
+    return res;
+};
+
+// The character's avatar: tapping it (WeChat: beside its messages) opens the avatar
+// menu; "Change Avatar" picks a file, crops it in SillyTavern's crop dialog (stubbed:
+// returns the image), shrinks it, uploads it to the user's images (stubbed fetch) and
+// shows it everywhere; "Use Card Avatar" goes back and deletes the uploaded file.
+window.runAvatarTest = async function () {
+    const requests = [];
+    const realFetch = window.fetch;
+    let uploads = 0, lastImage = '';
+    // Real (tiny) images, so they load and stay; labels keep the checks readable
+    const tiny = color => { const c = document.createElement('canvas'); c.width = c.height = 4; const x = c.getContext('2d'); x.fillStyle = color; x.fillRect(0, 0, 4, 4); return c.toDataURL(); };
+    const labels = new Map();
+    const CARD = tiny('#00f');
+    labels.set(CARD, 'card');
+    const label = url => labels.get(url) || url;
+    window.fetch = async (url, init) => {
+        const body = JSON.parse(init.body);
+        if (url.endsWith('upload')) lastImage = body.image;
+        requests.push([url, url.endsWith('upload') ? { format: body.format, ch_name: body.ch_name, filename: body.filename.replace(/\d+$/, 'N'), image: body.image.slice(0, 4) } : body]);
+        if (url === '/api/images/upload') {
+            const path = tiny(['#f00', '#0f0', '#ff0'][uploads]);
+            labels.set(path, `upload${++uploads}`);
+            return { ok: true, json: async () => ({ path }) };
+        }
+        return { ok: true, json: async () => ({}) };
+    };
+    let cropAspect = null;
+    window.SillyTavern.getContext = () => ({
+        POPUP_TYPE: { CROP: 5 }, getRequestHeaders: () => ({ 'Content-Type': 'application/json' }),
+        getThumbnailUrl: () => CARD,
+        callGenericPopup: async (content, type, input, opts) => { cropAspect = opts.cropAspect; return type === 5 ? opts.cropImage : null; },
+    });
+    const canvas = document.createElement('canvas');
+    canvas.width = 900; canvas.height = 900;
+    canvas.getContext('2d').fillStyle = '#c33'; canvas.getContext('2d').fillRect(0, 0, 900, 900);
+    window.__nextFile = new File([await new Promise(res => canvas.toBlob(res, 'image/png'))], 'photo.png', { type: 'image/png' });
+
+    r.bindMessageActions();
+    r.renderMessages(history);
+    const inner = document.getElementById('et-messages-inner');
+    const charAvatarSrcs = () => [...new Set([...inner.querySelectorAll('.wx-row-left .wx-avatar img')].map(i => label(i.getAttribute('src'))))].join(' ');
+    const menuItems = () => [...document.querySelectorAll('.et-avatar-menu .et-dots-item')].map(b => b.dataset.avatar).join(',');
+    const pick = async (choice) => { document.querySelector(`.et-avatar-menu [data-avatar="${choice}"]`).click(); await sleep(400); };
+    const res = { card: charAvatarSrcs(), userAvatarClickable: !!inner.querySelector('.wx-row-right .wx-avatar[data-et-action]') };
+
+    inner.querySelector('.wx-row-left .wx-avatar').click(); await sleep(50);
+    res.menuBefore = menuItems();
+    await pick('change');
+    res.afterChange = charAvatarSrcs();
+    res.stored = JSON.stringify(Object.fromEntries(Object.entries(env.settings.avatarByCharacter).map(([k, v]) => [k, label(v)])));
+    res.cropAspect = cropAspect;
+    const uploaded = requests.find(q => q[0] === '/api/images/upload');
+    res.upload = uploaded && JSON.stringify(uploaded[1]);
+
+    inner.querySelector('.wx-row-left .wx-avatar').click(); await sleep(50);
+    res.menuAfter = menuItems();
+    await pick('change');
+    res.secondChangeDeletesFirst = JSON.stringify(requests.filter(q => q[0] === '/api/images/delete').map(q => label(q[1].path)));
+
+    inner.querySelector('.wx-row-left .wx-avatar').click(); await sleep(50);
+    await pick('reset');
+    res.afterReset = charAvatarSrcs();
+    res.deletes = JSON.stringify(requests.filter(q => q[0] === '/api/images/delete').map(q => label(q[1].path)));
+    res.storedAfterReset = JSON.stringify(env.settings.avatarByCharacter);
+
+    // The uploaded image is shrunk to 512 px (the stubbed crop returns the 900 px original)
+    const img = new Image();
+    await new Promise(done => { img.onload = done; img.onerror = done; img.src = 'data:image/jpeg;base64,' + lastImage; });
+    res.uploadedSize = `${img.naturalWidth}x${img.naturalHeight}`;
+    window.fetch = realFetch;
+    res.ok = res.card === 'card' && !res.userAvatarClickable && res.menuBefore === 'view,change'
+        && res.afterChange === 'upload1' && res.stored === '{"mira.png":"upload1"}'
+        && res.cropAspect === 1 && res.uploadedSize === '512x512' && res.upload === '{"format":"jpeg","ch_name":"Mira","filename":"echotext-avatar-N","image":"/9j/"}'
+        && res.menuAfter === 'view,change,reset' && res.secondChangeDeletesFirst === '["upload1"]'
+        && res.afterReset === 'card' && res.storedAfterReset === '{}'
+        && res.deletes === '["upload1","upload2"]';
     return res;
 };
 

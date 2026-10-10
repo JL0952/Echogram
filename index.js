@@ -1478,6 +1478,8 @@
         document.documentElement.style.setProperty('--et-glass-opacity', (settings.glassOpacity / 100).toFixed(2));
         document.documentElement.style.setProperty('--et-font-size', settings.fontSize + 'px');
         document.documentElement.style.setProperty('--et-font-family', `'${settings.fontFamily}', sans-serif`);
+        // The font alone, for platform looks that put their own fonts after it
+        document.documentElement.style.setProperty('--et-font-name', `'${settings.fontFamily}'`);
         document.documentElement.style.setProperty('--et-fab-size', settings.fabSize + 'px');
         document.documentElement.style.setProperty('--et-fab-opacity', (settings.fabOpacity || 100) / 100);
         document.documentElement.style.setProperty('--et-line-spacing', (settings.lineSpacing || 1.3).toFixed(2));
@@ -4595,7 +4597,12 @@
      * Get the character's avatar image URL from SillyTavern.
      * Returns null if no image is available.
      */
+    /** The current character's avatar in EchoText: one picked here, else the card's. */
     function getCharAvatarUrl() {
+        return getCustomCharAvatarUrl() || getCardAvatarUrl();
+    }
+
+    function getCardAvatarUrl() {
         try {
             const char = getCurrentCharacter();
             if (!char || !char.avatar || char.avatar === 'none') return null;
@@ -4604,6 +4611,18 @@
         } catch (e) {
             return null;
         }
+    }
+
+    /**
+     * An avatar picked in EchoText for the current character, as a URL, or null.
+     * settings.avatarByCharacter maps a character key to the image's path in the
+     * user's images (as /api/images/upload returned it, e.g. user/images/Mira/…).
+     */
+    function getCustomCharAvatarUrl() {
+        const charKey = getCharacterKey();
+        const path = charKey && settings.avatarByCharacter?.[charKey];
+        if (!path) return null;
+        return /^(\/|[a-z][a-z0-9+.-]*:)/i.test(path) ? path : `/${path}`;
     }
 
     /**
@@ -4639,9 +4658,10 @@
                 <img src="${avatarUrl}" alt="${escapedInitial}" class="et-avatar-img" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;border-radius:50%;" onerror="this.remove();">
             </div>`;
             // Schedule fingerprinting after DOM insertion via a non-blocking timeout
-            setTimeout(() => {
-                if (id) _fingerprintAvatarImg(document.getElementById(id));
-            }, 0);
+            // A picked avatar is never ST's default (and a dark photo could pass for it)
+            if (id && !getCustomCharAvatarUrl()) {
+                setTimeout(() => _fingerprintAvatarImg(document.getElementById(id)), 0);
+            }
             return html;
         }
         return `<div class="${sizeClass}${extraClass ? ' ' + extraClass : ''}"${idAttr} style="background:${bgColor};position:relative;">
@@ -5227,7 +5247,7 @@
         jQuery('#et-panel').on('click', '#et-char-avatar-wrap', function (e) {
             e.stopPropagation();
             if (getCurrentCharacter()) {
-                openAvatarLightbox();
+                openAvatarMenu(this);
             }
         });
 
@@ -5254,6 +5274,151 @@
                 };
             }
         }
+    }
+
+    // ── Character avatar for EchoText ─────────────────────────────────────────
+    // The card's avatar by default; the user can pick another just for EchoText.
+    // The image goes to the user's images (user/images/<character>/), its path to
+    // settings.avatarByCharacter; the card itself is never touched.
+
+    const AVATAR_SIZE = 512;
+
+    /** The avatar's menu, under (or over) the avatar: view it, change it, or go back to the card's. */
+    function openAvatarMenu(anchor) {
+        if (!getCharacterKey()) return;
+        if (jQuery('.et-avatar-menu').length) {
+            closeAllDotMenus();
+            return;
+        }
+        closeAllDotMenus();
+        const items = [];
+        if (getCharAvatarUrl()) items.push(['view', 'fa-expand', 'View Avatar']);
+        items.push(['change', 'fa-image', 'Change Avatar']);
+        if (getCustomCharAvatarUrl()) items.push(['reset', 'fa-rotate-left', 'Use Card Avatar']);
+        const menu = jQuery(`<div class="et-dots-menu et-avatar-menu">${items.map(([id, icon, label]) =>
+            `<button class="et-dots-item" data-avatar="${id}"><i class="fa-solid ${icon}"></i><span>${label}</span></button>`).join('')}</div>`);
+        jQuery('#et-panel').append(menu);
+
+        const a = anchor.getBoundingClientRect();
+        const p = document.getElementById('et-panel').getBoundingClientRect();
+        const left = Math.max(8, Math.min(a.left - p.left, p.width - menu.outerWidth() - 8));
+        const height = menu.outerHeight();
+        const below = a.bottom - p.top + 6;
+        const fitsBelow = below + height < p.height - 8;
+        const top = Math.max(8, Math.min(fitsBelow ? below : a.top - p.top - 6 - height, p.height - height - 8));
+        menu.css({ left: left + 'px', top: top + 'px', bottom: 'auto', 'transform-origin': fitsBelow ? 'top left' : 'bottom left' });
+        requestAnimationFrame(() => menu.addClass('et-dots-menu-open'));
+
+        setTimeout(() => {
+            jQuery(document).one('click.et-avatar-outside', function (e) {
+                if (!jQuery(e.target).closest('.et-avatar-menu').length) closeAllDotMenus();
+            });
+        }, 0);
+
+        menu.find('.et-dots-item').on('click', function (e) {
+            e.stopPropagation();
+            const choice = this.dataset.avatar;
+            closeAllDotMenus();
+            if (choice === 'view') openAvatarLightbox();
+            else if (choice === 'change') changeCharacterAvatar();
+            else setCustomCharAvatar(getCharacterKey(), null);
+        });
+    }
+
+    /**
+     * Picks an image, crops it square in SillyTavern's own crop dialog, saves it to
+     * the user's images and makes it the character's avatar in EchoText.
+     */
+    async function changeCharacterAvatar() {
+        const char = getCurrentCharacter();
+        const charKey = getCharacterKey();
+        if (!char || !charKey) return;
+        // Before any await: a file dialog must open within the tap
+        const file = await pickImageFile();
+        if (!file) return;
+        try {
+            const context = SillyTavern.getContext();
+            const cropped = await context.callGenericPopup('', context.POPUP_TYPE.CROP, '',
+                { cropAspect: 1, cropImage: await readFileAsDataUrl(file) });
+            if (!cropped) return;
+            const image = await shrinkImageDataUrl(cropped, AVATAR_SIZE);
+            const response = await fetch('/api/images/upload', {
+                method: 'POST',
+                headers: context.getRequestHeaders(),
+                body: JSON.stringify({
+                    image: image.split(',')[1],
+                    format: 'jpeg',
+                    ch_name: char.name,
+                    filename: `echotext-avatar-${Date.now()}`,
+                }),
+            });
+            if (!response.ok) throw new Error(`upload failed (${response.status})`);
+            const { path } = await response.json();
+            if (!path) throw new Error('no path returned');
+            setCustomCharAvatar(charKey, path);
+        } catch (err) {
+            error('Could not change the avatar:', err);
+            toastr.error(`Could not change the avatar: ${err.message}`, 'EchoText');
+        }
+    }
+
+    /** Sets (or with null, clears) a character's EchoText avatar; the image it replaces is deleted. */
+    function setCustomCharAvatar(charKey, path) {
+        if (!charKey) return;
+        settings.avatarByCharacter = settings.avatarByCharacter || {};
+        const previous = settings.avatarByCharacter[charKey];
+        if (path) settings.avatarByCharacter[charKey] = path;
+        else delete settings.avatarByCharacter[charKey];
+        saveSettings();
+        if (previous && previous !== path) deleteUserImage(previous);
+        if (!panelOpen) return;
+        jQuery('#et-char-avatar-wrap').replaceWith(buildAvatarHtml(getCharacterName(), '', 'et-char-avatar-wrap'));
+        renderMessages(getChatHistory(), true);
+    }
+
+    function deleteUserImage(path) {
+        fetch('/api/images/delete', {
+            method: 'POST',
+            headers: SillyTavern.getContext().getRequestHeaders(),
+            body: JSON.stringify({ path }),
+        }).catch(err => warn('Could not delete the old avatar:', err));
+    }
+
+    /** Opens the file dialog for one image; resolves with it, or null if cancelled. */
+    function pickImageFile() {
+        return new Promise((resolve) => {
+            // In the document: iOS won't open the dialog for a detached input
+            const input = jQuery('<input type="file" accept="image/*" style="display:none">').appendTo('body');
+            const done = (file) => { input.remove(); resolve(file); };
+            input.on('change', () => done(input[0].files?.[0] || null));
+            input.on('cancel', () => done(null));
+            input[0].click();
+        });
+    }
+
+    function readFileAsDataUrl(file) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result);
+            reader.onerror = () => reject(reader.error);
+            reader.readAsDataURL(file);
+        });
+    }
+
+    /** A square image no larger than `size` px, as a JPEG data URL (a phone photo would be megabytes). */
+    function shrinkImageDataUrl(dataUrl, size) {
+        return new Promise((resolve, reject) => {
+            const img = new Image();
+            img.onload = () => {
+                const side = Math.min(size, img.naturalWidth, img.naturalHeight) || size;
+                const canvas = document.createElement('canvas');
+                canvas.width = canvas.height = side;
+                canvas.getContext('2d').drawImage(img, 0, 0, side, side);
+                resolve(canvas.toDataURL('image/jpeg', 0.9));
+            };
+            img.onerror = () => reject(new Error('could not read the image'));
+            img.src = dataUrl;
+        });
     }
 
     function openAvatarLightbox() {
@@ -6288,6 +6453,8 @@
             showNextSwipe(msgIndex);
         },
         'photo-toggle': ({ el }) => el.setAttribute('aria-expanded', String(el.getAttribute('aria-expanded') !== 'true')),
+        // The character's avatar beside a message (platforms that draw one)
+        'avatar': ({ el }) => openAvatarMenu(el),
         'transfer-respond': ({ el }) => openTransferResponseMenu(jQuery(el)),
         'image-open': ({ msgIndex }) => openImageAttachment(msgIndex),
         // A remembered phrase opens the save modal, or the remove modal once saved
@@ -6332,7 +6499,7 @@
      */
     function onBubbleTap(e) {
         // A revealed control itself
-        if (e.target.closest('[data-et-action="menu"], [data-et-action="part-menu"], [data-et-action="react"]')) return;
+        if (e.target.closest('[data-et-action="menu"], [data-et-action="part-menu"], [data-et-action="react"], [data-et-action="avatar"]')) return;
         const bubble = e.target.closest('[data-et-role~="bubble"]');
         const wasRevealed = !!bubble?.hasAttribute('data-et-revealed');
         this.querySelectorAll('[data-et-revealed]').forEach(b => b.removeAttribute('data-et-revealed'));

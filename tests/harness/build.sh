@@ -27,5 +27,5 @@ sed -i '' 's/^const Platforms = window\.EchoTextPlatforms;/const Platforms = { .
 
 node "$H/gen.cjs" "$REPO/index.js" new "$B/bundle-new.js"
 EXTRA=bindBubbleTouchSwipe,updateSwipeInPlace node "$H/gen.cjs" "$REPO/index.js" touch "$B/bundle-touch.js"
-EXTRA=buildPanelHtml,modeMenuItemInner,toggleAttachMenu,toggleAttachPanel,bindAttachPanel node "$H/gen.cjs" "$REPO/index.js" chrome "$B/bundle-chrome.js"
+EXTRA=buildPanelHtml,modeMenuItemInner,toggleAttachMenu,toggleAttachPanel,bindAttachPanel,getCharAvatarUrl,getCardAvatarUrl,getCustomCharAvatarUrl,openAvatarMenu,changeCharacterAvatar,setCustomCharAvatar,deleteUserImage,readFileAsDataUrl,shrinkImageDataUrl,openAvatarLightbox,AVATAR_SIZE node "$H/gen.cjs" "$REPO/index.js" chrome "$B/bundle-chrome.js"
 echo "Built against $REF. Serve with: python3 tests/harness/serve.py"

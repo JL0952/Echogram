@@ -45,7 +45,7 @@ const FUNC_STUBS = [
     'getChatHistory', 'syncMsgFromSwipe', 'saveChatHistory', 'updateSwipeInPlace', 'generateEchoTextSwipe',
     'openTransferResponseMenu', 'openGeneratedImageLightbox', 'bindBubbleTouchSwipe',
     'showMemorySaveModal', 'showMemoryRemoveModal', 'setComposeMode', 'saveSettings',
-    'getAvatarUrlForCharacter', 'isCombinedGroupMode', 'getUserAvatarUrl',
+    'getAvatarUrlForCharacter', 'isCombinedGroupMode', 'getUserAvatarUrl', 'pickImageFile', 'error', 'warn', 'getCustomCharAvatarUrl',
 ];
 
 for (const name of (process.env.EXTRA || '').split(',').filter(Boolean)) WANT.push(name);

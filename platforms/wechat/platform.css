@@ -6,6 +6,8 @@
  */
 
 [data-platform="wechat"] {
+    /* EchoText's font setting first, then WeChat's own (Chinese text still gets PingFang) */
+    --wx-font: var(--et-font-name, -apple-system), -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
     --wx-bg: #111111;
     --wx-input-surface: #1e1e1e;
     --wx-text: #f2f2f2;
@@ -65,7 +67,7 @@
     border-bottom: 0;
     color: var(--wx-text);
     background: var(--wx-bg);
-    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+    font-family: var(--wx-font);
 }
 
 [data-platform="wechat"] [data-et-role~="header"]::after {
@@ -225,7 +227,7 @@
     backdrop-filter: none !important;
     -webkit-backdrop-filter: none !important;
     box-shadow: inset 0 0.5px 0 var(--wx-input-border);
-    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+    font-family: var(--wx-font);
 }
 
 [data-platform="wechat"] [data-et-role~="input-bar"]:has(#et-input:not(:placeholder-shown)) {
@@ -386,7 +388,7 @@
 [data-platform="wechat"] .wx-message {
     display: flow-root;
     color: var(--wx-text);
-    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+    font-family: var(--wx-font);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     animation: wx-rise 0.32s cubic-bezier(0.22, 1, 0.36, 1);
@@ -457,6 +459,10 @@
     font-weight: 600;
 }
 
+[data-platform="wechat"] .wx-avatar[data-et-action] {
+    cursor: pointer;
+}
+
 [data-platform="wechat"] .wx-avatar img {
     position: absolute;
     inset: 0;
@@ -492,9 +498,10 @@
     box-sizing: border-box;
     padding: 10px 12px;
     border-radius: 5px;
-    font-size: 17px;
+    /* WeChat's 17 / 21 at EchoText's default font size (15), following it when changed */
+    font-size: calc(var(--et-font-size, 15px) + 2px);
     font-weight: 400;
-    line-height: 21px;
+    line-height: calc(var(--et-font-size, 15px) + 6px);
     overflow-wrap: anywhere;
 }
 
@@ -581,8 +588,8 @@
     overflow-y: auto;
     overscroll-behavior: contain;
     color: var(--wx-text);
-    font-size: 15px;
-    line-height: 20px;
+    font-size: var(--et-font-size, 15px);
+    line-height: calc(var(--et-font-size, 15px) + 5px);
     text-align: center;
     overflow-wrap: anywhere;
 }
@@ -830,7 +837,7 @@
     overflow: hidden;
     border-top: 0.5px solid var(--wx-input-border);
     background: var(--wx-input-surface);
-    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+    font-family: var(--wx-font);
     transition: height 0.28s cubic-bezier(0.4, 0, 0.2, 1);
 }
 

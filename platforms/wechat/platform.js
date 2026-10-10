@@ -41,8 +41,11 @@
 
     function avatar(m, ctx) {
         const a = ctx.avatar(m);
-        const img = a.url ? `<img src="${a.url}" alt="">` : '';
-        return `<div class="wx-avatar" style="background:${a.color}"><span>${ctx.escapeHtml(a.initial)}</span>${img}</div>`;
+        // A missing image goes, showing the initial underneath (as EchoText's own avatars do)
+        const img = a.url ? `<img src="${a.url}" alt="" onerror="this.remove()">` : '';
+        // The character's avatar opens EchoText's avatar menu (view / change); not in group chats
+        const action = !m.isUser && !ctx.groupChat ? ' data-et-action="avatar" role="button" tabindex="0" title="头像"' : '';
+        return `<div class="wx-avatar" style="background:${a.color}"${action}><span>${ctx.escapeHtml(a.initial)}</span>${img}</div>`;
     }
 
     /** A transfer or its accept / decline receipt, as WeChat's orange card. */

@@ -6,7 +6,8 @@ A personal fork of [SillyTavern-EchoText](https://github.com/mattjaybe/SillyTave
 
 - Modified EchoText's prompting logic.
 - Added support for reading the character's `first_mes` and recent SillyTavern story context and a character limit for story context.
-- Added money transfers, multi-bubble replies, photo messages, consecutive sending, and verbosity-based text counts.
+- Added WeChat interface, money transfers, multi-bubble replies, photo messages, consecutive sending, and verbosity-based text counts.
+- Added character avatar customization .
 
 ## Credits
 
