@@ -4,6 +4,7 @@
     "requires": [],
     "optional": [],
     "js": "index.js",
+    "generate_interceptor": "echoTextGenerateInterceptor",
     "css": "style.css",
     "author": "mattjaybe",
     "version": "1.2.6",

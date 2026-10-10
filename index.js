@@ -77,6 +77,7 @@
     loadEchoTextModule('lib/rich-messages.js', 'EchoTextRichMessages');
     loadEchoTextModule('lib/features.js', 'EchoTextFeatures');
     loadEchoTextModule('lib/chat-view-model.js', 'EchoTextChatViewModel');
+    loadEchoTextModule('lib/story-texts.js', 'EchoTextStoryTexts');
 
     // Platform packs (platforms/<id>/platform.js), in menu order. Their scripts are
     // small and all load now; a pack's stylesheet loads only while it's in use.
@@ -94,6 +95,7 @@
     const RichMessages = window.EchoTextRichMessages;
     const Features = window.EchoTextFeatures;
     const ChatViewModel = window.EchoTextChatViewModel;
+    const StoryTexts = window.EchoTextStoryTexts;
     const Platforms = window.EchoTextPlatforms;
 
     // ============================================================
@@ -2796,6 +2798,46 @@
         if (untetheredChat) untetheredChat.resetUntetheredChat();
         saveSettings();
     }
+
+    // ============================================================
+    // ECHOTEXT MESSAGES IN THE STORY PROMPT
+    // ============================================================
+
+    /**
+     * SillyTavern's generation interceptor (manifest.json). With the "EchoText
+     * Messages" context toggle on, the Tethered texts with the story's character
+     * go into the roleplay prompt, each run of texts where it happened in the
+     * story (lib/story-texts.js). Group chats keep their own EchoText storage and
+     * are left out; Untethered texts aren't part of the story.
+     */
+    globalThis.echoTextGenerateInterceptor = function (chat, contextSize, abort, type) {
+        if (!settings.enabled || settings.ctxSTMessages !== true) return;
+        try {
+            const context = SillyTavern.getContext();
+            if (context.groupId) return;
+            const char = context.characters?.[context.characterId];
+            const history = char && settings.chatHistory?.[char.avatar || char.name];
+            if (!Array.isArray(history) || !history.length) return;
+
+            // As getChatHistory: a stored copy of the greeting isn't a text
+            const firstMes = (char.first_mes || '').trim();
+            const texts = firstMes ? history.filter(msg => msg.is_user || (msg.mes || '').trim() !== firstMes) : history;
+            const timeOf = (msg) => {
+                const time = context.timestampToMoment?.(msg.send_date);
+                if (time?.isValid?.()) return time.valueOf();
+                return typeof msg.send_date === 'number' ? msg.send_date : Date.parse(msg.send_date);
+            };
+            const inserted = StoryTexts.insertTexts(chat, texts, {
+                charName: char.name,
+                userName: getUserName(),
+                timeOf,
+                keepLast: type === 'continue',
+            });
+            if (inserted) log(`Added EchoText messages to the prompt in ${inserted} place(s)`);
+        } catch (e) {
+            error('Could not add EchoText messages to the prompt:', e);
+        }
+    };
 
     // ============================================================
     // TEXT EXTRACTION

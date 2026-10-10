@@ -31,7 +31,7 @@ panel" shows as failing there; dispatch a `focus` event to check it.
 ## Node scripts
 
 ```sh
-node --test tests/*.test.mjs                 # view model and features
+node --test tests/*.test.mjs                 # view model, features, story texts
 node tests/harness/undeclared.cjs [ref]      # names index.js uses but never declares, vs ref
 node tests/harness/context-compare.cjs [ref] # what the model is sent, vs ref; then on WeChat
 ```
