@@ -14,15 +14,22 @@ const NO_REACT = ['photo', 'transfer'];
 const NONE = [];
 const REACTIONS = ['heart', 'haha', 'wow', 'sad', 'fire', 'like', 'star', 'bolt'];
 
-// buildMessageFormatPrompt('Mira', 'Me') before the rules moved into lib/features.js
-const OLD_FORMAT_PROMPT = "MESSAGES: Put each text on its own line — every line reaches Me as a separate message bubble.\nPHOTOS: Mira can send photos. Write a photo on its own line as <photo>what the photo shows</photo> — a short, concrete description of the picture, written in the same language as the conversation — and Me sees it as an actual picture. Write the description as a neutral caption of what is visible, with no first- or second-person pronouns: refer to people by name (Mira, Me) instead of I/me/my/you. Send one whenever Mira naturally would, such as when asked for a picture, but never use it to describe Mira's own actions. A <photo> from Me is a picture they sent: react to what it shows.\nREACTIONS: Mira can react to Me's latest message with a tapback by writing <react>name</react> on its own line, where name is one of: heart, haha, wow, sad, fire, like, star, bolt. Use one only now and then, when a quick reaction genuinely fits — most replies need none. A reaction usually comes with text messages, but occasionally it can be the whole reply. A <react> from Me is their tapback on Mira's message just before it — Mira may notice it, but it doesn't need an answer of its own.\nTRANSFERS: Mira can send Me money by writing <transfer>amount</transfer> on its own line, with the amount as a plain number. When Me sends Mira a <transfer>, Mira can accept it with <transfer_accept/> or decline it with <transfer_decline/> on its own line, or leave it pending for now. A <transfer_accept> or <transfer_decline> from Me means they accepted or declined Mira's transfer. Only send or answer transfers when it fits the story.";
+// The rules for the first three features as written since step 8c: "on its own line"
+// and the language are said once, in index.js's MESSAGES line
+const FORMAT_RULES = [
+    "PHOTOS: Mira can send photos as <photo>what the photo shows</photo> — a short, concrete description of the picture — and Me sees it as an actual picture. Write the description as a neutral caption of what is visible, with no first- or second-person pronouns: refer to people by name (Mira, Me) instead of I/me/my/you. Send one whenever Mira naturally would, such as when asked for a picture, but never use it to describe Mira's own actions. A <photo> from Me is a picture they sent: react to what it shows.",
+    "REACTIONS: Mira can react to Me's latest message with a tapback as <react>name</react>, where name is one of: heart, haha, wow, sad, fire, like, star, bolt. Use one only now and then, when a quick reaction genuinely fits — most replies need none. A reaction usually comes with text messages, but occasionally it can be the whole reply. A <react> from Me is their tapback on Mira's message just before it — Mira may notice it, but it doesn't need an answer of its own.",
+    "TRANSFERS: Mira can send Me money as <transfer>amount</transfer>, with the amount as a plain number. When Me sends Mira a <transfer>, Mira can accept it with <transfer_accept/> or decline it with <transfer_decline/>, or leave it pending for now. A <transfer_accept> or <transfer_decline> from Me means they accepted or declined Mira's transfer. Only send or answer transfers when it fits the story.",
+];
 
-test('with the first three features on, the format rules are exactly what they were', () => {
-    const prompt = [
-        'MESSAGES: Put each text on its own line — every line reaches Me as a separate message bubble.',
-        ...buildFeaturePrompts(['photo', 'react', 'transfer'], { charName: 'Mira', userName: 'Me', reactionIds: REACTIONS }),
-    ].join('\n');
-    assert.equal(prompt, OLD_FORMAT_PROMPT);
+test('the format rules read exactly as written', () => {
+    assert.deepEqual(buildFeaturePrompts(['photo', 'react', 'transfer'], { charName: 'Mira', userName: 'Me', reactionIds: REACTIONS }), FORMAT_RULES);
+});
+
+test('no rule repeats what the MESSAGES line says once', () => {
+    for (const rule of buildFeaturePrompts(ALL, { charName: 'Mira', userName: 'Me', reactionIds: REACTIONS })) {
+        assert.doesNotMatch(rule, /on its own line|language of the conversation|same language/, rule.split(':')[0]);
+    }
 });
 
 test('format rules list only the enabled features, in a fixed order', () => {
@@ -37,12 +44,12 @@ test('format rules list only the enabled features, in a fixed order', () => {
 
 test('the voice rule names the tag, when to use it, and how a character\'s temperament changes that', () => {
     const [rule] = buildFeaturePrompts(['voice'], { charName: 'Mira', userName: 'Me', reactionIds: REACTIONS });
-    assert.match(rule, /<voice>the words Mira says<\/voice> on its own line/);
-    assert.match(rule, /typing is inconvenient/);
+    assert.match(rule, /<voice>exactly what Mira says<\/voice>/);
+    assert.match(rule, /typing is awkward/);
     assert.match(rule, /closer or more intimate/);
     assert.match(rule, /asks to hear something/);
-    assert.match(rule, /Outgoing, expressive characters send voice messages often; reserved or shy ones rarely do/);
-    assert.match(rule, /A <voice> from Me is a voice message they recorded/);
+    assert.match(rule, /Outgoing, expressive characters send them often; reserved or shy ones rarely do/);
+    assert.match(rule, /A <voice> from Me is their recording/);
 });
 
 test('text is untouched when every feature is on or no tag applies', () => {
@@ -69,8 +76,8 @@ test('a message that was only unsupported content is left out (null)', () => {
 
 test('the file rule names both tags and keeps sharing to what the story calls for', () => {
     const [rule] = buildFeaturePrompts(['file'], { charName: 'Mira', userName: 'Me', reactionIds: REACTIONS });
-    assert.match(rule, /<file>file name with its extension \| a short summary of what's in it<\/file> on its own line/);
-    assert.match(rule, /<link>page title \| its address \| one line about it<\/link>/);
+    assert.match(rule, /<file>name\.ext \| a short summary of what's in it<\/file>/);
+    assert.match(rule, /<link>page title \| address \| one line about it<\/link>/);
     assert.match(rule, /only when the story calls for it/);
     assert.match(rule, /A <file> or <link> from Me is something they shared/);
 });

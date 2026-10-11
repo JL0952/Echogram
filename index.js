@@ -2340,10 +2340,10 @@
      * lib/rich-messages.js exactly.
      */
     function buildMessageFormatPrompt(charName, userName) {
-        return [
-            `MESSAGES: Put each text on its own line — every line reaches ${userName} as a separate message bubble.`,
-            ...Features.buildFeaturePrompts(getActiveFeatures(), { charName, userName, reactionIds: getReactionIds() }),
-        ].join('\n');
+        const rules = Features.buildFeaturePrompts(getActiveFeatures(), { charName, userName, reactionIds: getReactionIds() });
+        // What every tag below shares, said once
+        const tags = rules.length ? ' Each tag below goes on a line of its own too, as one of the texts. Write the texts and what goes inside the tags in the language of the conversation.' : '';
+        return [`MESSAGES: Put each text on its own line — every line reaches ${userName} as a separate message bubble.${tags}`, ...rules].join('\n');
     }
 
     async function getActiveWorldInfoEntries(opts) {
