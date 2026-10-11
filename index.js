@@ -7041,7 +7041,9 @@
 
         // Set the content to raw markdown so it's editable and preserved
         textEl.text(msg.mes);
-        textEl.attr('contenteditable', 'true').focus();
+        textEl.attr('contenteditable', 'true');
+        // The browser doesn't scroll the list to it; keepEditInView does, below
+        textEl[0].focus({ preventScroll: true });
 
         // Move cursor to end
         const range = document.createRange();
@@ -7051,21 +7053,51 @@
         sel.removeAllRanges();
         sel.addRange(range);
 
-        // Floating save/cancel toolbar below bubble
-        const toolbar = jQuery(`
-            <div class="et-edit-toolbar">
-                <button class="et-edit-save"><i class="fa-solid fa-check"></i> Save</button>
-                <button class="et-edit-cancel"><i class="fa-solid fa-xmark"></i> Cancel</button>
-            </div>
-        `);
+        // Save / cancel under the message, in the platform's look
+        const toolbar = jQuery(getActivePlatform().templates.editToolbar().trim());
         bubble.after(toolbar);
 
+        // iOS: the on-screen keyboard scrolls the message list by itself to reveal the
+        // caret, and leaves the caret and taps where the text was before (the caret
+        // drifts below the text, the buttons only answer taps below them). So the list
+        // scrolls itself once the keyboard is up (which also resyncs it), and the
+        // selection is set again to redraw the caret.
+        const viewport = window.visualViewport;
+        let viewportTimer = null;
+        const keepEditInView = () => {
+            clearTimeout(viewportTimer);
+            viewportTimer = setTimeout(() => {
+                const list = document.getElementById('et-messages');
+                if (!list || !toolbar[0].isConnected) return;
+                const visibleBottom = Math.min(list.getBoundingClientRect().bottom, viewport.offsetTop + viewport.height);
+                const overflow = toolbar[0].getBoundingClientRect().bottom + 8 - visibleBottom;
+                const behavior = list.style.scrollBehavior;
+                list.style.scrollBehavior = 'auto';
+                list.scrollTop += Math.max(0, overflow);
+                list.style.scrollBehavior = behavior;
+                const current = sel.rangeCount ? sel.getRangeAt(0) : null;
+                if (current && textEl[0].contains(current.startContainer)) {
+                    sel.removeAllRanges();
+                    sel.addRange(current);
+                }
+            }, 120);
+        };
+        if (viewport && isMobileDevice()) {
+            viewport.addEventListener('resize', keepEditInView);
+            viewport.addEventListener('scroll', keepEditInView);
+        }
+
         const finishEdit = () => {
+            clearTimeout(viewportTimer);
+            if (viewport) {
+                viewport.removeEventListener('resize', keepEditInView);
+                viewport.removeEventListener('scroll', keepEditInView);
+            }
             textEl.removeAttr('contenteditable');
             toolbar.remove();
         };
 
-        toolbar.find('.et-edit-save').on('click', () => {
+        toolbar.find('[data-et-role="edit-save"]').on('click', () => {
             // Extract plain text from contenteditable
             const newText = textEl[0].innerText.trim();
             if (!newText) { finishEdit(); renderMessages(history); return; }
@@ -7075,7 +7107,7 @@
             renderMessages(history, true);
         });
 
-        toolbar.find('.et-edit-cancel').on('click', () => {
+        toolbar.find('[data-et-role="edit-cancel"]').on('click', () => {
             finishEdit();
             refreshMessages(history);
         });
@@ -7084,9 +7116,9 @@
         textEl.on('keydown.edit', (e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
-                toolbar.find('.et-edit-save').trigger('click');
+                toolbar.find('[data-et-role="edit-save"]').trigger('click');
             } else if (e.key === 'Escape') {
-                toolbar.find('.et-edit-cancel').trigger('click');
+                toolbar.find('[data-et-role="edit-cancel"]').trigger('click');
             }
         });
     }

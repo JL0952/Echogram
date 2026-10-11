@@ -558,6 +558,51 @@
     cursor: text;
 }
 
+/* Cancel / Done under a message being edited: WeUI's weui-btn_xmini (14px, 4px
+   corners, a mask while pressed), cancel on the incoming-bubble surface and done
+   in WeChat green. Under the bubble, on the message's own side */
+[data-platform="wechat"] .wx-edit-bar {
+    display: flex;
+    gap: 8px;
+    margin: 8px 65px 0;
+}
+
+[data-platform="wechat"] .wx-message[data-is-user="1"] > .wx-edit-bar {
+    justify-content: flex-end;
+}
+
+[data-platform="wechat"] .wx-edit-btn {
+    position: relative;
+    padding: 4px 12px;
+    border: 0;
+    border-radius: 4px;
+    background: var(--wx-bubble-in);
+    color: var(--wx-text);
+    font-family: var(--wx-font);
+    font-size: 14px;
+    font-weight: 500;
+    line-height: 20px;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+}
+
+[data-platform="wechat"] .wx-edit-btn-primary {
+    background: #07c160;
+    color: #fff;
+}
+
+[data-platform="wechat"] .wx-edit-btn:active::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: rgba(255, 255, 255, 0.2);
+}
+
+[data-platform="wechat"][data-et-scheme="light"] .wx-edit-btn:active::before {
+    background: rgba(0, 0, 0, 0.2);
+}
+
 /* A photo: a 4:3 picture frame (as an image message, 220px wide at most).
    Tapped, the description fills the frame and a long one scrolls inside it */
 [data-platform="wechat"] .wx-photo {

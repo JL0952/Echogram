@@ -394,13 +394,13 @@
                     name: `inline edit — ${what}`,
                     bubbles: msgEl.querySelectorAll('[data-et-role~="bubble"]').length,
                     rawText: editable[0]?.textContent === history[idx].mes,
-                    toolbarAfterMain: msgEl.querySelector('[data-et-role~="main"]')?.nextElementSibling?.classList.contains('et-edit-toolbar'),
+                    toolbarAfterMain: !!msgEl.querySelector('[data-et-role~="main"]')?.nextElementSibling?.querySelector('[data-et-role="edit-save"]'),
                     pillsKept: idx !== 4 || currentPlatform !== 'echotext' || msgEl.querySelectorAll('.et-reaction-pill').length === 1,
                 };
                 // Entering again while editing does nothing
                 r.startInlineEdit(history, idx);
-                res.single = inner.querySelectorAll('.et-edit-toolbar').length === 1;
-                msgEl.querySelector('.et-edit-cancel').click();
+                res.single = inner.querySelectorAll('[data-et-role="edit-save"]').length === 1;
+                msgEl.querySelector('[data-et-role="edit-cancel"]').click();
                 await sleep(600);
                 res.restored = normalize(inner.innerHTML) === before;
                 res.ok = editable.length === 1 && res.bubbles === 1 && res.rawText && res.toolbarAfterMain && res.pillsKept && res.single && res.restored;
@@ -433,7 +433,7 @@
             const res = { name: `[wechat] inline edit after a hidden reaction-only reply: edits #${msgEl?.dataset.index}`, hidden,
                 index: msgEl?.dataset.index, isUser: msgEl?.dataset.isUser, rawText: edited?.textContent === history[idx].mes };
             res.ok = hidden && res.index === String(idx) && res.isUser === (history[idx].is_user ? '1' : '0') && res.rawText;
-            msgEl?.querySelector('.et-edit-cancel')?.click();
+            msgEl?.querySelector('[data-et-role="edit-cancel"]')?.click();
             return res;
         })());
 

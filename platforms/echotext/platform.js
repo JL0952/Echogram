@@ -250,6 +250,11 @@
         return '<div class="et-bubble et-bubble-char et-typing-bubble"><div class="et-typing-dots"><span></span><span></span><span></span></div></div>';
     }
 
+    /** Save / Cancel under a message being edited in place (edit-save / edit-cancel). */
+    function editToolbar() {
+        return '<div class="et-edit-toolbar"><button class="et-edit-save" data-et-role="edit-save"><i class="fa-solid fa-check"></i> Save</button><button class="et-edit-cancel" data-et-role="edit-cancel"><i class="fa-solid fa-xmark"></i> Cancel</button></div>';
+    }
+
     window.EchoTextPlatforms = window.EchoTextPlatforms || {};
     window.EchoTextPlatforms.echotext = {
         id: 'echotext',
@@ -263,6 +268,7 @@
             typing,
             imageGenerating,
             bubbleTyping,
+            editToolbar,
         },
     };
 })();

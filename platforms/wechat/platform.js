@@ -143,6 +143,11 @@
         return '';
     }
 
+    /** Cancel / Done under a message being edited, as WeUI's small buttons (cancel first, as WeChat orders them). */
+    function editToolbar() {
+        return '<div class="wx-edit-bar"><button class="wx-edit-btn" data-et-role="edit-cancel">取消</button><button class="wx-edit-btn wx-edit-btn-primary" data-et-role="edit-save">完成</button></div>';
+    }
+
     window.EchoTextPlatforms = window.EchoTextPlatforms || {};
     window.EchoTextPlatforms.wechat = {
         id: 'wechat',
@@ -161,6 +166,7 @@
             typing,
             imageGenerating,
             bubbleTyping,
+            editToolbar,
         },
     };
 })();
