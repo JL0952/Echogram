@@ -22,6 +22,7 @@
     --wx-icon-back: url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 12 24%22%3E%3Cpath d=%22M9.5 3.5 1.5 12l8 8.5%22 fill=%22none%22 stroke=%22%23000%22 stroke-width=%221.35%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22/%3E%3C/svg%3E");
     --wx-icon-more: url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22%3E%3Cpath d=%22M6.75 12c0 .966-.784 1.75-1.75 1.75S3.25 12.966 3.25 12 4.034 10.25 5 10.25 6.75 11.034 6.75 12Zm5.25-1.75c.966 0 1.75.784 1.75 1.75s-.784 1.75-1.75 1.75-1.75-.784-1.75-1.75.784-1.75 1.75-1.75Zm7 0c.966 0 1.75.784 1.75 1.75s-.784 1.75-1.75 1.75-1.75-.784-1.75-1.75.784-1.75 1.75-1.75Z%22/%3E%3C/svg%3E");
     --wx-icon-voice: url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22%3E%3Cpath d=%22M12 22C6.477 22 2 17.523 2 12S6.477 2 12 2s10 4.477 10 10-4.477 10-10 10Zm0-1.2a8.8 8.8 0 1 0 0-17.6 8.8 8.8 0 0 0 0 17.6Zm.308-3.992A6.77 6.77 0 0 0 14.3 12a6.77 6.77 0 0 0-1.992-4.808l.849-.849A7.97 7.97 0 0 1 15.5 12a7.97 7.97 0 0 1-2.343 5.657l-.849-.849Zm-1.98-1.98A3.98 3.98 0 0 0 11.5 12a3.98 3.98 0 0 0-1.172-2.828l.849-.849A5.18 5.18 0 0 1 12.7 12a5.18 5.18 0 0 1-1.523 3.677l-.849-.849Zm-1.131-1.131L7.5 12l1.697-1.697A2.39 2.39 0 0 1 9.9 12c0 .663-.269 1.263-.703 1.697Z%22/%3E%3C/svg%3E");
+    --wx-icon-keyboard: url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22%3E%3Cpath d=%22M5.2 5h13.6A3.2 3.2 0 0 1 22 8.2v7.6a3.2 3.2 0 0 1-3.2 3.2H5.2A3.2 3.2 0 0 1 2 15.8V8.2A3.2 3.2 0 0 1 5.2 5Zm0 1.2a2 2 0 0 0-2 2v7.6a2 2 0 0 0 2 2h13.6a2 2 0 0 0 2-2V8.2a2 2 0 0 0-2-2H5.2ZM5.5 8.3h2v1.4h-2V8.3Zm3.7 0h2v1.4h-2V8.3Zm3.7 0h2v1.4h-2V8.3Zm3.7 0h2v1.4h-2V8.3ZM5.5 11.4h2v1.4h-2v-1.4Zm3.7 0h2v1.4h-2v-1.4Zm3.7 0h2v1.4h-2v-1.4Zm3.7 0h2v1.4h-2v-1.4ZM7.4 14.5h9.2v1.4H7.4v-1.4Z%22/%3E%3C/svg%3E");
     --wx-icon-sticker: url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22%3E%3Cpath d=%22M12 22C6.477 22 2 17.523 2 12S6.477 2 12 2s10 4.477 10 10-4.477 10-10 10Zm0-1.2a8.8 8.8 0 1 0 0-17.6 8.8 8.8 0 0 0 0 17.6Zm-6-8.3h12a6 6 0 0 1-12 0Zm1.351 1.2a4.802 4.802 0 0 0 9.298 0H7.351ZM8.5 10.5A1.5 1.5 0 1 1 8.5 7a1.5 1.5 0 0 1 0 3.5Zm7 0A1.5 1.5 0 1 1 15.5 7a1.5 1.5 0 0 1 0 3.5Z%22/%3E%3C/svg%3E");
     --wx-icon-add: url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22%3E%3Cpath d=%22M11.4 11.4V7h1.2v4.4H17v1.2h-4.4V17h-1.2v-4.4H7v-1.2h4.4ZM12 22C6.477 22 2 17.523 2 12S6.477 2 12 2s10 4.477 10 10-4.477 10-10 10Zm0-1.2a8.8 8.8 0 1 0 0-17.6 8.8 8.8 0 0 0 0 17.6Z%22/%3E%3C/svg%3E");
 }
@@ -212,7 +213,8 @@
    EchoText's own input elements: the textarea is the field, "+" opens the
    photo / transfer menu, and the send button shows as 发送 once there is
    text (as in WeChat). While a reply is being generated it shows as a stop
-   button instead of "+". Voice and emoji are drawn, not yet buttons. */
+   button instead of "+". The voice glyph is EchoText's voice button (a keyboard
+   while in voice mode, to switch back); emoji is drawn, not yet a button. */
 
 [data-platform="wechat"] [data-et-role~="input-bar"] {
     position: relative;
@@ -236,6 +238,7 @@
 
 [data-platform="wechat"] [data-et-role~="input-bar"]::before,
 [data-platform="wechat"] [data-et-role~="input-bar"]::after,
+[data-platform="wechat"] #et-voice-btn::before,
 [data-platform="wechat"] #et-attach-btn::before {
     content: "";
     display: block;
@@ -252,6 +255,38 @@
     grid-column: 1;
     grid-row: 1;
     margin-bottom: 4px;
+}
+
+/* The voice glyph is the voice button itself, when the platform's voice is on */
+[data-platform="wechat"] [data-et-role~="input-bar"]:has(#et-voice-btn:not([hidden]))::before {
+    display: none;
+}
+
+[data-platform="wechat"] #et-voice-btn {
+    grid-column: 1;
+    grid-row: 1;
+    display: grid;
+    place-items: center;
+    width: 34px;
+    height: 32px;
+    margin: 0 0 4px;
+    padding: 0;
+    border: 0;
+    color: var(--wx-text);
+    background: none;
+    cursor: pointer;
+}
+
+[data-platform="wechat"] #et-voice-btn::before {
+    --wx-glyph: var(--wx-icon-voice);
+}
+
+[data-platform="wechat"] #et-voice-btn.et-voice-btn-active::before {
+    --wx-glyph: var(--wx-icon-keyboard);
+}
+
+[data-platform="wechat"] #et-voice-btn > i {
+    display: none;
 }
 
 [data-platform="wechat"] [data-et-role~="input-bar"]::after {
@@ -287,8 +322,14 @@
     color: transparent;
 }
 
-[data-platform="wechat"] .et-input-wrap.et-input-wrap-compose #et-input {
+[data-platform="wechat"] .et-input-wrap.et-input-wrap-compose:not([data-et-compose="voice"]) #et-input {
     border-color: #07c160 !important;
+}
+
+/* Voice mode: the field reads like WeChat's 按住 说话 (soloshow .voiceInputField) */
+[data-platform="wechat"] .et-input-wrap[data-et-compose="voice"] #et-input::placeholder {
+    text-align: center;
+    font-weight: 550;
 }
 
 [data-platform="wechat"] .et-input-wrap.et-input-wrap-compose #et-input::placeholder {
@@ -547,6 +588,69 @@
 [data-platform="wechat"] .wx-bubble-wrap:has(> .wx-bubble:first-child:has(> .wx-text > p:only-child:empty)) > .wx-image,
 [data-platform="wechat"] .wx-bubble-wrap:has(> .wx-bubble:first-child:has(> .wx-text > p:only-child:empty)) > .wx-placeholder {
     margin-top: 0;
+}
+
+/* A voice message (soloshow .voiceBubble): its width, set inline, grows with its
+   length; the glyph faces the sender. A red dot sits beside one of the character's
+   until it is first opened */
+[data-platform="wechat"] .wx-voice {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 5px;
+    min-height: 41px;
+    cursor: pointer;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+[data-platform="wechat"] .wx-voice.wx-bubble-right {
+    justify-content: flex-end;
+}
+
+[data-platform="wechat"] .wx-voice-glyph {
+    flex: 0 0 auto;
+    width: 22px;
+    height: 22px;
+    overflow: visible;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.8;
+    stroke-linecap: round;
+}
+
+[data-platform="wechat"] .wx-bubble-right .wx-voice-glyph {
+    transform: scaleX(-1);
+}
+
+[data-platform="wechat"] .wx-voice-unread {
+    position: absolute;
+    top: 50%;
+    right: -12px;
+    width: 7px;
+    height: 7px;
+    transform: translateY(-50%);
+    border-radius: 50%;
+    background: #fa5151;
+}
+
+/* 转文字 (soloshow .transcript): the words, under the bubble once it is tapped */
+[data-platform="wechat"] .wx-transcript {
+    width: fit-content;
+    max-width: 100%;
+    box-sizing: border-box;
+    margin-top: 5px;
+    padding: 9px 11px;
+    border-radius: 5px;
+    color: var(--wx-text);
+    background: var(--wx-bubble-in);
+    font-size: calc(var(--et-font-size, 15px) + 2px);
+    line-height: calc(var(--et-font-size, 15px) + 6px);
+    overflow-wrap: anywhere;
+}
+
+[data-platform="wechat"] .wx-voice[aria-expanded="false"] + .wx-transcript {
+    display: none;
 }
 
 [data-platform="wechat"] .wx-text[contenteditable="true"] {

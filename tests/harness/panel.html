@@ -33,7 +33,6 @@ const env = { settings: { ...sc.settings, autoScroll: true, defaultPlatform: 'we
     getCurrentCharacter: () => ({ name: 'Mira', avatar: 'mira.png' }), getCharacterName: () => 'Mira', isTetheredMode: () => true,
     getUserName: () => '我', getCharacterKey: () => 'mira.png', getCharAvatarUrl: () => null, _pickerAvatarBg: () => '#7c6f9c',
     isMobileDevice: () => false, getChatHistory: () => history, getUserAvatarUrl: () => null, isCombinedGroupMode: () => false,
-    setComposeMode: mode => calls.push(['setComposeMode', mode]),
     closeAllDotMenus: () => jQuery('.et-dots-menu').remove(),
     panelOpen: true, saveSettings: () => calls.push(['saveSettings']),
     pickImageFile: () => Promise.resolve(window.__nextFile || null) };
@@ -73,7 +72,8 @@ window.runPanelTest = async function () {
     plus(); await sleep(50);
     res.closingPanels = document.querySelectorAll('.et-attach-panel:not(#et-attach-panel)').length;
     jQuery('.et-attach-panel-item[data-mode="transfer"]').trigger('click');
-    res.tile = { calls: JSON.stringify(calls), closed: !panelEl(), inputFocused: document.activeElement?.id === 'et-input' };
+    res.tile = { mode: jQuery('.et-input-wrap').attr('data-et-compose'), closed: !panelEl(), inputFocused: document.activeElement?.id === 'et-input' };
+    r.setComposeMode(null);
 
     // 4. tapping the message list closes it
     document.getElementById('et-input').blur();
@@ -260,5 +260,17 @@ window.runAnchorTest = async function () {
     res.ok = Object.values(res).every(v => v.ok);
     return res;
 };
+
+// ?report=runPanelTest,runAnchorTest: run those on load and post each result to the
+// server (serve.py prints it), for a phone or simulator
+const toReport = new URLSearchParams(location.search).get('report');
+if (toReport) (async () => {
+    await sleep(500);
+    for (const name of toReport.split(',')) {
+        let result;
+        try { result = await window[name](); } catch (e) { result = { error: String(e) }; }
+        await fetch('/__log', { method: 'POST', body: JSON.stringify({ [name]: result }) }).catch(() => {});
+    }
+})();
 </script>
 </body></html>

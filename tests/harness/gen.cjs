@@ -30,6 +30,7 @@ const WANT = [
     'renderMessages', 'showPrevSwipe', 'showNextSwipe', 'openImageAttachment', 'MESSAGE_ACTIONS', 'onMessageAction', 'bindMessageActions', 'onBubbleTap',
     'renderedViews', 'renderedFrame', 'getRenderFrame', 'updateMessageList', 'replaceMessageElement', 'scrollMessagesToEnd',
     'getChatViewOptions', 'getMessageRenderContext', 'findMessageElement', 'decorateMessage', 'refreshMessages',
+    'toggleVoiceTranscript', 'syncRenderedView',
     // the "+" panel (syncPlatformChrome closes it)
     'closeAttachPanel', 'followAttachPanel', 'attachPanelDuration', 'messagesFromBottom',
     // older index.js versions (before step 2c) built the message HTML themselves

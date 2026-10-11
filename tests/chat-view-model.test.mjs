@@ -240,3 +240,40 @@ test('without photos or transfers, their cards become the same notes the model s
     ]);
     assert.deepEqual(view[1].parts, [{ type: 'text', text: '[Accepted transfer]' }]);
 });
+
+test('voice messages: their words, length, place among the message\'s voices, and whether they wait to be opened', () => {
+    const history = [
+        char('好\n<voice>好，我现在在路上，我在扶着外公，在外面。我一会儿看一下，我仔细看一下，我再问他们。你先别管了啊，你先睡觉啊。</voice>\n<voice>see you soon okay</voice>', 0, { voiceHeard: [1] }),
+        user('<voice>嗯</voice>', 1),
+    ];
+    const [c, u] = build(history);
+    assert.deepEqual(c.parts.map(p => p.type), ['text', 'voice', 'voice']);
+    assert.equal(c.parts[1].duration, 12);   // 45 characters, about 4 a second, rounded up
+    assert.deepEqual([c.parts[1].voiceIndex, c.parts[1].unread], [0, true]);
+    assert.deepEqual([c.parts[2].duration, c.parts[2].voiceIndex, c.parts[2].unread], [2, 1, false]);
+    // The user's own voice messages are never unread
+    assert.deepEqual(u.parts, [{ type: 'voice', text: '嗯', duration: 1, voiceIndex: 0, unread: false }]);
+});
+
+test('voice tags written the way models drift are still voice messages', () => {
+    const [c] = build([char('<语音>在吗</语音>\n<voice_message>\nhello\nthere</voice_message>\n<audio text="la la"/>', 0)]);
+    assert.deepEqual(c.parts.map(p => [p.type, p.text]), [['voice', '在吗'], ['voice', 'hello there'], ['voice', 'la la']]);
+});
+
+test('voice lengths stay between 1 second and a minute', () => {
+    const { voiceDuration } = window.EchoTextRichMessages;
+    assert.equal(voiceDuration(''), 1);
+    assert.equal(voiceDuration('ok'), 1);
+    assert.equal(voiceDuration('one two three four five'), 2);
+    assert.equal(voiceDuration('字'.repeat(1000)), 60);
+});
+
+test('without voice, a voice message becomes the note the model sees', () => {
+    const [c] = build([char('<voice>hi there</voice>', 0)], { features: ['photo'] });
+    assert.deepEqual(c.parts, [{ type: 'text', text: '[Voice: hi there]' }]);
+});
+
+test('a voice part goes back to its tag when a message is rewritten from its parts', () => {
+    const { parseMessageParts, serializeParts } = window.EchoTextRichMessages;
+    assert.equal(serializeParts(parseMessageParts('a\n<voice>b c</voice>', { splitLines: true })), 'a\n<voice>b c</voice>');
+});

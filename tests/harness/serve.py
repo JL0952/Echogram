@@ -17,6 +17,15 @@ class NoCacheHandler(http.server.SimpleHTTPRequestHandler):
     def log_message(self, *args):
         pass
 
+    # Pages on a phone or simulator report back here (POST /__log): printed as is
+    def do_POST(self):
+        length = int(self.headers.get('Content-Length') or 0)
+        body = self.rfile.read(length).decode('utf-8', 'replace')
+        if self.path == '/__log':
+            print(body, flush=True)
+        self.send_response(204)
+        self.end_headers()
+
 
 print(f'http://127.0.0.1:{PORT}/tests/harness/index.html')
 http.server.ThreadingHTTPServer(('127.0.0.1', PORT), functools.partial(NoCacheHandler, directory=REPO)).serve_forever()

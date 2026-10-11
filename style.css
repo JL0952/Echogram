@@ -12199,6 +12199,82 @@ textarea.et-mem-save-snippet-edit::placeholder {
     display: none;
 }
 
+/* A voice message, as iMessage draws one: play button, waveform and length, then
+   the words inside the bubble once tapped. The dot marks one of the character's
+   the user hasn't opened yet */
+.et-voice {
+    cursor: pointer;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+.et-voice-row {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+}
+
+.et-voice-play {
+    flex: 0 0 auto;
+    display: grid;
+    place-items: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: var(--et-theme-color);
+    color: #fff;
+    font-size: 0.7rem;
+}
+
+.et-voice-play i {
+    margin-left: 2px;
+}
+
+.et-voice-wave {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    height: 22px;
+    opacity: 0.7;
+}
+
+/* A set width, not just a flex-basis: Safari sizes the bubble from widths */
+.et-voice-wave > i {
+    flex: none;
+    width: 3px;
+    border-radius: 2px;
+    background: currentColor;
+}
+
+.et-voice-time {
+    white-space: nowrap;
+    font-size: 0.78rem;
+    font-variant-numeric: tabular-nums;
+    opacity: 0.75;
+}
+
+.et-voice-unread {
+    flex: 0 0 auto;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--et-theme-color);
+}
+
+.et-voice-transcript {
+    display: none;
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid color-mix(in srgb, currentColor 18%, transparent);
+    user-select: text;
+    -webkit-user-select: text;
+}
+
+.et-voice[aria-expanded="true"] .et-voice-transcript {
+    display: block;
+}
+
 .et-photo-card[aria-expanded="true"] .et-photo-card-caption {
     display: flex;
 }
@@ -12247,8 +12323,9 @@ textarea.et-mem-save-snippet-edit::placeholder {
     cursor: default;
 }
 
-/* The platform has nothing to attach */
-.et-attach-btn[hidden] {
+/* The platform has nothing to attach / records voice another way */
+.et-attach-btn[hidden],
+.et-voice-btn[hidden] {
     display: none !important;
 }
 

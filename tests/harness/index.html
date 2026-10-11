@@ -368,6 +368,48 @@
             return { name: 'typing indicator (one template): ' + order, ok: order === 'et-typing-dots' };
         })());
 
+        // Voice messages: a tap shows the words; opening one of the character's drops its
+        // dot for good (kept in the chat), and the next in-place update leaves it open
+      for (const platformId of ['echotext', 'wechat']) {
+        refreshResults.push(await (async () => {
+            const t0 = Date.now() - 600000;
+            const history = [
+                { is_user: true, mes: 'where are you', send_date: t0 },
+                { is_user: false, mes: 'hang on\n<voice>好，我现在在路上，你先睡觉啊</voice>', send_date: t0 + 60000 },
+            ];
+            let saves = 0;
+            const live = document.getElementById('live');
+            live.setAttribute('data-platform', platformId);
+            const inner = document.getElementById('et-messages-inner');
+            const env = { settings: { ...window.EchoTextScenarios[0].settings, defaultPlatform: platformId }, BASE_URL: '', groupManager: null, FA_REACTIONS, showTypingIndicator: false,
+                getCurrentCharacter: () => ({ name: 'Mira' }), getCharacterName: () => 'Mira', isTetheredMode: () => true,
+                getUserName: () => 'You', getCharacterKey: () => 'mira.png', getCharAvatarUrl: () => null,
+                _pickerAvatarBg: () => '#335577', isMobileDevice: () => false, getChatHistory: () => history,
+                saveChatHistory: () => { saves++; } };
+            const r = window.EchoTextHarness[newLabel](env);
+            r.bindMessageActions();
+            r.renderMessages(history);
+            await sleep(400);
+            const voice = () => inner.querySelector('[data-et-action="voice-toggle"]');
+            const shown = () => getComputedStyle(inner.querySelector('[data-et-role~="transcript"]')).display !== 'none';
+            const res = { name: `[${platformId}] voice message: a tap shows the words, its dot goes for good` };
+            res.dot = !!voice().querySelector('[data-et-role~="unread"]');
+            res.hiddenAtFirst = !shown();
+            voice().click();
+            res.opened = shown() && !voice().querySelector('[data-et-role~="unread"]');
+            res.heard = JSON.stringify(history[1].voiceHeard) === '[0]' && saves === 1;
+            const el = voice();
+            history.push({ is_user: true, mes: 'ok', send_date: t0 + 120000 });
+            r.renderMessages(history);
+            res.keptOpen = voice() === el && shown();
+            voice().click();
+            res.closedAgain = !shown() && saves === 1;
+            live.removeAttribute('data-platform');
+            res.ok = res.dot && res.hiddenAtFirst && res.opened && res.heard && res.keptOpen && res.closedAgain;
+            return res;
+        })());
+      }
+
         // Inline edit: the message becomes one editable text bubble; Cancel restores it
       for (const platformId of ['echotext', 'wechat']) {
         currentPlatform = platformId;
@@ -577,6 +619,15 @@
     window.__refresh = refreshResults;
     window.__results = results;
     window.__done = true;
+    // ?report: post a summary to the server (serve.py prints it), for a phone or simulator
+    if (location.search.includes('report')) {
+        fetch('/__log', { method: 'POST', body: JSON.stringify({
+            scenarios: `${results.filter(x => x.ok || x.actionsSame).length}/${results.length} same`,
+            tests: `${refreshResults.filter(x => x.ok).length}/${refreshResults.length} pass`,
+            failed: refreshResults.filter(x => !x.ok).map(x => x.name),
+            different: results.filter(x => !(x.ok || x.actionsSame)).map(x => x.name),
+        }) }).catch(() => {});
+    }
 })().catch(e => { window.__error = String(e && e.stack || e); console.error(e); });
 </script>
 </body>

@@ -27,5 +27,8 @@ sed -i '' 's/^const Platforms = window\.EchoTextPlatforms;/const Platforms = { .
 
 node "$H/gen.cjs" "$REPO/index.js" new "$B/bundle-new.js"
 EXTRA=bindBubbleTouchSwipe,updateSwipeInPlace node "$H/gen.cjs" "$REPO/index.js" touch "$B/bundle-touch.js"
-EXTRA=buildPanelHtml,modeMenuItemInner,toggleAttachMenu,toggleAttachPanel,bindAttachPanel,getCharAvatarUrl,getCardAvatarUrl,getCustomCharAvatarUrl,openAvatarMenu,changeCharacterAvatar,setCustomCharAvatar,deleteUserImage,readFileAsDataUrl,shrinkImageDataUrl,openAvatarLightbox,AVATAR_SIZE node "$H/gen.cjs" "$REPO/index.js" chrome "$B/bundle-chrome.js"
+CHROME=buildPanelHtml,modeMenuItemInner,toggleAttachMenu,toggleAttachPanel,bindAttachPanel,setComposeMode,isVoiceButtonMode,getChatCurrency,getCharAvatarUrl,getCardAvatarUrl,getCustomCharAvatarUrl,openAvatarMenu,changeCharacterAvatar,setCustomCharAvatar,deleteUserImage,readFileAsDataUrl,shrinkImageDataUrl,openAvatarLightbox,AVATAR_SIZE
+EXTRA=$CHROME node "$H/gen.cjs" "$REPO/index.js" chrome "$B/bundle-chrome.js"
+# mobile.html?old: the panel from REF's index.js (functions REF lacks are skipped)
+EXTRA=$CHROME node "$H/gen.cjs" "$B/index.old.js" chromeOld "$B/bundle-chrome-old.js" || echo "chromeOld: not built for $REF"
 echo "Built against $REF. Serve with: python3 tests/harness/serve.py"

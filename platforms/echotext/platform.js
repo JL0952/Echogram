@@ -48,6 +48,30 @@
         return `<div class="et-photo-card" role="button" tabindex="0" aria-expanded="false" title="Tap to view" data-et-action="photo-toggle"><div class="et-photo-card-frame"><i class="fa-regular fa-image et-photo-card-icon"></i><div class="et-photo-card-caption" data-et-role="caption"><span>${safeDesc || 'Photo'}</span></div></div></div>`;
     }
 
+    /** Bar heights (%) for a voice message's waveform, drawn from its words so each one looks its own. */
+    function waveBars(text, count = 16) {
+        let h = 2166136261;
+        for (const c of String(text)) h = Math.imul(h ^ c.codePointAt(0), 16777619);
+        const bars = [];
+        for (let i = 0; i < count; i++) {
+            h ^= h << 13; h ^= h >>> 17; h ^= h << 5;
+            bars.push(28 + ((h >>> 0) % 73));
+        }
+        return bars;
+    }
+
+    /**
+     * A voice message, as iMessage draws one: play button, waveform and length (with a
+     * dot until the user first opens one of the character's). Tapping it shows the
+     * words inside the bubble (style.css, while aria-expanded is true).
+     */
+    function voiceNote(p, ctx) {
+        const time = `${Math.floor(p.duration / 60)}:${String(p.duration % 60).padStart(2, '0')}`;
+        const bars = waveBars(p.text).map(height => `<i style="height:${height}%"></i>`).join('');
+        const dot = p.unread ? '<span class="et-voice-unread" data-et-role="unread" title="Not played yet"></span>' : '';
+        return `<div class="et-voice" role="button" tabindex="0" aria-expanded="false" title="Tap to read" data-et-action="voice-toggle" data-voice="${p.voiceIndex}"><div class="et-voice-row"><span class="et-voice-play"><i class="fa-solid fa-play"></i></span><span class="et-voice-wave" aria-hidden="true">${bars}</span><span class="et-voice-time">${time}</span>${dot}</div><div class="et-voice-transcript et-bubble-text" data-et-role="transcript">${ctx.formatText(p.text)}</div></div>`;
+    }
+
     /** A transfer or transfer-response card, from a view-model part (its status and display amount). */
     function transferCard(part, ctx) {
         const { status: state, actionable } = part;
@@ -66,17 +90,19 @@
         return `<div class="et-transfer-card et-transfer-${state}${actionable ? ' et-transfer-actionable' : ''}"${actionAttrs}><div class="et-transfer-body"><div class="et-transfer-icon"><i class="fa-solid ${icon}"></i></div><div class="et-transfer-info"><div class="et-transfer-amount">${amountText}</div><div class="et-transfer-status">${label}</div></div></div><div class="et-transfer-footer">Transfer</div></div>`;
     }
 
-    /** Inner content of one bubble: formatted text, a photo card, or a transfer card. */
+    /** Inner content of one bubble: formatted text, a photo card, a voice message, or a transfer card. */
     function part(p, ctx) {
         if (p.type === 'photo') return photoCard(p.desc, ctx);
+        if (p.type === 'voice') return voiceNote(p, ctx);
         if (p.type === 'reaction_note') return reactionNote(p.reaction, ctx);
         if (p.type !== 'text') return transferCard(p, ctx);
         return `<div class="et-bubble-text" data-et-role="text">${ctx.formatText(p.text)}</div>`;
     }
 
-    /** Extra bubble classes for a part: cards get a snug, card-hugging bubble. */
+    /** Extra bubble classes for a part: cards get a snug, card-hugging bubble; a voice message keeps the bubble. */
     function partBubbleClass(p) {
         if (p.type === 'text') return '';
+        if (p.type === 'voice') return ' et-bubble-voice';
         // Transfers and their accept/decline responses share the standalone card style
         const kind = p.type.startsWith('transfer') ? 'transfer' : p.type === 'reaction_note' ? 'reaction' : p.type;
         return ` et-bubble-card et-bubble-${kind}`;
@@ -260,7 +286,7 @@
         id: 'echotext',
         name: 'EchoText',
         // Rich-message features this look supports (lib/features.js)
-        features: ['photo', 'react', 'transfer'],
+        features: ['photo', 'voice', 'react', 'transfer'],
         templates: {
             message,
             part,

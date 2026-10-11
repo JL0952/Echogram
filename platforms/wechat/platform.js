@@ -4,7 +4,7 @@
     /**
      * WeChat, as a platform pack. Markup and look are ported from
      * soloshow-labs/chat-screenshot-generator (MessageBubble, ImageMessage,
-     * PaymentCard, TimeDivider, SystemMessage); see platform.css.
+     * VoiceMessage, PaymentCard, TimeDivider, SystemMessage); see platform.css.
      *
      * Every message part is its own row with the sender's avatar, the way WeChat
      * shows consecutive texts. No reactions and no read receipts. Templates follow
@@ -23,7 +23,21 @@
 
     const PHOTO_GLYPH = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M19 4H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2zm0 14H5l4.5-6 3.5 4.5 2.5-3L19 18zM8.5 10a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3z"/></svg>';
 
+    // soloshow VoiceMessage: three arcs, mirrored on the sender's own bubbles (platform.css)
+    const VOICE_GLYPH = '<svg class="wx-voice-glyph" viewBox="0 0 24 24" aria-hidden="true"><path d="M5.4 9.4a3.7 3.7 0 0 1 0 5.2M9 6a8.5 8.5 0 0 1 0 12M12.7 3a12.7 12.7 0 0 1 0 18"/></svg>';
+
     const pad = n => String(n).padStart(2, '0');
+
+    /**
+     * A voice bubble's width: soloshow's ends (82px at a second, 220px at a minute),
+     * growing fast over the first ten seconds and slowly after, so 12″ is 158px as
+     * in WeChat itself (measured from a screenshot).
+     */
+    function voiceWidth(seconds) {
+        const s = Math.min(60, Math.max(1, seconds));
+        const width = s <= 10 ? 82 + (s - 1) * 8.16 : 155.4 + (s - 10) * 1.29;
+        return Math.round(Math.min(220, width));
+    }
 
     /** WeChat's time-divider text: "14:32", "昨天 14:32", "星期二 14:32", "10月8日 14:32", "2025年10月8日 14:32". */
     function dividerTime(timestamp) {
@@ -77,9 +91,21 @@
         return `<div class="wx-photo" role="button" tabindex="0" aria-expanded="false" title="点击查看" data-et-action="photo-toggle">${PHOTO_GLYPH}<div class="wx-photo-caption" data-et-role="caption"><span>${desc || '图片'}</span></div></div>`;
     }
 
-    /** Inner content of one row: a text bubble, a photo, or a transfer card. */
+    /**
+     * A voice message: the bubble shows its length (and a red dot until the user first
+     * opens one of the character's); tapping it shows the words underneath, as WeChat's
+     * 转文字 does (platform.css shows the transcript while aria-expanded is true).
+     */
+    function voice(p, ctx, side) {
+        const length = `<span>${p.duration}″</span>`;
+        const dot = p.unread ? '<span class="wx-voice-unread" data-et-role="unread" aria-label="未读"></span>' : '';
+        return `<div class="wx-bubble wx-bubble-${side} wx-voice" style="width:${voiceWidth(p.duration)}px" role="button" tabindex="0" aria-expanded="false" title="转文字" data-et-action="voice-toggle" data-voice="${p.voiceIndex}">${side === 'right' ? length + VOICE_GLYPH : VOICE_GLYPH + length}${dot}</div><div class="wx-transcript" data-et-role="transcript"><div class="wx-text">${ctx.formatText(p.text)}</div></div>`;
+    }
+
+    /** Inner content of one row: a text bubble, a photo, a voice message or a transfer card. */
     function part(p, ctx, m) {
         if (p.type === 'photo') return photo(p, ctx);
+        if (p.type === 'voice') return voice(p, ctx, m.isUser ? 'right' : 'left');
         if (p.type.startsWith('transfer')) return transferCard(p, m, ctx);
         if (p.type !== 'text') return '';
         const side = m.isUser ? 'right' : 'left';
@@ -152,9 +178,11 @@
     window.EchoTextPlatforms.wechat = {
         id: 'wechat',
         name: '微信 WeChat',
-        features: ['photo', 'transfer'],
+        features: ['photo', 'voice', 'transfer'],
         stylesheet: 'platform.css',
-        // "+" raises a panel of tiles (lib/features.js composer entries), labelled the WeChat way
+        // Voice messages are typed from the input bar's voice button, as WeChat records them
+        voiceButton: { placeholder: '输入要说的话，作为语音发出' },
+        // "+" raises a panel of these tiles (lib/features.js composer entries), labelled the WeChat way
         composerPanel: {
             photo: { label: '照片', icon: 'fa-image' },
             transfer: { label: '转账', icon: 'fa-right-left' },

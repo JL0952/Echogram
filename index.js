@@ -1608,7 +1608,7 @@
             jQuery('#et-panel').removeClass('et-panel-no-char');
             jQuery('#et-char-name').html(`Group: ${escapeHtml(charNames)}<i class="fa-solid fa-chevron-down et-char-name-caret" aria-hidden="true"></i>`);
             jQuery('#et-input').attr('placeholder', `Message all: ${charNames}...`).prop('disabled', false);
-            jQuery('#et-send-btn, #et-attach-btn').prop('disabled', false);
+            jQuery('#et-send-btn, #et-attach-btn, #et-voice-btn').prop('disabled', false);
             setComposeMode(null);
             jQuery('#et-emotion-indicator').addClass('et-emotion-indicator-hidden');
             updatePanelStatusRow();
@@ -1633,7 +1633,7 @@
         jQuery('#et-char-name').html(`${escapeHtml(hasChar ? charName : 'Choose A Character')}<i class="fa-solid fa-chevron-down et-char-name-caret" aria-hidden="true"></i>`);
         jQuery('#et-char-avatar-wrap').replaceWith(buildAvatarHtml(charName, '', 'et-char-avatar-wrap'));
         jQuery('#et-input').attr('placeholder', hasChar ? `Text ${charName}...` : 'Text a character...').prop('disabled', !hasChar);
-        jQuery('#et-send-btn, #et-attach-btn').prop('disabled', !hasChar);
+        jQuery('#et-send-btn, #et-attach-btn, #et-voice-btn').prop('disabled', !hasChar);
         setComposeMode(null);
         jQuery('#et-emotion-indicator').toggleClass('et-emotion-indicator-hidden', !emotionEnabled);
 
@@ -4784,7 +4784,7 @@
         jQuery('#et-panel').removeClass('et-panel-no-char');
         jQuery('#et-char-name').html(`${escapeHtml(charName)}<i class="fa-solid fa-chevron-down et-char-name-caret" aria-hidden="true"></i>`);
         jQuery('#et-input').attr('placeholder', `Text ${charName}...`).prop('disabled', false);
-        jQuery('#et-send-btn, #et-attach-btn').prop('disabled', false);
+        jQuery('#et-send-btn, #et-attach-btn, #et-voice-btn').prop('disabled', false);
         setComposeMode(null);
         cancelScheduledReply();
 
@@ -4909,7 +4909,8 @@
 
             <div class="et-input-bar" data-et-role="input-bar">
                 <div class="et-input-wrap">
-                    <button class="et-attach-btn" id="et-attach-btn" type="button" title="Photo or transfer"${hasChar ? '' : ' disabled'}><i class="fa-solid fa-plus"></i></button>
+                    <button class="et-voice-btn" id="et-voice-btn" type="button" title="Voice message" hidden${hasChar ? '' : ' disabled'}><i class="fa-solid fa-microphone"></i></button>
+                    <button class="et-attach-btn" id="et-attach-btn" type="button" title="Attach"${hasChar ? '' : ' disabled'}><i class="fa-solid fa-plus"></i></button>
                     <textarea class="et-input" id="et-input" enterkeyhint="send" placeholder="${inCombine ? `Message all: ${charName}...` : (hasChar ? `Text ${charName}...` : 'Text a character...')}" rows="1"${hasChar ? '' : ' disabled'}></textarea>
                 </div>
                 <button class="et-send-btn" id="et-send-btn" title="Send message"${hasChar ? '' : ' disabled'}>
@@ -5254,10 +5255,17 @@
         composeMode = null;
         bindAttachPanel();
 
+        // The voice button switches between typing a text and a voice message
+        jQuery('#et-voice-btn').on('click', function (e) {
+            e.stopPropagation();
+            setComposeMode(composeMode === 'voice' ? null : 'voice');
+            jQuery('#et-input').trigger('focus');
+        });
+
         // "+" opens the attach menu; while composing a photo/transfer it cancels instead
         jQuery('#et-attach-btn').on('click', function (e) {
             e.stopPropagation();
-            if (composeMode) {
+            if (composeMode && !isVoiceButtonMode()) {
                 setComposeMode(null);
                 jQuery('#et-input').trigger('focus');
             } else {
@@ -5515,6 +5523,8 @@
         let mes = text;
         if (mode === 'photo') {
             mes = `<photo>${text.replace(/\s*\n\s*/g, ' ')}</photo>`;
+        } else if (mode === 'voice') {
+            mes = `<voice>${text.replace(/\s*\n\s*/g, ' ')}</voice>`;
         } else if (mode === 'transfer') {
             const amount = RichMessages.parseAmount(text);
             if (!amount) {
@@ -5534,7 +5544,8 @@
         }
 
         input.val('').css('height', 'auto');
-        if (mode) setComposeMode(null);
+        // A photo or transfer is one message; voice from the voice button stays on until switched back, as in WeChat
+        if (mode && !isVoiceButtonMode()) setComposeMode(null);
         if (isGenerating) updateSendButton(true);
 
         // Process user message for emotion analysis
@@ -5678,17 +5689,23 @@
         composeMode = modes[mode] ? mode : null;
         const config = modes[composeMode];
         const input = jQuery('#et-input');
+        // Voice from the voice button is that button's mode; anything else is "+"'s, which cancels it
+        const voiceButton = isVoiceButtonMode();
+        const attachConfig = voiceButton ? null : config;
         jQuery('#et-attach-btn')
-            .toggleClass('et-attach-btn-active', !!config)
-            .attr('title', config ? `Cancel ${config.label.toLowerCase()}` : 'Photo or transfer')
-            .html(`<i class="fa-solid ${config ? config.icon : 'fa-plus'}"></i>`);
-        jQuery('.et-input-wrap').toggleClass('et-input-wrap-compose', !!config);
+            .toggleClass('et-attach-btn-active', !!attachConfig)
+            .attr('title', attachConfig ? `Cancel ${attachConfig.label.toLowerCase()}` : 'Attach')
+            .html(`<i class="fa-solid ${attachConfig ? attachConfig.icon : 'fa-plus'}"></i>`);
+        jQuery('#et-voice-btn')
+            .toggleClass('et-voice-btn-active', voiceButton)
+            .attr('title', voiceButton ? 'Back to typing' : 'Voice message');
+        jQuery('.et-input-wrap').toggleClass('et-input-wrap-compose', !!config).attr('data-et-compose', composeMode);
         const composePlaceholder = input.data('et-compose-placeholder');
         if (config) {
             if (input.attr('placeholder') !== composePlaceholder) input.data('et-placeholder', input.attr('placeholder'));
             const placeholder = composeMode === 'transfer'
                 ? `${config.placeholder} (${getChatCurrency()})`
-                : config.placeholder;
+                : (voiceButton && getActivePlatform().voiceButton.placeholder) || config.placeholder;
             input.attr('placeholder', placeholder).data('et-compose-placeholder', placeholder);
         } else {
             // Restore only if nothing (e.g. a character switch) has replaced the placeholder meanwhile
@@ -5699,7 +5716,12 @@
         }
     }
 
-    /** Opens the attach menu (Photo / Transfer) above the "+" button, styled like the message menu. */
+    /** Composing a voice message from the platform's voice button (WeChat), rather than from "+". */
+    function isVoiceButtonMode() {
+        return composeMode === 'voice' && !!getActivePlatform().voiceButton;
+    }
+
+    /** Opens the attach menu (Photo / Voice / Transfer) above the "+" button, styled like the message menu. */
     function toggleAttachMenu(btn) {
         if (getActivePlatform().composerPanel) {
             toggleAttachPanel();
@@ -5760,7 +5782,8 @@
         }
         closeAllDotMenus();
         const looks = getActivePlatform().composerPanel;
-        const tiles = Object.entries(Features.getComposerModes(getActiveFeatures())).map(([id, mode]) => {
+        // The platform's own tiles (WeChat records voice from the input bar instead)
+        const tiles = Object.entries(Features.getComposerModes(getActiveFeatures())).filter(([id]) => looks[id]).map(([id, mode]) => {
             const look = { ...mode, ...looks[id] };
             return `<button class="et-attach-panel-item" type="button" data-mode="${id}"><span class="et-attach-panel-icon"><i class="fa-solid ${look.icon}"></i></span><span class="et-attach-panel-label">${escapeHtml(look.label)}</span></button>`;
         }).join('');
@@ -6495,6 +6518,7 @@
             showNextSwipe(msgIndex);
         },
         'photo-toggle': ({ el }) => el.setAttribute('aria-expanded', String(el.getAttribute('aria-expanded') !== 'true')),
+        'voice-toggle': ({ el, msgIndex }) => toggleVoiceTranscript(el, msgIndex),
         // The character's avatar beside a message (platforms that draw one)
         'avatar': ({ el }) => openAvatarMenu(el),
         'transfer-respond': ({ el }) => openTransferResponseMenu(jQuery(el)),
@@ -6505,6 +6529,43 @@
             else showMemorySaveModal(el);
         },
     };
+
+    /**
+     * Shows or hides a voice message's words. Opening one of the character's for the
+     * first time marks it heard in the chat (msg.voiceHeard lists the message's heard
+     * voice parts), so its unread dot stays gone.
+     */
+    function toggleVoiceTranscript(el, msgIndex) {
+        const open = el.getAttribute('aria-expanded') !== 'true';
+        el.setAttribute('aria-expanded', String(open));
+        // Words opening under the input bar scroll up into view (inside the bubble, or just after it)
+        const transcript = el.querySelector('[data-et-role~="transcript"]') || el.nextElementSibling;
+        const list = document.getElementById('et-messages');
+        if (open && transcript && list) {
+            const hidden = transcript.getBoundingClientRect().bottom - list.getBoundingClientRect().bottom;
+            if (hidden > 0) list.scrollTop += hidden + 8;
+        }
+        const dot = el.querySelector('[data-et-role~="unread"]');
+        if (!dot) return;
+        dot.remove();
+        const history = getChatHistory();
+        const msg = history[msgIndex];
+        const voiceIndex = Number(el.dataset.voice);
+        if (!msg || !Number.isInteger(voiceIndex)) return;
+        msg.voiceHeard = [...new Set([...(Array.isArray(msg.voiceHeard) ? msg.voiceHeard : []), voiceIndex])];
+        saveChatHistory(history);
+        syncRenderedView(history, msgIndex);
+    }
+
+    /**
+     * After a change the list already shows (a voice message opened), records the
+     * message's new view as drawn, so the next in-place update leaves it as it is.
+     */
+    function syncRenderedView(history, msgIndex) {
+        const entry = renderedViews.get(msgIndex);
+        const view = ChatViewModel.buildChatViewModel(history, getChatViewOptions()).messages.find(m => m.index === msgIndex);
+        if (entry && view) entry.signature = JSON.stringify(view);
+    }
 
     /** Delegated click handler for every [data-et-action] in the message list. */
     function onMessageAction(e) {
@@ -6581,7 +6642,10 @@
         // An attribute, not jQuery's show/hide: show() run while the platform's CSS
         // hides "+" (WeChat, while typing) would pin it visible with an inline style
         jQuery('#et-attach-btn').prop('hidden', Object.keys(modes).length === 0);
-        if (composeMode && !modes[composeMode]) setComposeMode(null);
+        // A platform that records voice from the input bar (WeChat) shows its voice button
+        jQuery('#et-voice-btn').prop('hidden', !(platform.voiceButton && modes.voice));
+        // A mode the platform lacks ends; one it has is redrawn (voice moves between "+" and the voice button)
+        if (composeMode) setComposeMode(modes[composeMode] ? composeMode : null);
         if (!platform.composerPanel) closeAttachPanel();
         populatePlatformSelects();
     }
@@ -7140,7 +7204,7 @@
 
         if (action === 'copy_part') {
             const part = getMessageDisplayParts(msg)[partIndex];
-            const text = !part ? '' : part.type === 'text' ? part.text : RichMessages.toPlainText(RichMessages.serializeParts([part]));
+            const text = !part ? '' : part.type === 'text' || part.type === 'voice' ? part.text : RichMessages.toPlainText(RichMessages.serializeParts([part]));
             try { navigator.clipboard.writeText(text); } catch (e) { /* noop */ }
             closeAllDotMenus();
             return;
