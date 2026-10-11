@@ -36,12 +36,20 @@ const sleep = ms => new Promise(res => setTimeout(res, ms));
 const report = data => fetch('/__log', { method: 'POST', body: JSON.stringify(data) }).catch(() => {});
 const sc = window.EchoTextScenarios[0];
 const history = JSON.parse(JSON.stringify(sc.history));
+// ?demo=share: end the chat with files and links from both sides
+if (params.get('demo') === 'share') {
+    const t = Date.now() - 120000;
+    history.push(
+        { is_user: true, mes: '<file>简历信息收集表.docx | 姓名、学校、实习经历</file>\n<file>【Nikki】.pdf</file>\n<link>亚运会 | 举重——李雯雯获女子86公斤以上级冠军-新华网 | https://www.news.cn/sports/1.htm</link>', send_date: t },
+        { is_user: false, mes: '收到\n<file>行程单.pdf | 三天两夜：周五晚高铁到杭州，住西湖边，周日下午回</file>\n<file>预算.xlsx</file>\n<file>photos.zip</file>\n<link>西湖十景攻略 | https://www.xiaohongshu.com/explore/1 | 一天走完的路线和吃的</link>', send_date: t + 60000 },
+    );
+}
 const env = { settings: { ...sc.settings, autoScroll: true, defaultPlatform: params.get('platform') || 'wechat' }, groupManager: null,
     FA_REACTIONS: window.EchoTextScenarioReactions, showTypingIndicator: false, BASE_URL: '', VERSION_QUERY: '',
     getCurrentCharacter: () => ({ name: 'Mira', avatar: 'mira.png' }), getCharacterName: () => 'Mira', isTetheredMode: () => true,
     getUserName: () => '我', getCharacterKey: () => 'mira.png', getCharAvatarUrl: () => null, _pickerAvatarBg: () => '#7c6f9c',
     isMobileDevice: () => true, getChatHistory: () => history, getUserAvatarUrl: () => null, isCombinedGroupMode: () => false,
-    closeAllDotMenus: () => jQuery('.et-dots-menu').remove(), closeAllReactOverlays: () => {},
+    closeAllDotMenus: () => { jQuery('#et-attach-btn').removeClass('et-attach-open'); jQuery('.et-dots-menu').remove(); }, closeAllReactOverlays: () => {},
     panelOpen: true, saveSettings: () => {}, saveChatHistory: () => {}, refreshMessages: h => r.renderMessages(h),
     toggleDotsMenu: (btn, msgIndex) => r.startInlineEdit(history, msgIndex) };
 const r = window.EchoTextHarness[params.has('old') ? 'chromeOld' : 'chrome'](env);
@@ -79,6 +87,10 @@ jQuery('#et-voice-btn').on('click', function (e) {
     e.stopPropagation();
     r.setComposeMode(r.isVoiceButtonMode() ? null : 'voice');
     document.getElementById('et-input').focus();
+});
+jQuery('#et-share-type').on('click', function (e) {
+    e.stopPropagation();
+    r.toggleShareTypeMenu(jQuery(this));
 });
 jQuery('#et-attach-btn').on('click', function (e) {
     e.stopPropagation();

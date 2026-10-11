@@ -12323,10 +12323,45 @@ textarea.et-mem-save-snippet-edit::placeholder {
     cursor: default;
 }
 
-/* The platform has nothing to attach / records voice another way */
+/* The platform has nothing to attach / records voice another way / not sharing a file */
 .et-attach-btn[hidden],
-.et-voice-btn[hidden] {
+.et-voice-btn[hidden],
+.et-share-type[hidden] {
     display: none !important;
+}
+
+/* Sharing a file: its kind (PDF, Word, a web page…), picked from this chip in front
+   of the text; the text is then just "title | description" */
+.et-share-type {
+    -webkit-appearance: none;
+    appearance: none;
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    height: 24px;
+    margin: 0 8px 0 0 !important;
+    padding: 0 9px !important;
+    border: 1px solid color-mix(in srgb, var(--et-theme-color) 55%, transparent) !important;
+    border-radius: 12px !important;
+    background: color-mix(in srgb, var(--et-theme-color) 16%, transparent) !important;
+    box-shadow: none !important;
+    color: var(--et-text);
+    font-family: var(--et-font-family);
+    font-size: 0.76rem;
+    font-weight: 600;
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+.et-share-type > i {
+    font-size: 0.58rem;
+    opacity: 0.75;
+}
+
+/* The kind already picked, in the chip's menu */
+.et-dots-item.et-dots-item-current {
+    color: var(--et-theme-color);
 }
 
 .et-input-wrap.et-input-wrap-compose {
@@ -12395,6 +12430,102 @@ textarea.et-mem-save-snippet-edit::placeholder {
     font-size: 0.68rem;
     opacity: 0.8;
     border-top: 1px solid rgba(255, 255, 255, 0.22);
+}
+
+/* ── Shared files and links ─────────────────────────────────────────
+   Laid out like the transfer card, on the photo card's neutral glass (a file isn't
+   money); the icon takes the file type's colour. A file with a summary opens it in
+   the card when tapped */
+.et-share-card {
+    width: min(240px, 64vw);
+    border-radius: 14px;
+    overflow: hidden;
+    color: var(--et-text);
+    background: rgba(0, 0, 0, 0.18);
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+.et-file-card[data-et-action] {
+    cursor: pointer;
+}
+
+.et-share-body {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 14px 12px;
+}
+
+.et-share-icon {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 38px;
+    height: 38px;
+    border-radius: 10px;
+    font-size: 1.15rem;
+    color: #fff;
+    background: var(--et-theme-color);
+}
+
+.et-file-card[data-kind="word"] .et-share-icon { background: #3b7cda; }
+.et-file-card[data-kind="pdf"] .et-share-icon { background: #d05550; }
+.et-file-card[data-kind="excel"] .et-share-icon { background: #21a366; }
+.et-file-card[data-kind="ppt"] .et-share-icon { background: #d35230; }
+
+.et-share-info {
+    min-width: 0;
+}
+
+.et-share-title {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    overflow: hidden;
+    overflow-wrap: anywhere;
+    font-size: 0.92rem;
+    font-weight: 600;
+    line-height: 1.3;
+}
+
+.et-share-meta {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    overflow: hidden;
+    overflow-wrap: anywhere;
+    margin-top: 2px;
+    font-size: 0.76rem;
+    color: var(--et-text-muted);
+}
+
+.et-share-summary {
+    display: none;
+    margin: 0 14px 12px;
+    padding-top: 10px;
+    border-top: 1px solid rgba(255, 255, 255, 0.10);
+    font-size: 0.84rem;
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+    user-select: text;
+    -webkit-user-select: text;
+}
+
+.et-file-card[aria-expanded="true"] .et-share-summary {
+    display: block;
+}
+
+.et-share-footer {
+    padding: 5px 14px 6px;
+    font-size: 0.68rem;
+    color: var(--et-text-muted);
+    border-top: 1px solid rgba(255, 255, 255, 0.10);
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
 }
 
 /* Settled transfers and responses fade, like a paid bill */

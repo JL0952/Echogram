@@ -27,7 +27,7 @@ sed -i '' 's/^const Platforms = window\.EchoTextPlatforms;/const Platforms = { .
 
 node "$H/gen.cjs" "$REPO/index.js" new "$B/bundle-new.js"
 EXTRA=bindBubbleTouchSwipe,updateSwipeInPlace node "$H/gen.cjs" "$REPO/index.js" touch "$B/bundle-touch.js"
-CHROME=buildPanelHtml,modeMenuItemInner,toggleAttachMenu,toggleAttachPanel,bindAttachPanel,setComposeMode,isVoiceButtonMode,getChatCurrency,getCharAvatarUrl,getCardAvatarUrl,getCustomCharAvatarUrl,openAvatarMenu,changeCharacterAvatar,setCustomCharAvatar,deleteUserImage,readFileAsDataUrl,shrinkImageDataUrl,openAvatarLightbox,AVATAR_SIZE
+CHROME=buildPanelHtml,modeMenuItemInner,toggleAttachMenu,toggleAttachPanel,bindAttachPanel,setComposeMode,isVoiceButtonMode,getChatCurrency,shareType,shareTypeLabel,renderShareTypeChip,toggleShareTypeMenu,getCharAvatarUrl,getCardAvatarUrl,getCustomCharAvatarUrl,openAvatarMenu,changeCharacterAvatar,setCustomCharAvatar,deleteUserImage,readFileAsDataUrl,shrinkImageDataUrl,openAvatarLightbox,AVATAR_SIZE
 EXTRA=$CHROME node "$H/gen.cjs" "$REPO/index.js" chrome "$B/bundle-chrome.js"
 # mobile.html?old: the panel from REF's index.js (functions REF lacks are skipped)
 EXTRA=$CHROME node "$H/gen.cjs" "$B/index.old.js" chromeOld "$B/bundle-chrome-old.js" || echo "chromeOld: not built for $REF"

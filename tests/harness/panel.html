@@ -261,6 +261,33 @@ window.runAnchorTest = async function () {
     return res;
 };
 
+// Sharing a file: the "文件" tile shows the kind chip in front of the text; its menu
+// picks the kind (WeChat's own wording), and leaving file mode hides it again
+window.runShareTypeTest = async function () {
+    const chip = () => document.getElementById('et-share-type');
+    const res = {};
+    env.settings.defaultPlatform = 'wechat';
+    r.renderMessages(history);
+    res.hiddenAtFirst = chip().hidden;
+    r.toggleAttachMenu(jQuery('#et-attach-btn'));
+    await sleep(50);
+    jQuery('.et-attach-panel-item[data-mode="file"]').trigger('click');
+    res.shown = !chip().hidden && chip().textContent.trim() === 'PDF';
+    res.placeholder = document.getElementById('et-input').placeholder;
+    r.toggleShareTypeMenu(jQuery(chip()));   // what the chip's click handler calls
+    await sleep(50);
+    res.items = [...document.querySelectorAll('.et-share-type-menu .et-dots-item')].map(b => b.textContent.trim()).join(',');
+    jQuery('.et-share-type-menu [data-share-type="link"]').trigger('click');
+    await sleep(200);
+    res.picked = chip().textContent.trim();
+    res.menuClosed = !document.querySelector('.et-share-type-menu.et-dots-menu-open');
+    r.setComposeMode(null);
+    res.hiddenAfter = chip().hidden;
+    res.ok = res.hiddenAtFirst && res.shown && res.placeholder === '标题 | 描述'
+        && res.items === 'PDF,Word,Excel,PPT,网页,其他' && res.picked === '网页' && res.menuClosed && res.hiddenAfter;
+    return res;
+};
+
 // ?report=runPanelTest,runAnchorTest: run those on load and post each result to the
 // server (serve.py prints it), for a phone or simulator
 const toReport = new URLSearchParams(location.search).get('report');

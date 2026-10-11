@@ -4,7 +4,8 @@
     /**
      * WeChat, as a platform pack. Markup and look are ported from
      * soloshow-labs/chat-screenshot-generator (MessageBubble, ImageMessage,
-     * VoiceMessage, PaymentCard, TimeDivider, SystemMessage); see platform.css.
+     * VoiceMessage, PaymentCard, FileCard and the link card, TimeDivider,
+     * SystemMessage); see platform.css.
      *
      * Every message part is its own row with the sender's avatar, the way WeChat
      * shows consecutive texts. No reactions and no read receipts. Templates follow
@@ -26,7 +27,21 @@
     // soloshow VoiceMessage: three arcs, mirrored on the sender's own bubbles (platform.css)
     const VOICE_GLYPH = '<svg class="wx-voice-glyph" viewBox="0 0 24 24" aria-hidden="true"><path d="M5.4 9.4a3.7 3.7 0 0 1 0 5.2M9 6a8.5 8.5 0 0 1 0 12M12.7 3a12.7 12.7 0 0 1 0 18"/></svg>';
 
+    // The file icon's lettering by kind (WeChat's Word / PDF / Excel / PowerPoint icons);
+    // other files show their extension, as soloshow's FileCard does
+    const FILE_ICON_TEXT = { word: 'W', pdf: 'PDF', excel: 'X', ppt: 'P' };
+
+    // A link card's picture placeholder and its site line's link glyph
+    const IMAGE_GLYPH = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M19 4H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2zm0 14H5l4.5-6 3.5 4.5 2.5-3L19 18zM8.5 10a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3z"/></svg>';
+    const LINK_GLYPH = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 14a4 4 0 0 0 5.66 0l3.17-3.17a4 4 0 0 0-5.66-5.66L11.5 6.84M14 10a4 4 0 0 0-5.66 0l-3.17 3.17a4 4 0 0 0 5.66 5.66l1.67-1.67" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>';
+
     const pad = n => String(n).padStart(2, '0');
+
+    /** "17KB", "1.2MB": sizes the way WeChat writes them. */
+    function formatSize(bytes) {
+        const kb = bytes / 1024;
+        return kb < 1024 ? `${Math.max(1, Math.round(kb))}KB` : `${(kb / 1024).toFixed(1)}MB`;
+    }
 
     /**
      * A voice bubble's width: soloshow's ends (82px at a second, 220px at a minute),
@@ -102,13 +117,33 @@
         return `<div class="wx-bubble wx-bubble-${side} wx-voice" style="width:${voiceWidth(p.duration)}px" role="button" tabindex="0" aria-expanded="false" title="转文字" data-et-action="voice-toggle" data-voice="${p.voiceIndex}">${side === 'right' ? length + VOICE_GLYPH : VOICE_GLYPH + length}${dot}</div><div class="wx-transcript" data-et-role="transcript"><div class="wx-text">${ctx.formatText(p.text)}</div></div>`;
     }
 
-    /** Inner content of one row: a text bubble, a photo, a voice message or a transfer card. */
+    /**
+     * A shared file (soloshow FileCard): name, size and the file-type icon. With a
+     * summary, tapping it shows the summary underneath, as a voice message's words.
+     */
+    function fileCard(p, ctx, side) {
+        const icon = FILE_ICON_TEXT[p.kind] || p.ext || 'FILE';
+        const tap = p.summary ? ' role="button" tabindex="0" aria-expanded="false" title="查看内容" data-et-action="card-toggle"' : '';
+        const summary = p.summary ? `<div class="wx-transcript" data-et-role="summary">${ctx.escapeHtml(p.summary)}</div>` : '';
+        return `<div class="wx-file" data-side="${side}"${tap}><span class="wx-card-tail"></span><div class="wx-file-body"><div class="wx-file-text"><span class="wx-file-name">${ctx.escapeHtml(p.name || '文件')}</span><span class="wx-file-size">${formatSize(p.size)}</span></div><span class="wx-file-icon" data-kind="${p.kind}">${ctx.escapeHtml(icon)}</span></div></div>${summary}`;
+    }
+
+    /** A shared web page (soloshow's link card): title, its line beside a picture, the site underneath. */
+    function linkCard(p, ctx, side) {
+        const title = ctx.escapeHtml(p.title || p.host || '链接');
+        const site = p.host ? `<div class="wx-link-site">${LINK_GLYPH}<span>${ctx.escapeHtml(p.host)}</span></div>` : '';
+        return `<div class="wx-link" data-side="${side}"><span class="wx-card-tail"></span><div class="wx-link-title">${title}</div><div class="wx-link-row"><p class="wx-link-desc">${ctx.escapeHtml(p.summary)}</p><span class="wx-link-thumb">${IMAGE_GLYPH}</span></div>${site}</div>`;
+    }
+
+    /** Inner content of one row: a text bubble, a photo, a voice message, a file or link card, or a transfer card. */
     function part(p, ctx, m) {
+        const side = m.isUser ? 'right' : 'left';
         if (p.type === 'photo') return photo(p, ctx);
-        if (p.type === 'voice') return voice(p, ctx, m.isUser ? 'right' : 'left');
+        if (p.type === 'voice') return voice(p, ctx, side);
+        if (p.type === 'file') return fileCard(p, ctx, side);
+        if (p.type === 'link') return linkCard(p, ctx, side);
         if (p.type.startsWith('transfer')) return transferCard(p, m, ctx);
         if (p.type !== 'text') return '';
-        const side = m.isUser ? 'right' : 'left';
         return `<div class="wx-bubble wx-bubble-${side}"><div class="wx-text" data-et-role="text">${ctx.formatText(p.text)}</div></div>`;
     }
 
@@ -178,14 +213,15 @@
     window.EchoTextPlatforms.wechat = {
         id: 'wechat',
         name: '微信 WeChat',
-        features: ['photo', 'voice', 'transfer'],
+        features: ['photo', 'voice', 'transfer', 'file'],
         stylesheet: 'platform.css',
         // Voice messages are typed from the input bar's voice button, as WeChat records them
         voiceButton: { placeholder: '输入要说的话，作为语音发出' },
         // "+" raises a panel of these tiles (lib/features.js composer entries), labelled the WeChat way
         composerPanel: {
-            photo: { label: '照片', icon: 'fa-image' },
-            transfer: { label: '转账', icon: 'fa-right-left' },
+            photo: { label: '照片', icon: 'fa-image', placeholder: '描述你要发的照片' },
+            transfer: { label: '转账', icon: 'fa-right-left', placeholder: '转账金额' },
+            file: { label: '文件', icon: 'fa-folder', placeholder: '标题 | 描述', typeLabels: { link: '网页', other: '其他' } },
         },
         templates: {
             message,

@@ -72,6 +72,33 @@
         return `<div class="et-voice" role="button" tabindex="0" aria-expanded="false" title="Tap to read" data-et-action="voice-toggle" data-voice="${p.voiceIndex}"><div class="et-voice-row"><span class="et-voice-play"><i class="fa-solid fa-play"></i></span><span class="et-voice-wave" aria-hidden="true">${bars}</span><span class="et-voice-time">${time}</span>${dot}</div><div class="et-voice-transcript et-bubble-text" data-et-role="transcript">${ctx.formatText(p.text)}</div></div>`;
     }
 
+    // Font Awesome's file icons by kind (lib/rich-messages.js fileKind)
+    const FILE_ICONS = { word: 'fa-file-word', pdf: 'fa-file-pdf', excel: 'fa-file-excel', ppt: 'fa-file-powerpoint', other: 'fa-file-lines' };
+
+    /** "17 KB", "1.2 MB". */
+    function formatSize(bytes) {
+        const kb = bytes / 1024;
+        return kb < 1024 ? `${Math.max(1, Math.round(kb))} KB` : `${(kb / 1024).toFixed(1)} MB`;
+    }
+
+    /**
+     * A shared file, laid out like the transfer card: icon by file type, name, type and
+     * size, "File" underneath. With a summary, tapping it shows the summary in the card
+     * (style.css, while aria-expanded is true).
+     */
+    function fileCard(p, ctx) {
+        const tap = p.summary ? ' role="button" tabindex="0" aria-expanded="false" title="Tap to read" data-et-action="card-toggle"' : '';
+        const meta = [p.ext, formatSize(p.size)].filter(Boolean).join(' · ');
+        const summary = p.summary ? `<div class="et-share-summary" data-et-role="summary">${ctx.escapeHtml(p.summary)}</div>` : '';
+        return `<div class="et-share-card et-file-card" data-kind="${p.kind}"${tap}><div class="et-share-body"><div class="et-share-icon"><i class="fa-solid ${FILE_ICONS[p.kind] || FILE_ICONS.other}"></i></div><div class="et-share-info"><div class="et-share-title">${ctx.escapeHtml(p.name || 'File')}</div><div class="et-share-meta">${ctx.escapeHtml(meta)}</div></div></div>${summary}<div class="et-share-footer">File</div></div>`;
+    }
+
+    /** A shared web page, the same card: title and its line, the site underneath. */
+    function linkCard(p, ctx) {
+        const line = p.summary ? `<div class="et-share-meta">${ctx.escapeHtml(p.summary)}</div>` : '';
+        return `<div class="et-share-card et-link-card"><div class="et-share-body"><div class="et-share-icon"><i class="fa-solid fa-link"></i></div><div class="et-share-info"><div class="et-share-title">${ctx.escapeHtml(p.title || p.host || 'Link')}</div>${line}</div></div><div class="et-share-footer"><i class="fa-solid fa-globe"></i> ${ctx.escapeHtml(p.host || 'Web page')}</div></div>`;
+    }
+
     /** A transfer or transfer-response card, from a view-model part (its status and display amount). */
     function transferCard(part, ctx) {
         const { status: state, actionable } = part;
@@ -90,10 +117,12 @@
         return `<div class="et-transfer-card et-transfer-${state}${actionable ? ' et-transfer-actionable' : ''}"${actionAttrs}><div class="et-transfer-body"><div class="et-transfer-icon"><i class="fa-solid ${icon}"></i></div><div class="et-transfer-info"><div class="et-transfer-amount">${amountText}</div><div class="et-transfer-status">${label}</div></div></div><div class="et-transfer-footer">Transfer</div></div>`;
     }
 
-    /** Inner content of one bubble: formatted text, a photo card, a voice message, or a transfer card. */
+    /** Inner content of one bubble: formatted text, a photo card, a voice message, a file or link card, or a transfer card. */
     function part(p, ctx) {
         if (p.type === 'photo') return photoCard(p.desc, ctx);
         if (p.type === 'voice') return voiceNote(p, ctx);
+        if (p.type === 'file') return fileCard(p, ctx);
+        if (p.type === 'link') return linkCard(p, ctx);
         if (p.type === 'reaction_note') return reactionNote(p.reaction, ctx);
         if (p.type !== 'text') return transferCard(p, ctx);
         return `<div class="et-bubble-text" data-et-role="text">${ctx.formatText(p.text)}</div>`;
@@ -286,7 +315,7 @@
         id: 'echotext',
         name: 'EchoText',
         // Rich-message features this look supports (lib/features.js)
-        features: ['photo', 'voice', 'react', 'transfer'],
+        features: ['photo', 'voice', 'react', 'transfer', 'file'],
         templates: {
             message,
             part,

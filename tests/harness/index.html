@@ -410,6 +410,43 @@
         })());
       }
 
+        // Shared files and links: a file with a summary opens it when tapped; one without,
+        // and a link, don't open
+      for (const platformId of ['echotext', 'wechat']) {
+        refreshResults.push(await (async () => {
+            const t0 = Date.now() - 600000;
+            const history = [
+                { is_user: true, mes: 'send it', send_date: t0 },
+                { is_user: false, mes: '<file>简历信息收集表.docx | 姓名、学校、实习经历</file>\n<file>Q3.xlsx</file>\n<link>亚运会 | 举重 | https://www.news.cn/s/1.htm</link>', send_date: t0 + 60000 },
+            ];
+            const live = document.getElementById('live');
+            live.setAttribute('data-platform', platformId);
+            const inner = document.getElementById('et-messages-inner');
+            const env = { settings: { ...window.EchoTextScenarios[0].settings, defaultPlatform: platformId }, BASE_URL: '', groupManager: null, FA_REACTIONS, showTypingIndicator: false,
+                getCurrentCharacter: () => ({ name: 'Mira' }), getCharacterName: () => 'Mira', isTetheredMode: () => true,
+                getUserName: () => 'You', getCharacterKey: () => 'mira.png', getCharAvatarUrl: () => null,
+                _pickerAvatarBg: () => '#335577', isMobileDevice: () => false, getChatHistory: () => history, saveChatHistory: () => {} };
+            const r = window.EchoTextHarness[newLabel](env);
+            r.bindMessageActions();
+            r.renderMessages(history);
+            await sleep(400);
+            const summary = () => inner.querySelector('[data-et-role~="summary"]');
+            const shown = () => getComputedStyle(summary()).display !== 'none';
+            const res = { name: `[${platformId}] files and links: a file's summary opens when tapped` };
+            res.toggles = inner.querySelectorAll('[data-et-action="card-toggle"]').length;
+            res.summaries = inner.querySelectorAll('[data-et-role~="summary"]').length;
+            res.hiddenAtFirst = !shown();
+            inner.querySelector('[data-et-action="card-toggle"]').click();
+            res.opened = shown();
+            inner.querySelector('[data-et-action="card-toggle"]').click();
+            res.closed = !shown();
+            res.text = summary().textContent === '姓名、学校、实习经历';
+            live.removeAttribute('data-platform');
+            res.ok = res.toggles === 1 && res.summaries === 1 && res.hiddenAtFirst && res.opened && res.closed && res.text;
+            return res;
+        })());
+      }
+
         // Inline edit: the message becomes one editable text bubble; Cancel restores it
       for (const platformId of ['echotext', 'wechat']) {
         currentPlatform = platformId;

@@ -31,8 +31,8 @@ test('format rules list only the enabled features, in a fixed order', () => {
     assert.deepEqual(buildFeaturePrompts(['transfer', 'photo'], ctx).map(p => p.split(':')[0]), ['PHOTOS', 'TRANSFERS']);
     assert.match(buildFeaturePrompts(['react'], ctx)[0], /one of: heart, like\./);
     assert.deepEqual(buildFeaturePrompts(NONE, ctx), []);
-    assert.deepEqual(buildFeaturePrompts(['transfer', 'voice', 'react', 'photo'], ctx).map(p => p.split(':')[0]),
-        ['PHOTOS', 'VOICE MESSAGES', 'REACTIONS', 'TRANSFERS']);
+    assert.deepEqual(buildFeaturePrompts(['file', 'transfer', 'voice', 'react', 'photo'], ctx).map(p => p.split(':')[0]),
+        ['PHOTOS', 'VOICE MESSAGES', 'REACTIONS', 'TRANSFERS', 'FILES AND LINKS']);
 });
 
 test('the voice rule names the tag, when to use it, and how a character\'s temperament changes that', () => {
@@ -65,6 +65,19 @@ test('a message that was only unsupported content is left out (null)', () => {
     assert.equal(filterContextText('<react>wow</react>', NO_REACT), null);
     assert.equal(filterContextText('<react>wow</react>\n<react>sad</react>', NO_REACT), null);
     assert.equal(filterContextText('   ', NO_REACT), '   ');
+});
+
+test('the file rule names both tags and keeps sharing to what the story calls for', () => {
+    const [rule] = buildFeaturePrompts(['file'], { charName: 'Mira', userName: 'Me', reactionIds: REACTIONS });
+    assert.match(rule, /<file>file name with its extension \| a short summary of what's in it<\/file> on its own line/);
+    assert.match(rule, /<link>page title \| its address \| one line about it<\/link>/);
+    assert.match(rule, /only when the story calls for it/);
+    assert.match(rule, /A <file> or <link> from Me is something they shared/);
+});
+
+test('files and links degrade to plain-text notes', () => {
+    assert.equal(filterContextText('<file>a.pdf | notes</file>', ['photo']), '[File: a.pdf | notes]');
+    assert.equal(filterContextText('<link>News | https://a.cn</link>', ['photo']), '[Link: News | https://a.cn]');
 });
 
 test('voice messages degrade to a plain-text note', () => {

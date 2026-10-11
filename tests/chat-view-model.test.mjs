@@ -277,3 +277,69 @@ test('a voice part goes back to its tag when a message is rewritten from its par
     const { parseMessageParts, serializeParts } = window.EchoTextRichMessages;
     assert.equal(serializeParts(parseMessageParts('a\n<voice>b c</voice>', { splitLines: true })), 'a\n<voice>b c</voice>');
 });
+
+test('files: name and summary, with the look and a made-up size from the name', () => {
+    const [m] = build([char('看下\n<file>简历信息收集表.docx | 姓名、学校、实习经历</file>\n<file>Q3.xlsx</file>\n<file>notes.txt｜draft</file>', 0)]);
+    const [, word, excel, other] = m.parts;
+    assert.deepEqual([word.name, word.summary, word.ext, word.kind], ['简历信息收集表.docx', '姓名、学校、实习经历', 'DOCX', 'word']);
+    assert.deepEqual([excel.summary, excel.kind], ['', 'excel']);
+    assert.deepEqual([other.name, other.summary, other.ext, other.kind], ['notes.txt', 'draft', 'TXT', 'other']);
+    // The same name always gets the same size, in its kind's range
+    const { fileSize } = window.EchoTextRichMessages;
+    assert.equal(word.size, fileSize('简历信息收集表.docx'));
+    assert.ok(word.size >= 10 * 1024 && word.size <= 300 * 1024);
+    assert.ok(fileSize('deck.pptx') >= 300 * 1024 && fileSize('deck.pptx') <= 8000 * 1024);
+});
+
+test('links: everything before the address is the title (titles often hold a |), after it the summary', () => {
+    const [m] = build([user('<link>亚运会 | 举重——李雯雯获女子86公斤以上级冠军-新华网 | https://www.news.cn/s/1.htm</link>\n<link>Recipe | https://a.com/r?x=1 | quick and easy</link>\n<link>www.example.com</link>', 0)]);
+    assert.deepEqual(m.parts.map(p => [p.title, p.url, p.summary, p.host]), [
+        ['亚运会 | 举重——李雯雯获女子86公斤以上级冠军-新华网', 'https://www.news.cn/s/1.htm', '', 'www.news.cn'],
+        ['Recipe', 'https://a.com/r?x=1', 'quick and easy', 'a.com'],
+        ['', 'www.example.com', '', 'www.example.com'],
+    ]);
+});
+
+test('files and links written as self-closing tags keep all their fields', () => {
+    const [m] = build([char('<file name="【Nikki】.pdf" desc="简历"/>\n<网页 title="新闻" url="https://news.cn"/>', 0)]);
+    assert.deepEqual(m.parts.map(p => p.type === 'file' ? [p.name, p.summary] : [p.title, p.url]), [['【Nikki】.pdf', '简历'], ['新闻', 'https://news.cn']]);
+});
+
+test('files and links go back to their tags when a message is rewritten from its parts', () => {
+    const { parseMessageParts, serializeParts } = window.EchoTextRichMessages;
+    for (const text of ['<file>a.pdf | b</file>', '<file>a.pdf</file>', '<link>T | https://x.io | s</link>', '<link>A | B | https://x.io</link>']) {
+        assert.equal(serializeParts(parseMessageParts(text)), text);
+    }
+});
+
+test('what the user shares from the composer: a link when it holds an address, else a file', () => {
+    const { shareTag } = window.EchoTextRichMessages;
+    assert.equal(shareTag('行程.pdf | 三天两夜'), '<file>行程.pdf | 三天两夜</file>');
+    assert.equal(shareTag('看看这个 | https://www.news.cn/a'), '<link>看看这个 | https://www.news.cn/a</link>');
+    assert.equal(shareTag('www.bilibili.com/video/1'), '<link>www.bilibili.com/video/1</link>');
+    assert.equal(shareTag('报告.docx\n第二稿'), '<file>报告.docx 第二稿</file>');
+    assert.equal(shareTag('  '), null);
+});
+
+test('without files, file and link cards become the notes the model sees', () => {
+    const [m] = build([char('<file>a.pdf | notes</file>\n<link>News | https://a.cn</link>', 0)], { features: ['photo'] });
+    assert.deepEqual(m.parts, [{ type: 'text', text: '[File: a.pdf | notes]' }, { type: 'text', text: '[Link: News | https://a.cn]' }]);
+});
+
+test('sharing a picked kind: the extension is added unless the title has one of that kind; a web page needs no address', () => {
+    const { shareTag } = window.EchoTextRichMessages;
+    assert.equal(shareTag('行程单 | 三天两夜', 'pdf'), '<file>行程单.pdf | 三天两夜</file>');
+    assert.equal(shareTag('报告.PDF', 'pdf'), '<file>报告.PDF</file>');
+    assert.equal(shareTag('简历 v2.0 | 第二稿', 'word'), '<file>简历 v2.0.docx | 第二稿</file>');
+    assert.equal(shareTag('简历.doc', 'word'), '<file>简历.doc</file>');
+    assert.equal(shareTag('Q3', 'excel'), '<file>Q3.xlsx</file>');
+    assert.equal(shareTag('汇报', 'ppt'), '<file>汇报.pptx</file>');
+    assert.equal(shareTag('西湖攻略 | 一天走完', 'link'), '<link>西湖攻略 | 一天走完</link>');
+    assert.equal(shareTag('photos.zip', 'other'), '<file>photos.zip</file>');
+    assert.equal(shareTag('  ', 'pdf'), null);
+});
+
+test('a web page shared without an address has a title and summary and no site', () => {
+    const [m] = build([user('<link>西湖攻略 | 一天走完</link>', 0)]);
+    assert.deepEqual([m.parts[0].title, m.parts[0].url, m.parts[0].summary, m.parts[0].host], ['西湖攻略', '', '一天走完', '']);
+});

@@ -124,9 +124,11 @@
     let fabDragging = false;
     let loadedFontFamily = null;
     let showTypingIndicator = false;
-    // When set ('photo' | 'transfer'), the next message the user sends is that kind
-    // of content and the typed text is its description / amount
+    // When set ('photo' | 'voice' | 'transfer' | 'file'), the next message the user sends
+    // is that kind of content and the typed text is its description / words / amount
     let composeMode = null;
+    // The kind of file the user shares (RichMessages.SHARE_TYPES), kept between shares
+    let shareType = 'pdf';
     // Reply scheduling: the user can send several texts in a row and the character
     // answers once they pause (see scheduleCharacterReply)
     let replyTimer = null;
@@ -4911,6 +4913,7 @@
                 <div class="et-input-wrap">
                     <button class="et-voice-btn" id="et-voice-btn" type="button" title="Voice message" hidden${hasChar ? '' : ' disabled'}><i class="fa-solid fa-microphone"></i></button>
                     <button class="et-attach-btn" id="et-attach-btn" type="button" title="Attach"${hasChar ? '' : ' disabled'}><i class="fa-solid fa-plus"></i></button>
+                    <button class="et-share-type" id="et-share-type" type="button" title="File type" hidden></button>
                     <textarea class="et-input" id="et-input" enterkeyhint="send" placeholder="${inCombine ? `Message all: ${charName}...` : (hasChar ? `Text ${charName}...` : 'Text a character...')}" rows="1"${hasChar ? '' : ' disabled'}></textarea>
                 </div>
                 <button class="et-send-btn" id="et-send-btn" title="Send message"${hasChar ? '' : ' disabled'}>
@@ -5255,6 +5258,11 @@
         composeMode = null;
         bindAttachPanel();
 
+        jQuery('#et-share-type').on('click', function (e) {
+            e.stopPropagation();
+            toggleShareTypeMenu(jQuery(this));
+        });
+
         // The voice button switches between typing a text and a voice message
         jQuery('#et-voice-btn').on('click', function (e) {
             e.stopPropagation();
@@ -5525,6 +5533,9 @@
             mes = `<photo>${text.replace(/\s*\n\s*/g, ' ')}</photo>`;
         } else if (mode === 'voice') {
             mes = `<voice>${text.replace(/\s*\n\s*/g, ' ')}</voice>`;
+        } else if (mode === 'file') {
+            // "title | description", as the kind picked on the chip
+            mes = RichMessages.shareTag(text, shareType);
         } else if (mode === 'transfer') {
             const amount = RichMessages.parseAmount(text);
             if (!amount) {
@@ -5700,12 +5711,16 @@
             .toggleClass('et-voice-btn-active', voiceButton)
             .attr('title', voiceButton ? 'Back to typing' : 'Voice message');
         jQuery('.et-input-wrap').toggleClass('et-input-wrap-compose', !!config).attr('data-et-compose', composeMode);
+        // Sharing a file: what kind, picked from the chip in front of the text
+        jQuery('#et-share-type').prop('hidden', composeMode !== 'file');
+        if (composeMode === 'file') renderShareTypeChip();
         const composePlaceholder = input.data('et-compose-placeholder');
         if (config) {
             if (input.attr('placeholder') !== composePlaceholder) input.data('et-placeholder', input.attr('placeholder'));
-            const placeholder = composeMode === 'transfer'
-                ? `${config.placeholder} (${getChatCurrency()})`
-                : (voiceButton && getActivePlatform().voiceButton.placeholder) || config.placeholder;
+            // The platform's own wording first (WeChat's, in Chinese)
+            const platform = getActivePlatform();
+            const wording = (voiceButton ? platform.voiceButton.placeholder : platform.composerPanel?.[composeMode]?.placeholder) || config.placeholder;
+            const placeholder = composeMode === 'transfer' ? `${wording} (${getChatCurrency()})` : wording;
             input.attr('placeholder', placeholder).data('et-compose-placeholder', placeholder);
         } else {
             // Restore only if nothing (e.g. a character switch) has replaced the placeholder meanwhile
@@ -5714,6 +5729,49 @@
             }
             input.removeData('et-placeholder').removeData('et-compose-placeholder');
         }
+    }
+
+    /** A share type's name, in the platform's wording (WeChat's are Chinese). */
+    function shareTypeLabel(type) {
+        return getActivePlatform().composerPanel?.file?.typeLabels?.[type.id] || type.label;
+    }
+
+    function renderShareTypeChip() {
+        const type = RichMessages.SHARE_TYPES.find(t => t.id === shareType) || RichMessages.SHARE_TYPES[0];
+        jQuery('#et-share-type').html(`<span>${escapeHtml(shareTypeLabel(type))}</span><i class="fa-solid fa-chevron-down"></i>`);
+    }
+
+    /** The kinds of file to share, in a menu over the chip (styled like the attach menu). */
+    function toggleShareTypeMenu(chip) {
+        if (jQuery('.et-share-type-menu').length) {
+            closeAllDotMenus();
+            return;
+        }
+        closeAllDotMenus();
+        const items = RichMessages.SHARE_TYPES.map(type =>
+            `<button class="et-dots-item${type.id === shareType ? ' et-dots-item-current' : ''}" data-share-type="${type.id}"><i class="fa-solid ${type.icon}"></i><span>${escapeHtml(shareTypeLabel(type))}</span></button>`
+        ).join('');
+        const menu = jQuery(`<div class="et-dots-menu et-attach-menu et-share-type-menu">${items}</div>`);
+        jQuery('#et-panel').append(menu);
+        const chipRect = chip[0].getBoundingClientRect();
+        const panelRect = document.getElementById('et-panel').getBoundingClientRect();
+        const left = Math.max(8, Math.min(panelRect.width - menu.outerWidth() - 8, chipRect.left - panelRect.left));
+        menu.css({ left: left + 'px', bottom: (panelRect.bottom - chipRect.top + 8) + 'px', top: 'auto', 'transform-origin': 'bottom left' });
+        requestAnimationFrame(() => menu.addClass('et-dots-menu-open'));
+
+        setTimeout(() => {
+            jQuery(document).one('click.et-share-type-outside', function (e) {
+                if (!jQuery(e.target).closest('.et-share-type-menu').length) closeAllDotMenus();
+            });
+        }, 0);
+
+        menu.find('.et-dots-item').on('click', function (e) {
+            e.stopPropagation();
+            shareType = jQuery(this).data('share-type');
+            closeAllDotMenus();
+            renderShareTypeChip();
+            jQuery('#et-input').trigger('focus');
+        });
     }
 
     /** Composing a voice message from the platform's voice button (WeChat), rather than from "+". */
@@ -6519,6 +6577,8 @@
         },
         'photo-toggle': ({ el }) => el.setAttribute('aria-expanded', String(el.getAttribute('aria-expanded') !== 'true')),
         'voice-toggle': ({ el, msgIndex }) => toggleVoiceTranscript(el, msgIndex),
+        // A shared file's summary (and any card that opens the same way)
+        'card-toggle': ({ el }) => toggleExpanded(el, '[data-et-role~="summary"]'),
         // The character's avatar beside a message (platforms that draw one)
         'avatar': ({ el }) => openAvatarMenu(el),
         'transfer-respond': ({ el }) => openTransferResponseMenu(jQuery(el)),
@@ -6536,15 +6596,7 @@
      * voice parts), so its unread dot stays gone.
      */
     function toggleVoiceTranscript(el, msgIndex) {
-        const open = el.getAttribute('aria-expanded') !== 'true';
-        el.setAttribute('aria-expanded', String(open));
-        // Words opening under the input bar scroll up into view (inside the bubble, or just after it)
-        const transcript = el.querySelector('[data-et-role~="transcript"]') || el.nextElementSibling;
-        const list = document.getElementById('et-messages');
-        if (open && transcript && list) {
-            const hidden = transcript.getBoundingClientRect().bottom - list.getBoundingClientRect().bottom;
-            if (hidden > 0) list.scrollTop += hidden + 8;
-        }
+        toggleExpanded(el, '[data-et-role~="transcript"]');
         const dot = el.querySelector('[data-et-role~="unread"]');
         if (!dot) return;
         dot.remove();
@@ -6555,6 +6607,21 @@
         msg.voiceHeard = [...new Set([...(Array.isArray(msg.voiceHeard) ? msg.voiceHeard : []), voiceIndex])];
         saveChatHistory(history);
         syncRenderedView(history, msgIndex);
+    }
+
+    /**
+     * Opens or closes what a voice message or card shows when tapped (`selector`: inside
+     * it, or the element just after it). Opened under the input bar, it scrolls up into view.
+     */
+    function toggleExpanded(el, selector) {
+        const open = el.getAttribute('aria-expanded') !== 'true';
+        el.setAttribute('aria-expanded', String(open));
+        const content = el.querySelector(selector) || (el.nextElementSibling?.matches(selector) ? el.nextElementSibling : null);
+        const list = document.getElementById('et-messages');
+        if (open && content && list) {
+            const hidden = content.getBoundingClientRect().bottom - list.getBoundingClientRect().bottom;
+            if (hidden > 0) list.scrollTop += hidden + 8;
+        }
     }
 
     /**
