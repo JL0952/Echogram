@@ -96,7 +96,6 @@
 [data-platform="wechat"] #et-char-avatar-wrap,
 [data-platform="wechat"] .et-panel-echotext-title,
 [data-platform="wechat"] #et-panel-status-trigger,
-[data-platform="wechat"] #et-mode-toggle-btn,
 [data-platform="wechat"] .et-char-name-caret {
     display: none !important;
 }
@@ -206,7 +205,6 @@
 }
 
 [data-platform="wechat"].et-panel-no-char .et-overflow-menu-item.et-overflow-header-only,
-[data-platform="wechat"] [data-et-role~="header"]:has(.et-mode-toggle-hidden) #et-overflow-mode,
 [data-platform="wechat"] [data-et-role~="header"]:has(#et-panel-status-trigger:not(.et-panel-status-clickable)) #et-overflow-status {
     display: none;
 }

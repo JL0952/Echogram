@@ -139,7 +139,6 @@
    ============================================================ */
 
 .et-header-btn,
-.et-mode-toggle,
 .et-close-btn,
 .et-send-btn,
 .et-react-btn,
@@ -251,14 +250,13 @@
 
 
 /* ============================================================
-   EMOTION POPUP & UNTETHERED POPUP
+   EMOTION POPUP
    Centre in the full-screen panel (= viewport on mobile).
    JS calls popup.css({ top/left/transform }) AFTER these rules,
    so we use !important to win versus the JS inline styles.
    ============================================================ */
 
-#et-emotion-popup,
-#et-uc-popup {
+#et-emotion-popup {
     /* Centre in viewport */
     top:       50% !important;
     left:      50% !important;
@@ -298,32 +296,6 @@
     /* Fill remaining height below the sticky modal header */
     flex: 1 1 auto !important;
     min-height: 0 !important;
-}
-
-/* ============================================================
-   CONTEXT OVERRIDE MODAL â€” full-screen
-   Same portal escape as gallery/save-load: fixed â†’ absolute so
-   the overlay fills the portal rather than the layout viewport.
-   ============================================================ */
-
-.et-ctx-overlay {
-    /* Absolute (not fixed) â€” same iOS layout-viewport issue as gallery/lightbox */
-    position: absolute !important;
-    inset: 0 !important;
-    /* Portal has pointer-events:none; child must opt back in explicitly */
-    pointer-events: auto !important;
-}
-
-.et-ctx-modal {
-    width:         100% !important;
-    max-width:     100% !important;
-    max-height:    100% !important;
-    border-radius: 0 !important;
-}
-
-.et-ctx-body {
-    overflow-y: auto !important;
-    -webkit-overflow-scrolling: touch !important;
 }
 
 /* ============================================================
@@ -929,8 +901,7 @@
 }
 
 /* Ensure mode cards have a tall enough tap target (Apple HIG 44px) */
-.et-ctx-wi-mode-btn,
-.et-co-wi-mode-btn {
+.et-ctx-wi-mode-btn {
     min-height: 52px !important;
     padding: 8px 4px !important;
 }

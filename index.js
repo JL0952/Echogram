@@ -64,7 +64,6 @@
     loadEchoTextModule('lib/emotion-system.js', 'EchoTextEmotionSystem');
     loadEchoTextModule('lib/proactive-messaging.js', 'EchoTextProactiveMessaging');
     loadEchoTextModule('lib/settings-modal.js', 'EchoTextSettingsModal');
-    loadEchoTextModule('lib/untethered-chat.js', 'EchoTextUntetheredChat');
     loadEchoTextModule('lib/memory-system.js', 'EchoTextMemorySystem');
     loadEchoTextModule('lib/saveload-modal.js', 'EchoTextSaveLoadModal');
     loadEchoTextModule('lib/group.js', 'EchoTextGroupManager');
@@ -73,7 +72,6 @@
     loadEchoTextModule('lib/character-picker.js', 'EchoTextCharacterPicker');
     loadEchoTextModule('lib/st-context-emotion.js', 'EchoTextSTContextEmotion');
     loadEchoTextModule('lib/theme-editor.js', 'EchoTextThemeEditor');
-    loadEchoTextModule('lib/context-override.js', 'EchoTextContextOverride');
     loadEchoTextModule('lib/rich-messages.js', 'EchoTextRichMessages');
     loadEchoTextModule('lib/features.js', 'EchoTextFeatures');
     loadEchoTextModule('lib/chat-view-model.js', 'EchoTextChatViewModel');
@@ -141,7 +139,6 @@
     let emotionSystem = null;
     let proactiveMessaging = null;
     let settingsModal = null;
-    let untetheredChat = null;
     let memorySystem = null;
     let saveLoadModal = null;
     let groupManager = null;
@@ -150,7 +147,6 @@
     let characterPicker = null;
     let stContextEmotion = null;
     let themeEditor = null;
-    let contextOverride = null;
     let FA_REACTIONS = [];
     let selectedCharacterKey = null;
 
@@ -389,14 +385,11 @@
         for (const [key, oldDefaults] of Object.entries(legacyPrompts)) {
             if (oldDefaults.includes(s[key])) s[key] = defaultSettings[key];
         }
+        // Settings of removed features
+        for (const key of window.EchoTextConfig.REMOVED_SETTINGS || []) delete s[key];
+        if (s.savedChats) delete s.savedChats.untethered;
         if (!s.chatHistory || typeof s.chatHistory !== 'object' || Array.isArray(s.chatHistory)) {
             s.chatHistory = {};
-        }
-        if (!s.untetheredHistory || typeof s.untetheredHistory !== 'object' || Array.isArray(s.untetheredHistory)) {
-            s.untetheredHistory = {};
-        }
-        if (!s.untetheredInfluence || typeof s.untetheredInfluence !== 'object' || Array.isArray(s.untetheredInfluence)) {
-            s.untetheredInfluence = {};
         }
         if (!s.emotionState || typeof s.emotionState !== 'object' || Array.isArray(s.emotionState)) {
             s.emotionState = {};
@@ -725,22 +718,6 @@
         jQuery('#et_image_generation_plugin_notice').toggle(imgEnabled);
         jQuery('#et_image_generation_plugin_notice_panel').toggle(imgEnabled);
         jQuery('#et-overflow-gallery').toggle(imgEnabled && hasChar && !inGroup);
-    }
-
-    function updateContextOverrideBadge() {
-        if (!contextOverride) return;
-        const ov = contextOverride.getOverridesForCurrentChar();
-        let count = 0;
-        if (ov.description   && ov.description.trim())   count++;
-        if (ov.personality   && ov.personality.trim())   count++;
-        if (ov.scenario      && ov.scenario.trim())      count++;
-        if (ov.textingStyleValue && ov.textingStyleValue.trim()) count++;
-        const badge = jQuery('#et-overflow-ctx-badge');
-        if (count > 0) {
-            badge.text(count).show();
-        } else {
-            badge.hide();
-        }
     }
 
     // Initialize custom dropdowns for panel
@@ -1616,8 +1593,6 @@
             updatePanelStatusRow();
             updateImageGenerationVisibility();
             jQuery('#et-overflow-saveload, #et-overflow-char-divider, #et-overflow-clear').show();
-            // Context override is Untethered-only — hide in combine/group modes
-            jQuery('#et-overflow-context').hide();
             const history = getChatHistory();
             renderMessages(history);
             return;
@@ -1628,7 +1603,7 @@
         const hasChar = !!getCurrentCharacter();
         const inGroup = groupManager && groupManager.isGroupSession();
         // Emotion indicator is always hidden in group sessions
-        const emotionEnabled = settings.emotionSystemEnabled !== false && isTetheredMode() && !inGroup;
+        const emotionEnabled = settings.emotionSystemEnabled !== false && !inGroup;
 
         jQuery('#et-panel-drag-handle').toggleClass('et-panel-header-no-char', !hasChar);
         jQuery('#et-panel').toggleClass('et-panel-no-char', !hasChar);
@@ -1647,15 +1622,11 @@
 
         // Show/hide character-dependent overflow menu items
         jQuery('#et-overflow-saveload, #et-overflow-char-divider, #et-overflow-clear').toggle(hasChar);
-        // Context override is only available in Untethered mode
-        const showCtx = hasChar && !isTetheredMode();
-        jQuery('#et-overflow-context').toggle(showCtx);
-        if (showCtx) updateContextOverrideBadge();
 
         const history = getChatHistory();
         renderMessages(history);
         const charKey = getCharacterKey();
-        if (charKey && isTetheredMode() && !inGroup) {
+        if (charKey && !inGroup) {
             syncProactiveStateWithHistory(charKey, history);
         }
     }
@@ -1677,102 +1648,7 @@
     function toggleCharacterPicker() { characterPicker.toggleCharacterPicker(); }
     function _pickerAvatarBg(name) { return characterPicker ? characterPicker._pickerAvatarBg(name) : 'var(--et-theme-color)'; }
 
-    function buildUntetheredStatusHtml() {
-        const key = getCharacterKey();
-        const slot = (key && settings.untetheredInfluence && settings.untetheredInfluence[key]) || {};
-
-        // Icon mappings for mood, personality, and commStyle (from untethered-chat.js)
-        const moodIcons = {
-            playful: { icon: 'fa-solid fa-dice', color: '#a78bfa', label: 'Playful' },
-            angry: { icon: 'fa-solid fa-fire-flame-curved', color: '#f87171', label: 'Angry' },
-            shy: { icon: 'fa-solid fa-face-flushed', color: '#f9a8d4', label: 'Shy' },
-            confident: { icon: 'fa-solid fa-crown', color: '#fbbf24', label: 'Confident' },
-            sad: { icon: 'fa-solid fa-cloud-rain', color: '#60a5fa', label: 'Sad' },
-            happy: { icon: 'fa-solid fa-sun', color: '#facc15', label: 'Happy' },
-            anxious: { icon: 'fa-solid fa-brain', color: '#c084fc', label: 'Anxious' },
-            bored: { icon: 'fa-solid fa-face-meh', color: '#94a3b8', label: 'Bored' },
-            excited: { icon: 'fa-solid fa-bolt-lightning', color: '#fb923c', label: 'Excited' },
-            jealous: { icon: 'fa-solid fa-eye', color: '#4ade80', label: 'Jealous' },
-            flirty: { icon: 'fa-solid fa-wand-magic-sparkles', color: '#f472b6', label: 'Flirty' },
-            cold: { icon: 'fa-solid fa-snowflake', color: '#93c5fd', label: 'Cold' },
-            mysterious: { icon: 'fa-solid fa-mask', color: '#818cf8', label: 'Mysterious' },
-            romantic: { icon: 'fa-solid fa-heart', color: '#fb7185', label: 'Romantic' },
-            erotic: { icon: 'fa-solid fa-fire', color: '#ff6b6b', label: 'Erotic' },
-            explicit: { icon: 'fa-solid fa-droplet', color: '#ff4d8d', label: 'Explicit' }
-        };
-
-        const personalityIcons = {
-            // Eastern
-            tsundere: { icon: 'fa-solid fa-face-angry', color: '#f87171', label: 'Tsundere' },
-            yandere: { icon: 'fa-solid fa-heart-crack', color: '#fb7185', label: 'Yandere' },
-            kuudere: { icon: 'fa-solid fa-snowflake', color: '#93c5fd', label: 'Kuudere' },
-            dandere: { icon: 'fa-solid fa-feather', color: '#86efac', label: 'Dandere' },
-            deredere: { icon: 'fa-solid fa-face-laugh-beam', color: '#facc15', label: 'Deredere' },
-            himdere: { icon: 'fa-solid fa-gem', color: '#c084fc', label: 'Himdere' },
-            tsundere_soft: { icon: 'fa-solid fa-face-smile-wink', color: '#fda4af', label: 'Tsundere (Soft)' },
-            kuudere_dark: { icon: 'fa-solid fa-moon', color: '#818cf8', label: 'Kuudere (Dark)' },
-            // Western
-            introvert: { icon: 'fa-solid fa-person-rays', color: '#818cf8', label: 'Introvert' },
-            extrovert: { icon: 'fa-solid fa-users', color: '#fb923c', label: 'Extrovert' },
-            witty: { icon: 'fa-solid fa-comment-dots', color: '#facc15', label: 'Witty' },
-            sarcastic: { icon: 'fa-solid fa-face-rolling-eyes', color: '#94a3b8', label: 'Sarcastic' },
-            sweet: { icon: 'fa-solid fa-candy-cane', color: '#f9a8d4', label: 'Sweet' },
-            sassy: { icon: 'fa-solid fa-hand-back-fist', color: '#c084fc', label: 'Sassy' },
-            brooding: { icon: 'fa-solid fa-cloud', color: '#64748b', label: 'Brooding' },
-            cheerleader: { icon: 'fa-solid fa-star', color: '#fbbf24', label: 'Cheerleader' },
-            loner: { icon: 'fa-solid fa-person', color: '#475569', label: 'Loner' },
-            mentor: { icon: 'fa-solid fa-graduation-cap', color: '#34d399', label: 'Mentor' },
-            rebel: { icon: 'fa-solid fa-bolt', color: '#f87171', label: 'Rebel' },
-            professional: { icon: 'fa-solid fa-briefcase', color: '#60a5fa', label: 'Professional' },
-            clown: { icon: 'fa-solid fa-face-grin-squint', color: '#fb923c', label: 'Clown' },
-            intellectual: { icon: 'fa-solid fa-book-open', color: '#818cf8', label: 'Intellectual' },
-            passionate: { icon: 'fa-solid fa-circle-radiation', color: '#f87171', label: 'Passionate' },
-            may_december: { icon: 'fa-solid fa-infinity', color: '#a78bfa', label: 'May–December' }
-        };
-
-        const commStyleIcons = {
-            formal:     { icon: 'fa-solid fa-file-pen',              color: '#60a5fa', label: 'Formal' },
-            casual:     { icon: 'fa-solid fa-comment',               color: '#4ade80', label: 'Casual' },
-            vintage:    { icon: 'fa-solid fa-feather-pointed',       color: '#fbbf24', label: 'Vintage' },
-            tech_savvy: { icon: 'fa-solid fa-microchip',             color: '#38bdf8', label: 'Tech-Savvy' },
-            poetic:     { icon: 'fa-solid fa-pen-nib',               color: '#c084fc', label: 'Poetic' },
-            direct:     { icon: 'fa-solid fa-arrow-right',           color: '#f87171', label: 'Direct' },
-            passive:    { icon: 'fa-solid fa-ellipsis',              color: '#94a3b8', label: 'Passive' },
-            aggressive: { icon: 'fa-solid fa-bullhorn',              color: '#fb923c', label: 'Aggressive' },
-            banter:     { icon: 'fa-solid fa-comments',              color: '#fb923c', label: 'Banter' },
-            theatrical: { icon: 'fa-solid fa-masks-theater',         color: '#f472b6', label: 'Theatrical' },
-            cryptic:    { icon: 'fa-solid fa-eye-slash',             color: '#818cf8', label: 'Cryptic' },
-            nurturing:  { icon: 'fa-solid fa-hand-holding-heart',    color: '#34d399', label: 'Nurturing' },
-        };
-
-        const parts = [];
-        const tooltips = [];
-
-        if (slot.mood && moodIcons[slot.mood]) {
-            const m = moodIcons[slot.mood];
-            parts.push(`<span class="et-status-emotion-icon et-uc-status-icon" style="color:${m.color}"><i class="${m.icon}"></i></span>`);
-            tooltips.push(`Mood: ${m.label}`);
-        }
-        if (slot.personality && personalityIcons[slot.personality]) {
-            const p = personalityIcons[slot.personality];
-            parts.push(`<span class="et-status-emotion-icon et-uc-status-icon" style="color:${p.color}"><i class="${p.icon}"></i></span>`);
-            tooltips.push(`Personality: ${p.label}`);
-        }
-        if (slot.commStyle && commStyleIcons[slot.commStyle]) {
-            const c = commStyleIcons[slot.commStyle];
-            parts.push(`<span class="et-status-emotion-icon et-uc-status-icon" style="color:${c.color}"><i class="${c.icon}"></i></span>`);
-            tooltips.push(`Voice: ${c.label}`);
-        }
-
-        if (!parts.length) {
-            return '<span class="et-status-placeholder">Set Chat Influence</span>';
-        }
-
-        const tooltip = tooltips.join(' | ');
-        return `<span class="et-status-main et-uc-status-main">Influence</span><span class="et-status-chip et-uc-status-chip" title="${tooltip}">${parts.join('')}</span>`;
-    }
-
-    function buildTetheredStatusHtml() {
+    function buildEmotionStatusHtml() {
         const emotionEnabled = settings.emotionSystemEnabled !== false;
         if (!emotionEnabled) {
             return '<span class="et-status-placeholder">Emotion system is off</span>';
@@ -1822,19 +1698,10 @@
         const content = jQuery('#et-panel-status-content');
         if (!row.length || !content.length) return;
 
-        // Always sync the mode-toggle button visibility with group state.
-        // The panel HTML sets this correctly on first build, but dynamic transitions
-        // (switching into/out of a group chat while the panel is already open) need
-        // this path to hide or restore the button without a full panel rebuild.
-        const inGroupNow = !!(groupManager && groupManager.isGroupSession());
-        jQuery('#et-mode-toggle-btn')
-            .toggleClass('et-mode-toggle-hidden', inGroupNow)
-            .toggleClass('et-mode-toggle-group-off', inGroupNow);
-
         // Note: typing state is indicated by the send/stop button — the status row
         // continues to show emotion/mood info during generation.
 
-        // In group session: emotion system and chat influence are disabled.
+        // In group session the emotion system is off.
         // Show a static group indicator chip instead.
         if (groupManager && groupManager.isGroupSession()) {
             row.removeClass('et-panel-status-clickable');
@@ -1842,24 +1709,19 @@
                 row.attr('title', 'Combined mode — all characters will reply in sequence');
                 content.html('<span class="et-status-chip et-status-group-chip"><i class="fa-solid fa-layer-group"></i><span class="et-status-main">Combined</span></span>');
             } else {
-                row.attr('title', 'Group Chat — emotion system and chat influence are paused');
+                row.attr('title', 'Group Chat — the emotion system is paused');
                 content.html('<span class="et-status-chip et-status-group-chip"><i class="fa-solid fa-users"></i><span class="et-status-main">Group Chat</span></span>');
             }
             return;
         }
 
-        const tethered = isTetheredMode();
         row.addClass('et-panel-status-clickable');
-        row.attr('title', tethered ? 'Open emotion details' : 'Open chat influence');
-        content.html(tethered ? buildTetheredStatusHtml() : buildUntetheredStatusHtml());
+        row.attr('title', 'Open emotion details');
+        content.html(buildEmotionStatusHtml());
     }
 
     function getUserName() {
         return SillyTavern.getContext().name1 || 'You';
-    }
-
-    function isTetheredMode() {
-        return settings.chatMode !== 'untethered';
     }
 
     function isCombinedGroupMode() {
@@ -1868,55 +1730,6 @@
 
     function getCombinedGroupMembers() {
         return groupManager ? groupManager.getGroupMembers() : [];
-    }
-
-    async function buildCharacterCardContext(char, options = {}) {
-        if (!char) return '';
-        const includePersona = options.includePersona !== false;
-        const includeDescription = options.includeDescription !== false;
-        const includePersonality = options.includePersonality !== false;
-        const includeScenario = options.includeScenario === true;
-        const includeWorldInfo = options.includeWorldInfo === true;
-        const tethered = options.tethered !== false;
-        const sections = [];
-
-        if (includePersona) {
-            try {
-                const powerUser = SillyTavern.getContext().powerUserSettings || {};
-                const personaDescription = powerUser.persona_description || '';
-                if (personaDescription && personaDescription.trim()) {
-                    sections.push(`${getUserName()}'s persona: ${expandTimeDateMacros(replaceMacros(personaDescription))}`);
-                }
-            } catch (e) { /* ignore */ }
-        }
-
-        const name = char.name || 'Character';
-        const charDescription = char.description || char.data?.description || '';
-        const charPersonality = char.personality || char.data?.personality || '';
-        const charScenario = char.scenario || char.data?.scenario || '';
-
-        if (includeDescription && (tethered ? settings.ctxDescription !== false : true) && charDescription) {
-            sections.push(`${name}'s description: ${expandTimeDateMacros(replaceMacros(charDescription))}`);
-        }
-
-        if (includePersonality && (tethered ? settings.ctxPersonality !== false : true) && charPersonality) {
-            sections.push(`${name}'s personality: ${expandTimeDateMacros(replaceMacros(charPersonality))}`);
-        }
-
-        if (includeScenario && (tethered ? settings.ctxScenario !== false : true) && charScenario) {
-            sections.push(`Scenario: ${expandTimeDateMacros(replaceMacros(charScenario))}`);
-        }
-
-        if (includeWorldInfo) {
-            try {
-                const worldInfoData = await getActiveWorldInfoEntries();
-                if (worldInfoData) {
-                    sections.push(`World Information:\n${worldInfoData}`);
-                }
-            } catch (e) { /* ignore */ }
-        }
-
-        return sections.length ? `\n\n<character_reference>\n${sections.join('\n\n')}\n</character_reference>` : '';
     }
 
     function buildCombinedHistoryContext(history, members) {
@@ -2123,7 +1936,7 @@
     async function buildSystemPrompt(targetCharOverride = null) {
         if (isCombinedGroupMode()) {
             const groupId = groupManager ? groupManager.getCurrentGroupId() : null;
-            const combinedHistory = groupId ? groupManager.getCombineHistory(groupId, !isTetheredMode()) : [];
+            const combinedHistory = groupId ? groupManager.getCombineHistory(groupId) : [];
             return buildCombinedSystemPrompt(targetCharOverride || getCurrentCharacter(), combinedHistory);
         }
 
@@ -2132,7 +1945,6 @@
 
         const name = char.name || 'Character';
         const context = SillyTavern.getContext();
-        const tethered = isTetheredMode();
 
         // Helper: get prompt from settings with macro replacement.
         // expandTimeDateMacros is applied AFTER replaceMacros so that SillyTavern
@@ -2158,7 +1970,7 @@
         //                  plus the story opening and recent ST roleplay (narrative
         //                  background kept far from the end so its prose style
         //                  doesn't leak into replies)
-        //  3. MEMORY     — inside jokes, emotion state, untethered influence flags
+        //  3. MEMORY     — inside jokes, emotion state
         //                  (semi-static contextual colour)
         //  4. LOCK       — fiction frame + persona-lock reminder (recency anchor for
         //                  behaviour — last thing read before the model replies)
@@ -2186,48 +1998,25 @@
         const charPersonality  = char.personality  || char.data?.personality  || '';
         const charScenario     = char.scenario      || char.data?.scenario      || '';
 
-        // Apply per-character context overrides (from the Context modal).
-        // Overrides are Untethered-only — in Tethered mode the ST card fields are used as-is.
-        const _ctxOv = (!tethered && contextOverride) ? contextOverride.getOverridesForCurrentChar() : {};
-        const effectiveDescription = (_ctxOv.description && _ctxOv.description.trim()) ? _ctxOv.description.trim() : charDescription;
-        const effectivePersonality  = (_ctxOv.personality  && _ctxOv.personality.trim())  ? _ctxOv.personality.trim()  : charPersonality;
-        const effectiveScenario     = (_ctxOv.scenario      && _ctxOv.scenario.trim())      ? _ctxOv.scenario.trim()      : charScenario;
-
         // Character card fields — wrapped in <character_reference> XML tags so models
         // treat them as scoped reference data rather than content to reproduce.
         const charRefParts = [];
-        if (settings.ctxDescription !== false && effectiveDescription) {
-            charRefParts.push(`${name}'s description: ${expandTimeDateMacros(replaceMacros(effectiveDescription))}`);
+        if (settings.ctxDescription !== false && charDescription) {
+            charRefParts.push(`${name}'s description: ${expandTimeDateMacros(replaceMacros(charDescription))}`);
         }
-        if (settings.ctxPersonality !== false && effectivePersonality) {
-            charRefParts.push(`${name}'s personality: ${expandTimeDateMacros(replaceMacros(effectivePersonality))}`);
+        if (settings.ctxPersonality !== false && charPersonality) {
+            charRefParts.push(`${name}'s personality: ${expandTimeDateMacros(replaceMacros(charPersonality))}`);
         }
-        if (settings.ctxScenario !== false && effectiveScenario) {
-            charRefParts.push(`Scenario: ${expandTimeDateMacros(replaceMacros(effectiveScenario))}`);  
+        if (settings.ctxScenario !== false && charScenario) {
+            charRefParts.push(`Scenario: ${expandTimeDateMacros(replaceMacros(charScenario))}`);  
         }
-        if (tethered && settings.ctxWorldInfo === true) {
+        if (settings.ctxWorldInfo === true) {
             try {
                 const worldInfoData = await getActiveWorldInfoEntries();
                 if (worldInfoData) {
                     charRefParts.push(`World Information:\n${worldInfoData}`);
                 }
             } catch (e) { /* ignore */ }
-        } else if (!tethered && contextOverride) {
-            // Per-character World Info override (set in Character Context modal)
-            const _wiOv = contextOverride.getOverridesForCurrentChar();
-            if (_wiOv.wiOverrideEnabled === true) {
-                try {
-                    const worldInfoData = await getActiveWorldInfoEntries({
-                        mode:           _wiOv.wiMode || 'min_order',
-                        minOrder:       typeof _wiOv.wiMinOrder === 'number' ? _wiOv.wiMinOrder : 250,
-                        maxOrder:       typeof _wiOv.wiMaxOrder === 'number' ? _wiOv.wiMaxOrder : null,
-                        targetedOrders: Array.isArray(_wiOv.wiTargetedOrders) ? _wiOv.wiTargetedOrders : [],
-                    });
-                    if (worldInfoData) {
-                        charRefParts.push(`World Information:\n${worldInfoData}`);
-                    }
-                } catch (e) { /* ignore */ }
-            }
         }
         if (charRefParts.length > 0) {
             prompt += `\n\n<character_reference>\n${charRefParts.join('\n\n')}\n</character_reference>`;
@@ -2236,22 +2025,18 @@
         // ── 2b. STORY BACKGROUND ─────────────────────────────────────────────────
         // The greeting establishes the setting, the relationship with the user and —
         // through the character's spoken lines — their voice; the recent ST roleplay
-        // (Tethered only) keeps replies consistent with what has actually happened.
+        // keeps replies consistent with what has actually happened.
         // Both are narrative prose, so they sit with the stable character knowledge,
         // far from the end, and are framed as reference rather than text to continue.
         const userName = getUserName();
         const openingText = getEchoTextFirstMessage(char);
         if (openingText) {
-            const openingUse = tethered
-                ? `This is how the roleplay between ${name} and ${userName} began. Treat its setting and relationships as established facts.`
-                : `This scene is not part of this conversation; use it only to learn ${name}'s voice.`;
+            const openingUse = `This is how the roleplay between ${name} and ${userName} began. Treat its setting and relationships as established facts.`;
             prompt += `\n\n${openingUse} ${name}'s spoken lines in it show how ${name} talks — vocabulary, tone, attitude toward ${userName}, and speech quirks. It is reference material written as narrative prose: never continue it or copy its narration.\n<story_opening>\n${openingText}\n</story_opening>`;
         }
-        if (tethered) {
-            const storyText = getSTStoryContext(char);
-            if (storyText) {
-                prompt += `\n\nRecent events in the roleplay, oldest first. ${name} remembers all of this, and the text messages must stay consistent with it. It is reference material written as narrative prose: never continue the scene — ${name} is now texting ${userName} by phone.\n<story_so_far>\n${storyText}\n</story_so_far>`;
-            }
+        const storyText = getSTStoryContext(char);
+        if (storyText) {
+            prompt += `\n\nRecent events in the roleplay, oldest first. ${name} remembers all of this, and the text messages must stay consistent with it. It is reference material written as narrative prose: never continue the scene — ${name} is now texting ${userName} by phone.\n<story_so_far>\n${storyText}\n</story_so_far>`;
         }
 
         // Author's Note — special per-character instructions from SillyTavern.
@@ -2275,59 +2060,33 @@
 
 
         // ── 3. MEMORY & MOOD ─────────────────────────────────────────────────────
-        // Shared memories (inside jokes, people, hobbies, etc.) fire in both modes.
-        // Emotion state is tethered-only (it depends on live ST chat context).
+        // Shared memories (inside jokes, people, hobbies, etc.) and the emotion state.
         prompt += buildInsideJokesContext();
-        if (tethered) {
-            prompt += buildEmotionContext();
-        }
+        prompt += buildEmotionContext();
 
         // ── 4. BEHAVIOUR LOCK ────────────────────────────────────────────────────
         // Fiction frame + persona-lock reminder land last so they act as the final
         // instruction the model reads before generating — maximising adherence.
         if (settings.antiRefusal === true) {
             prompt += '\n\n' + getPrompt('promptAntiRefusalFrame');
-            prompt += tethered
-                ? `\n\n${getPrompt('promptTetheredReminder')}`
-                : `\n\n${getPrompt('promptUntetheredReminder')}`;
+            prompt += `\n\n${getPrompt('promptTetheredReminder')}`;
         } else {
-            prompt += tethered
-                ? `\n\n${getPrompt('promptTetheredNoFrame')}`
-                : `\n\n${getPrompt('promptUntetheredNoFrame')}`;
+            prompt += `\n\n${getPrompt('promptTetheredNoFrame')}`;
         }
 
-        // ── 5. UNTETHERED CHAT OVERLAY ───────────────────────────────────────────
-        // Placed AFTER the behaviour lock so mood/personality/style directives land
-        // at recency — the last substantive instruction the model reads before
-        // generating. Previously this lived in section 3 (before the lock) AND was
-        // wrapped in <character_influence> XML tags, which caused the LLM to treat
-        // the directives as passive reference data instead of active instructions,
-        // silently nullifying the user's Chat Influence settings.
-        if (!tethered) {
-            prompt += buildUntetheredChatContext();
-        }
-
-        // ── 5b. TEXTING STYLE OVERRIDE ───────────────────────────────────────────
-        // Injected after the untethered overlay so it lands at the very end of the
-        // behaviour section — maximum recency before the verbosity instruction.
-        // Untethered-only: tethered mode uses the ST card as-is.
-        if (!tethered && contextOverride) {
-            prompt += contextOverride.buildContextOverridePrompt();
-        }
-
-        // ── 6. VERBOSITY ─────────────────────────────────────────────────────────
+        // ── 5. VERBOSITY ─────────────────────────────────────────────────────────
         const charKey = getCharacterKey();
         const verbosity = charKey && settings.verbosityByCharacter ? settings.verbosityByCharacter[charKey] : null;
         prompt += '\n\n' + getVerbosityPrompt(verbosity);
 
-        // ── 7. TEXTING FORMAT ────────────────────────────────────────────────────
+        // ── 6. TEXTING FORMAT ────────────────────────────────────────────────────
         // Final anchor: with narrative story context in the prompt, models drift into
         // roleplay narration and move stage directions into brackets when asterisks
         // are banned. Stating the medium last keeps every reply an actual text.
         const textingFormat = getPrompt('promptTextingFormat');
         if (textingFormat) prompt += '\n\n' + textingFormat;
 
-        // ── 8. MESSAGE FORMAT ────────────────────────────────────────────────────
+        // ── 7. MESSAGE FORMAT ────────────────────────────────────────────────────
         prompt += '\n\n' + buildMessageFormatPrompt(name, userName);
 
         return prompt;
@@ -2346,10 +2105,9 @@
         return [`MESSAGES: Put each text on its own line — every line reaches ${userName} as a separate message bubble.${tags}`, ...rules].join('\n');
     }
 
-    async function getActiveWorldInfoEntries(opts) {
+    async function getActiveWorldInfoEntries() {
         // Fetches lorebook entries for the current character via ST's /api/worldinfo/get
-        // endpoint. Filter mode is driven by ctxWorldInfoMode (global setting), which can
-        // be overridden per-character via an optional `opts` object.
+        // endpoint. Filter mode is driven by ctxWorldInfoMode (global setting).
         try {
             const char = getCurrentCharacter();
             if (!char) return null;
@@ -2381,17 +2139,12 @@
             if (!entryMap || typeof entryMap !== 'object') return null;
 
             // Filter entries based on the configured mode.
-            // Per-character overrides (opts) take precedence over global settings.
-            const mode           = (opts && opts.mode) || settings.ctxWorldInfoMode || 'min_order';
-            const minOrder       = (opts && typeof opts.minOrder === 'number') ? opts.minOrder
-                                   : (typeof settings.ctxWorldInfoMinOrder === 'number' ? settings.ctxWorldInfoMinOrder : 250);
-            const maxOrder       = (opts && 'maxOrder' in opts) ? opts.maxOrder
-                                   : (typeof settings.ctxWorldInfoMaxOrder === 'number' ? settings.ctxWorldInfoMaxOrder : null);
-            const targetedOrders = (opts && Array.isArray(opts.targetedOrders))
-                ? opts.targetedOrders.map(Number).filter(function (n) { return !isNaN(n); })
-                : (Array.isArray(settings.ctxWorldInfoTargetedOrders)
-                    ? settings.ctxWorldInfoTargetedOrders.map(Number).filter(function (n) { return !isNaN(n); })
-                    : []);
+            const mode           = settings.ctxWorldInfoMode || 'min_order';
+            const minOrder       = typeof settings.ctxWorldInfoMinOrder === 'number' ? settings.ctxWorldInfoMinOrder : 250;
+            const maxOrder       = typeof settings.ctxWorldInfoMaxOrder === 'number' ? settings.ctxWorldInfoMaxOrder : null;
+            const targetedOrders = Array.isArray(settings.ctxWorldInfoTargetedOrders)
+                ? settings.ctxWorldInfoTargetedOrders.map(Number).filter(function (n) { return !isNaN(n); })
+                : [];
 
             const texts = [];
             Object.values(entryMap).forEach(entry => {
@@ -2424,7 +2177,7 @@
         }
     }
 
-    // How much of the live ST roleplay EchoText sees in Tethered mode. Both caps apply
+    // How much of the live ST roleplay EchoText sees. Both caps apply
     // and the newest messages win; with long RP replies the character cap usually binds.
     const ST_STORY_MAX_MESSAGES = 20;
     const ST_STORY_MAX_CHARS = 6000;
@@ -2676,18 +2429,16 @@
             const groupId = group ? String(group.id) : null;
             if (!groupId) return [];
 
-            const untethered = !isTetheredMode();
-
             // Combine mode: single shared history for the whole group
             if (groupManager.isCombineMode()) {
-                return groupManager.getCombineHistory(groupId, untethered);
+                return groupManager.getCombineHistory(groupId);
             }
 
             // Per-character history, scoped to this groupId
             const char = getCurrentCharacter();
             if (!char) return [];
             const charKey = char.avatar || char.name || 'unknown';
-            const history = groupManager.getGroupChatHistory(groupId, charKey, untethered);
+            const history = groupManager.getGroupChatHistory(groupId, charKey);
 
             // Filter out the character's first_mes
             const firstMes = char.first_mes ? char.first_mes.trim() : null;
@@ -2701,17 +2452,7 @@
         const key = getCharacterKey();
         if (!key) return [];
 
-        let history;
-        if (!isTetheredMode()) {
-            if (!settings.untetheredHistory[key]) {
-                settings.untetheredHistory[key] = [];
-                if (untetheredChat) untetheredChat.resetUntetheredChat();
-                saveSettings();
-            }
-            history = settings.untetheredHistory[key];
-        } else {
-            history = settings.chatHistory[key] || [];
-        }
+        let history = settings.chatHistory[key] || [];
 
         // Filter out the character's first_mes to prevent it from appearing in EchoText
         const char = getCurrentCharacter();
@@ -2732,31 +2473,22 @@
             const groupId = group ? String(group.id) : null;
             if (!groupId) return;
 
-            const untethered = !isTetheredMode();
-
             if (groupManager.isCombineMode()) {
-                groupManager.saveCombineHistory(groupId, history, untethered);
+                groupManager.saveCombineHistory(groupId, history);
                 return;
             }
 
             const char = getCurrentCharacter();
             if (!char) return;
             const charKey = char.avatar || char.name || 'unknown';
-            groupManager.saveGroupChatHistory(groupId, charKey, history, untethered);
-            if (isTetheredMode()) {
-                syncProactiveStateWithHistory(charKey, history);
-            }
+            groupManager.saveGroupChatHistory(groupId, charKey, history);
+            syncProactiveStateWithHistory(charKey, history);
             return;
         }
 
         // ── Solo session: original logic ──────────────────────────────────
         const key = getCharacterKey();
         if (!key) return;
-        if (!isTetheredMode()) {
-            settings.untetheredHistory[key] = history;
-            saveSettings();
-            return;
-        }
         settings.chatHistory[key] = history;
         syncProactiveStateWithHistory(key, history);
         saveSettings();
@@ -2769,35 +2501,25 @@
             const groupId = group ? String(group.id) : null;
             if (!groupId) return;
 
-            const untethered = !isTetheredMode();
-
             if (groupManager.isCombineMode()) {
-                groupManager.clearCombineHistory(groupId, untethered);
+                groupManager.clearCombineHistory(groupId);
                 return;
             }
 
             const char = getCurrentCharacter();
             if (!char) return;
             const charKey = char.avatar || char.name || 'unknown';
-            groupManager.clearGroupChatHistory(groupId, charKey, untethered);
+            groupManager.clearGroupChatHistory(groupId, charKey);
             clearEmotionState();
-            if (untetheredChat) untetheredChat.resetUntetheredChat();
             return;
         }
 
         // ── Solo session: original logic ──────────────────────────────────
         const key = getCharacterKey();
         if (!key) return;
-        if (!isTetheredMode()) {
-            settings.untetheredHistory[key] = [];
-            saveSettings();
-            return;
-        }
         settings.chatHistory[key] = [];
         // Also reset emotion state when clearing history
         clearEmotionState();
-        // Reset untethered influences globally
-        if (untetheredChat) untetheredChat.resetUntetheredChat();
         saveSettings();
     }
 
@@ -2807,10 +2529,10 @@
 
     /**
      * SillyTavern's generation interceptor (manifest.json). With the "EchoText
-     * Messages" context toggle on, the Tethered texts with the story's character
-     * go into the roleplay prompt, each run of texts where it happened in the
-     * story (lib/story-texts.js). Group chats keep their own EchoText storage and
-     * are left out; Untethered texts aren't part of the story.
+     * Messages" context toggle on, the texts with the story's character go into
+     * the roleplay prompt, each run of texts where it happened in the story
+     * (lib/story-texts.js). Group chats keep their own EchoText storage and are
+     * left out.
      */
     globalThis.echoTextGenerateInterceptor = function (chat, contextSize, abort, type) {
         if (!settings.enabled || settings.ctxSTMessages !== true) return;
@@ -3296,10 +3018,8 @@
                 const newHistory = [...withMessagesSentSince(workingHistory), charReply];
                 pruneSwipesOnPrevLastChar(newHistory);
                 saveChatHistory(newHistory);
-                if (isTetheredMode()) {
-                    markProactiveCharacterActivity(getCharacterKey(), false, 'reply');
-                    try { if (memorySystem) memorySystem.incrementTurn(); } catch (e) { /* ignore */ }
-                }
+                markProactiveCharacterActivity(getCharacterKey(), false, 'reply');
+                try { if (memorySystem) memorySystem.incrementTurn(); } catch (e) { /* ignore */ }
                 renderMessages(newHistory);
                 setFabUnreadIndicator(panelOpen ? false : true);
             }
@@ -3560,10 +3280,8 @@
                 syncMsgFromSwipe(msg);
 
                 saveChatHistory(workingHistory);
-                if (isTetheredMode()) {
-                    markProactiveCharacterActivity(getCharacterKey(), false, 'reply');
-                    try { if (memorySystem) memorySystem.incrementTurn(); } catch (e) { /* ignore */ }
-                }
+                markProactiveCharacterActivity(getCharacterKey(), false, 'reply');
+                try { if (memorySystem) memorySystem.incrementTurn(); } catch (e) { /* ignore */ }
                 renderMessages(workingHistory);
                 setFabUnreadIndicator(panelOpen ? false : true);
             }
@@ -3965,7 +3683,7 @@
                     send_date: Date.now()
                 };
                 const newHistory = [...history, charReply];
-                groupManager.saveCombineHistory(groupId, newHistory, !isTetheredMode());
+                groupManager.saveCombineHistory(groupId, newHistory);
                 renderMessages(newHistory);
                 setFabUnreadIndicator(panelOpen ? false : true);
             }
@@ -4018,11 +3736,11 @@
             if (unreadIdx.length) {
                 await sleepWithAbort(timing.deliveredDelayMs, abortController.signal);
                 markUnread('delivered', 'Delivered to group');
-                groupManager.saveCombineHistory(groupId, workingHistory, !isTetheredMode());
+                groupManager.saveCombineHistory(groupId, workingHistory);
 
                 await sleepWithAbort(timing.readDelayMs, abortController.signal);
                 markUnread('read', 'Read by group');
-                groupManager.saveCombineHistory(groupId, workingHistory, !isTetheredMode());
+                groupManager.saveCombineHistory(groupId, workingHistory);
             }
 
             // Generate a reply from each group member in order
@@ -4059,7 +3777,7 @@
                             send_date: Date.now()
                         };
                         workingHistory = [...withMessagesSentSince(workingHistory), charReply];
-                        groupManager.saveCombineHistory(groupId, workingHistory, !isTetheredMode());
+                        groupManager.saveCombineHistory(groupId, workingHistory);
                         renderMessages(workingHistory);
                         setFabUnreadIndicator(panelOpen ? false : true);
                     }
@@ -4160,7 +3878,7 @@
                 // Stitch: preserve everything before, insert new reply, preserve everything after
                 const finalHistory = [...historyBefore, charReply, ...historyAfter];
                 pruneSwipesOnPrevLastChar(finalHistory);
-                groupManager.saveCombineHistory(groupId, finalHistory, !isTetheredMode());
+                groupManager.saveCombineHistory(groupId, finalHistory);
                 renderMessages(finalHistory);
                 setFabUnreadIndicator(panelOpen ? false : true);
             }
@@ -4803,13 +4521,10 @@
         renderMessages(history);
 
         // Update proactive state sync
-        if (isTetheredMode()) {
-            syncProactiveStateWithHistory(charKey, history);
-        }
+        syncProactiveStateWithHistory(charKey, history);
     }
 
     function buildPanelHtml() {
-        const tethered = isTetheredMode();
         const inGroup = groupManager && groupManager.isGroupSession();
         // Combined Group Mode: the header must list all member names, not just the active char.
         // buildPanelHtml is called by openPanel() before applySelectedCharacterToPanel() runs,
@@ -4853,11 +4568,6 @@
                     </div>
                 </div>
                 <div class="et-header-right">
-                    <button class="et-mode-toggle ${tethered ? 'et-mode-tethered' : 'et-mode-untethered'}${inGroup ? ' et-mode-toggle-group-off et-mode-toggle-hidden' : ''}" id="et-mode-toggle-btn"
-                        title="${inGroup ? 'This toggle is unavailable in group sessions.' : (tethered ? 'Tethered: Syncs mood and context with the main chat.' : 'Untethered: Standalone session with no main chat sync.')}"
-                        aria-disabled="${inGroup}">
-                        <i class="fa-solid ${tethered ? 'fa-link' : 'fa-link-slash'}"></i>
-                    </button>
                     <div class="et-header-btn" id="et-overflow-btn" title="More options">
                         <i class="fa-solid fa-ellipsis-vertical"></i>
                     </div>
@@ -4866,22 +4576,14 @@
                             <i class="fa-solid fa-gear"></i>
                             <span>Settings</span>
                         </div>
-                        <!-- Stand-ins for the header's character picker, mode toggle and status row, for platform headers without them -->
+                        <!-- Stand-ins for the header's character picker and status row, for platform headers without them -->
                         <div class="et-overflow-menu-item et-overflow-header-only" id="et-overflow-character">
                             <i class="fa-solid fa-user-group"></i>
                             <span>Switch Character</span>
                         </div>
-                        <div class="et-overflow-menu-item et-overflow-header-only" id="et-overflow-mode">
-                            ${modeMenuItemInner(tethered)}
-                        </div>
                         <div class="et-overflow-menu-item et-overflow-header-only" id="et-overflow-status">
                             <i class="fa-solid fa-heart-pulse"></i>
                             <span>Status</span>
-                        </div>
-                        <div class="et-overflow-menu-item" id="et-overflow-context" style="display:none">
-                            <i class="fa-solid fa-book-open-reader"></i>
-                            <span>Context</span>
-                            <span class="et-overflow-ctx-badge" id="et-overflow-ctx-badge" style="display:none"></span>
                         </div>
                         <div class="et-overflow-menu-item" id="et-overflow-gallery" style="display:none">
                             <i class="fa-regular fa-images"></i>
@@ -4921,11 +4623,6 @@
                 </button>
             </div>
         </div>`;
-    }
-
-    /** The overflow menu's chat-mode entry: the current mode; tapping switches it. */
-    function modeMenuItemInner(tethered) {
-        return `<i class="fa-solid ${tethered ? 'fa-link' : 'fa-link-slash'}"></i><span>Mode: ${tethered ? 'Tethered' : 'Untethered'}</span>`;
     }
 
     function openPanel() {
@@ -5085,9 +4782,6 @@
                 item.find('span').text('Clear History');
                 item.removeClass('et-overflow-item-confirm');
 
-                if (!isTetheredMode() && untetheredChat) {
-                    untetheredChat.resetUntetheredChat();
-                }
                 clearChatHistory();
                 renderMessages([]);
                 updatePanelStatusRow();
@@ -5129,24 +4823,11 @@
             moveModalToPortal('.et-gallery-overlay');
         });
 
-        jQuery('#et-overflow-context').on('click', (e) => {
-            e.stopPropagation();
-            closeOverflowMenu();
-            if (contextOverride) contextOverride.openModal();
-            moveModalToPortal('#et-ctx-overlay');
-        });
-
-        // Shown only by platforms whose header hides the picker caret, mode toggle and status row
+        // Shown only by platforms whose header hides the picker caret and status row
         jQuery('#et-overflow-character').on('click', (e) => {
             e.stopPropagation();
             closeOverflowMenu();
             jQuery('#et-char-name').trigger('click');
-        });
-
-        jQuery('#et-overflow-mode').on('click', (e) => {
-            e.stopPropagation();
-            closeOverflowMenu();
-            jQuery('#et-mode-toggle-btn').trigger('click');
         });
 
         jQuery('#et-overflow-status').on('click', (e) => {
@@ -5166,9 +4847,7 @@
         jQuery('#et-char-name').on('click', function (e) {
             e.stopPropagation();
             jQuery('#et-emotion-popup').remove();
-            jQuery('#et-uc-popup').remove();
             jQuery(document).off('click.et-emo-popup');
-            jQuery(document).off('click.et-uc-outside');
             toggleCharacterPicker();
         });
 
@@ -5176,82 +4855,28 @@
         jQuery('#et-panel').on('click', '.et-char-name-caret', function (e) {
             e.stopPropagation();
             jQuery('#et-emotion-popup').remove();
-            jQuery('#et-uc-popup').remove();
             jQuery(document).off('click.et-emo-popup');
-            jQuery(document).off('click.et-uc-outside');
             toggleCharacterPicker();
         });
 
         // No-char select button: removed (picker is now embedded inline when no char selected)
 
-        jQuery('#et-panel').on('click', '#et-uc-popup .et-uc-option-btn, #et-uc-popup #et-uc-popup-reset, #et-uc-popup .et-uc-popup-close', () => {
-            setTimeout(() => updatePanelStatusRow(), 0);
-        });
-
-        jQuery('#et-panel').on('input', '#et-uc-popup #et-uc-mood-influence, #et-uc-popup #et-uc-personality-influence', () => {
-            setTimeout(() => updatePanelStatusRow(), 0);
-        });
-
-        // Status row opens emotion/chat influence menus (disabled in group sessions)
+        // Status row opens the emotion popup (disabled in group sessions)
         jQuery('#et-panel').on('click', '#et-panel-status-trigger', function (e) {
             e.stopPropagation();
             // In group session the status row is informational only — no popup
             if (groupManager && groupManager.isGroupSession()) return;
             closeCharacterPicker();
-            if (isTetheredMode()) {
-                const emotionEnabled = settings.emotionSystemEnabled !== false;
-                if (emotionEnabled) toggleEmotionPopup(this);
-            } else {
-                toggleUntetheredPopup(this);
-            }
+            if (settings.emotionSystemEnabled !== false) toggleEmotionPopup(this);
         });
 
-        // Initialize status row based on mode/state
+        // Initialize status row
         // In group sessions, emotion indicator is always hidden
         const inGroupNow = groupManager && groupManager.isGroupSession();
-        const emotionEnabled = settings.emotionSystemEnabled !== false && isTetheredMode() && !inGroupNow;
+        const emotionEnabled = settings.emotionSystemEnabled !== false && !inGroupNow;
         jQuery('#et-emotion-indicator').toggleClass('et-emotion-indicator-hidden', !emotionEnabled);
         if (emotionEnabled) updateEmotionIndicator();
         updatePanelStatusRow();
-
-        jQuery('#et-panel').on('click', '#et-mode-toggle-btn', function (e) {
-            e.stopPropagation();
-            // Disabled in group chat — all tethered/untethered logic is bypassed
-            if (groupManager && groupManager.isGroupSession()) return;
-
-            jQuery('#et-emotion-popup').remove();
-            jQuery('#et-uc-popup').remove();
-            jQuery(document).off('click.et-emo-popup');
-            jQuery(document).off('click.et-uc-outside');
-            settings.chatMode = isTetheredMode() ? 'untethered' : 'tethered';
-            saveSettings();
-            startProactiveScheduler();
-
-            const history = getChatHistory();
-            renderMessages(history);
-
-            const nextEmotionEnabled = settings.emotionSystemEnabled !== false && isTetheredMode();
-            jQuery('#et-emotion-indicator').toggleClass('et-emotion-indicator-hidden', !nextEmotionEnabled);
-            if (nextEmotionEnabled) updateEmotionIndicator();
-            updatePanelStatusRow();
-
-            const btn = jQuery('#et-mode-toggle-btn');
-            const tethered = isTetheredMode();
-            btn.toggleClass('et-mode-tethered', tethered).toggleClass('et-mode-untethered', !tethered);
-            btn.find('i').attr('class', `fa-solid ${tethered ? 'fa-link' : 'fa-link-slash'}`);
-            btn.attr('title', tethered ? 'Tethered: Syncs mood and context with the main chat.' : 'Untethered: Standalone session with no main chat sync.');
-            btn.addClass('et-mode-toggle-anim');
-            setTimeout(() => btn.removeClass('et-mode-toggle-anim'), 450);
-            jQuery('#et-overflow-mode').html(modeMenuItemInner(tethered));
-
-            // Context override is Untethered-only — sync visibility on mode switch
-            const hasChar = !!getCurrentCharacter();
-            const showCtx = hasChar && !tethered;
-            jQuery('#et-overflow-context').toggle(showCtx);
-            if (showCtx) updateContextOverrideBadge();
-
-            refreshProactiveInsights();
-        });
 
         jQuery('#et-send-btn').on('click', handleSend);
 
@@ -5592,9 +5217,7 @@
         const newHistory = [...getChatHistory(), userMsg];
         saveChatHistory(newHistory);
         setFabUnreadIndicator(false);
-        if (isTetheredMode()) {
-            markProactiveUserActivity(getCharacterKey(), Date.now());
-        }
+        markProactiveUserActivity(getCharacterKey(), Date.now());
         renderMessages(newHistory);
         scheduleCharacterReply();
         return newHistory;
@@ -6123,12 +5746,12 @@
 
     function processMessageEmotion(text, isUser) {
         if (emotionSystem) emotionSystem.processMessageEmotion(text, isUser);
-        if (panelOpen && isTetheredMode()) updatePanelStatusRow();
+        if (panelOpen) updatePanelStatusRow();
     }
 
     function applyReactionToEmotions(reactionId, direction = 1) {
         if (emotionSystem) emotionSystem.applyReactionToEmotions(reactionId, direction);
-        if (panelOpen && isTetheredMode()) updatePanelStatusRow();
+        if (panelOpen) updatePanelStatusRow();
     }
 
     // ============================================================
@@ -6142,12 +5765,10 @@
 
     function updateEmotionIndicator() {
         if (emotionSystem) emotionSystem.updateEmotionIndicator();
-        if (panelOpen && isTetheredMode()) updatePanelStatusRow();
+        if (panelOpen) updatePanelStatusRow();
     }
 
     function toggleEmotionPopup(targetEl) {
-        jQuery('#et-uc-popup').remove();
-        jQuery(document).off('click.et-uc-outside');
         if (emotionSystem) emotionSystem.toggleEmotionPopup(targetEl);
 
         const popup = jQuery('#et-emotion-popup');
@@ -6561,11 +6182,11 @@
         // The footer menu acts on the whole message, a bubble's menu on that bubble
         'menu': ({ el, msgIndex, isUser }) => {
             closeAllReactOverlays();
-            toggleDotsMenu(jQuery(el), msgIndex, isUser, isTetheredMode(), null);
+            toggleDotsMenu(jQuery(el), msgIndex, isUser, null);
         },
         'part-menu': ({ el, msgIndex, isUser, partIndex }) => {
             closeAllReactOverlays();
-            toggleDotsMenu(jQuery(el), msgIndex, isUser, isTetheredMode(), partIndex);
+            toggleDotsMenu(jQuery(el), msgIndex, isUser, partIndex);
         },
         'swipe-prev': ({ msgIndex }) => {
             closeAllDotMenus();
@@ -7034,7 +6655,7 @@
      *   multi-bubble message; the footer menu (null) acts on the whole message,
      *   except that its Delete removes only the last bubble
      */
-    function toggleDotsMenu(btn, msgIndex, isUser, tethered, partIndex = null) {
+    function toggleDotsMenu(btn, msgIndex, isUser, partIndex = null) {
         const partKey = partIndex === null ? 'main' : partIndex;
         const existing = jQuery(`.et-dots-menu[data-for="${msgIndex}"][data-is-user="${isUser ? 1 : 0}"][data-part="${partKey}"]`);
         if (existing.length) { closeAllDotMenus(); return; }
@@ -7749,21 +7370,6 @@
     }
 
     // ============================================================
-    // UNTETHERED CHAT — THIN WRAPPERS
-    // ============================================================
-
-    function toggleUntetheredPopup(targetEl) {
-        jQuery('#et-emotion-popup').remove();
-        jQuery(document).off('click.et-emo-popup');
-        if (untetheredChat) untetheredChat.toggleUntetheredPopup(targetEl);
-    }
-
-    function buildUntetheredChatContext() {
-        if (!untetheredChat) return '';
-        return untetheredChat.buildUntetheredChatContext();
-    }
-
-    // ============================================================
     // MEMORY SYSTEM — THIN WRAPPERS
     // ============================================================
 
@@ -8165,12 +7771,11 @@
             getCharacterKey,
             getChatHistory,
             isPanelOpen,
-            isTetheredMode,
             findLastUserMessageIndex,
             expandTimeDateMacros,
             baseUrl: BASE_URL,
             onEmotionStateUpdated: ({ dominant, dominantChanged }) => {
-                if (!panelOpen || !isTetheredMode()) return;
+                if (!panelOpen) return;
                 updatePanelStatusRow();
                 if (dominantChanged) {
                     requestAnimationFrame(() => {
@@ -8181,19 +7786,6 @@
                         void chip.offsetWidth; // force reflow
                         chip.classList.add('et-dominant-shift');
                     });
-                }
-            }
-        });
-
-        untetheredChat = window.EchoTextUntetheredChat.createUntetheredChat({
-            getSettings: () => settings,
-            saveSettings,
-            getCharacterName,
-            getCharacterKey,
-            onStateChange: () => {
-                // Update the untethered status row when influence settings change
-                if (panelOpen && !isTetheredMode()) {
-                    updatePanelStatusRow();
                 }
             }
         });
@@ -8267,8 +7859,7 @@
         memorySystem = window.EchoTextMemorySystem.createMemorySystem({
             getSettings: () => settings,
             saveSettings,
-            getCharacterKey,
-            isTetheredMode
+            getCharacterKey
         });
 
         // Expose character accessor helpers for the settings-modal memory UI
@@ -8282,7 +7873,6 @@
             saveSettings,
             getCharacterKey,
             getCharacterName,
-            isTetheredMode,
             getChatHistory,
             saveChatHistory,
             renderMessages,
@@ -8292,10 +7882,7 @@
             captureGroupSnapshot: () => groupManager ? groupManager.captureGroupSnapshot(settings) : null,
             restoreGroupSnapshot: (snap) => { if (groupManager) groupManager.restoreGroupSnapshot(snap, settings); },
             isCombineMode: () => groupManager ? groupManager.isCombineMode() : false,
-            getCurrentGroupId: () => groupManager ? groupManager.getCurrentGroupId() : null,
-            // Refreshes the panel status row after an untethered save is loaded,
-            // so the mood/personality/style chips reflect the restored influence state.
-            onUntetheredRestored: () => { if (panelOpen) updatePanelStatusRow(); }
+            getCurrentGroupId: () => groupManager ? groupManager.getCurrentGroupId() : null
         });
 
         imageGeneration = window.EchoTextImageGeneration.createImageGeneration({
@@ -8336,14 +7923,6 @@
             getTriggerManualCombineCharFn: () => (typeof triggerManualCombineChar === 'function' ? triggerManualCombineChar : null)
         });
 
-        contextOverride = window.EchoTextContextOverride.createContextOverride({
-            getSettings,
-            saveSettings,
-            getCharacterKey,
-            getCharacterName,
-            onSave: updateContextOverrideBadge,
-        });
-
         gallery = window.EchoTextGallery.createGallery({
             getSettings,
             saveSettings,
@@ -8363,7 +7942,6 @@
             getSettings: () => settings,
             saveSettings,
             warn,
-            isTetheredMode,
             getCurrentCharacter,
             getCharacterKey,
             getUserName,
@@ -8403,15 +7981,15 @@
             // history store regardless of session type.
             isCombineMode:        () => groupManager ? groupManager.isCombineMode()          : false,
             getCurrentGroupId:    () => groupManager ? groupManager.getCurrentGroupId()       : null,
-            getGroupChatHistory:  (groupId, charKey, untethered) =>
-                groupManager ? groupManager.getGroupChatHistory(groupId, charKey, untethered)  : [],
-            saveGroupChatHistory: (groupId, charKey, history, untethered) => {
-                if (groupManager) groupManager.saveGroupChatHistory(groupId, charKey, history, untethered);
+            getGroupChatHistory:  (groupId, charKey) =>
+                groupManager ? groupManager.getGroupChatHistory(groupId, charKey) : [],
+            saveGroupChatHistory: (groupId, charKey, history) => {
+                if (groupManager) groupManager.saveGroupChatHistory(groupId, charKey, history);
             },
-            getCombineHistory:    (groupId, untethered) =>
-                groupManager ? groupManager.getCombineHistory(groupId, untethered)             : [],
-            saveCombineHistory:   (groupId, history, untethered) => {
-                if (groupManager) groupManager.saveCombineHistory(groupId, history, untethered);
+            getCombineHistory:    (groupId) =>
+                groupManager ? groupManager.getCombineHistory(groupId) : [],
+            saveCombineHistory:   (groupId, history) => {
+                if (groupManager) groupManager.saveCombineHistory(groupId, history);
             }
         });
 
@@ -8420,7 +7998,6 @@
             getCurrentCharacter,
             getCharacterKey,
             getChatHistory,
-            isTetheredMode,
             apiAnalyzeTextEmotionRaw: (text, isUser) => emotionSystem ? emotionSystem.apiAnalyzeTextEmotionRaw(text, isUser) : null,
             applyEmotionDelta: (deltas, source, reason) => {
                 if (emotionSystem) emotionSystem.applyEmotionDelta(deltas, source, reason);

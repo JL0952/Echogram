@@ -663,6 +663,11 @@
             tests: `${refreshResults.filter(x => x.ok).length}/${refreshResults.length} pass`,
             failed: refreshResults.filter(x => !x.ok).map(x => x.name),
             different: results.filter(x => !(x.ok || x.actionsSame)).map(x => x.name),
+            // What differs: the HTML, and the click actions only one side has
+            details: results.filter(x => !(x.ok || x.actionsSame)).map(x => ({
+                name: x.name, htmlEqual: x.htmlEqual, elements: x.elements,
+                actionDiff: Object.fromEntries(Object.entries(x.actionDiff).map(([k, v]) => [k, [...new Set(v)].slice(0, location.search.includes('full') ? undefined : 6)])),
+            })),
         }) }).catch(() => {});
     }
 })().catch(e => { window.__error = String(e && e.stack || e); console.error(e); });
