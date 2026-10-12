@@ -1,13 +1,13 @@
 {
-    "display_name": "EchoText",
+    "display_name": "EchoText Custom",
     "loading_order": 1001,
     "requires": [],
     "optional": [],
     "js": "index.js",
     "generate_interceptor": "echoTextGenerateInterceptor",
     "css": "style.css",
-    "author": "mattjaybe",
+    "author": "JL0952 (based on EchoText by mattjaybe)",
     "version": "1.2.6",
-    "homePage": "https://github.com/mattjaybe/SillyTavern-EchoText",
+    "homePage": "https://github.com/JL0952/SillyTavern-EchoText-Custom",
     "auto_update": true
 }
