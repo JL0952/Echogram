@@ -7945,6 +7945,7 @@
             getCurrentCharacter,
             getCharacterKey,
             getUserName,
+            getActiveFeatures,
             getChatHistory,
             saveChatHistory,
             renderMessages,
