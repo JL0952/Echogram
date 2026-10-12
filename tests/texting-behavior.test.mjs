@@ -210,3 +210,46 @@ test('Auto mode: the rule\'s example line reads back as what it says', () => {
     const example = rules.match(/<mood>.*?<\/mood>/)[0];
     assert.deepEqual(window.EchoTextEmotionModel.parseMoodTag(`hi\n${example}`), { text: 'hi', mood: { joy: 60, anger: 15 } });
 });
+
+// ── Pace (docs/emotion-plan.md 3.9) ─────────────────────────────────────────
+
+const timing = (values, bigFive) => Behavior.replyTiming({ bigFive, values, random: () => 0.5 });
+
+test('reply timing: neutral, warm, cold, and left on read only when cold enough', () => {
+    assert.deepEqual(timing({}), { deliveredDelayMs: 700, readDelayMs: 1600, ghostDelayMs: 0, typingLeadMs: 750, replyDelayMs: 1400 });
+    // Warm feelings answer sooner
+    assert.ok(timing({ joy: 80, romance: 60 }).replyDelayMs < timing({}).replyDelayMs);
+    // Cold ones read later; past a point the user is left on read for a while
+    assert.ok(timing({ anger: 60 }).readDelayMs > timing({}).readDelayMs);
+    assert.equal(timing({ anger: 60 }).ghostDelayMs, 0);
+    assert.ok(timing({ anger: 80 }).ghostDelayMs > 0);
+    // A bad relationship adds to the cold, a good one takes from it
+    assert.ok(timing({ anger: 40, rapport: -70 }).ghostDelayMs > 0);
+    assert.equal(timing({ anger: 40, rapport: 70 }).ghostDelayMs, 0);
+    // Anxiety is in neither (it shortens the proactive wait instead)
+    assert.deepEqual(timing({ anxiety: 90 }), timing({}));
+});
+
+test('reply timing: eagerness and Extraversion are quicker, low Extraversion slower', () => {
+    for (const key of ['readDelayMs', 'replyDelayMs']) {
+        assert.ok(timing({}, { E: 'high' })[key] < timing({})[key], key);
+        assert.ok(timing({}, { E: 'low' })[key] > timing({})[key], key);
+        assert.ok(timing({ eagerness: 80 })[key] < timing({})[key], key);
+    }
+    // No quicker than 0.55 of the neutral read delay
+    assert.equal(timing({ eagerness: 100 }, { E: 'high' }).readDelayMs, Math.round(1600 * 0.55));
+});
+
+test('proactive pace: the feelings and Extraversion stretch the wait, within 0.6–1.4', () => {
+    const pace = (values, bigFive) => Behavior.proactivePace({ bigFive, values });
+    assert.equal(pace({}), 1);
+    assert.equal(pace({ anticipation: 80 }), 0.8);
+    assert.equal(pace({ romance: 40, anxiety: 40 }), 0.8);
+    assert.equal(pace({ anticipation: 100, eagerness: 100, romance: 100, anxiety: 100 }), 0.6);
+    assert.equal(pace({ anger: 40 }), 1.2);
+    assert.equal(pace({ anger: 85, disgust: 30 }), 1.4);
+    assert.equal(pace({}, { E: 'high' }), 0.85);
+    assert.equal(pace({}, { E: 'low' }), 1.15);
+    // Sadness no longer shortens it (the old formula's mistake); the relationship's attitude doesn't count
+    assert.equal(pace({ sadness: 90, rapport: -80 }), 1);
+});

@@ -531,7 +531,6 @@
         jQuery('#et_activity_custom_row').toggle(activeMode === 'custom');
         const modeHint = (ACTIVITY_MODE_PRESETS[activeMode] || ACTIVITY_MODE_PRESETS.natural).hint;
         jQuery('#et_activity_mode_hint').text(modeHint);
-        jQuery('#et_proactive_emotion_urgency').prop('checked', settings.proactiveEmotionUrgency !== false);
         updateProactiveToggleButtons();
 
         jQuery('.et-icon-option').removeClass('selected');
@@ -612,7 +611,6 @@
         jQuery('#et_activity_custom_row_panel').toggle(activeModePanel === 'custom');
         const modeHintPanel = (ACTIVITY_MODE_PRESETS[activeModePanel] || ACTIVITY_MODE_PRESETS.natural).hint;
         jQuery('#et_activity_mode_hint_panel').text(modeHintPanel);
-        jQuery('#et_proactive_emotion_urgency_panel').prop('checked', settings.proactiveEmotionUrgency !== false);
         updateProactiveToggleButtons();
 
         // Appearance
@@ -1257,12 +1255,6 @@
             saveSettings();
             jQuery('#et_proactive_rate_limit').val(minutes);
             jQuery('#et_proactive_rate_limit_val').text(minutes + ' min');
-        });
-
-        jQuery('#et_proactive_emotion_urgency_panel').off('change.panel').on('change.panel', function () {
-            settings.proactiveEmotionUrgency = jQuery(this).prop('checked');
-            saveSettings();
-            jQuery('#et_proactive_emotion_urgency').prop('checked', settings.proactiveEmotionUrgency);
         });
 
         jQuery('#et_proactive_refresh_panel').off('click.panel').on('click.panel', function () {
@@ -7925,6 +7917,7 @@
             setTypingIndicatorVisible,
             setFabUnreadIndicator,
             getEmotionState,
+            getProactivePace: () => (emotionSystem ? emotionSystem.getProactivePace() : 1),
             readReply,
             noteMoodReport,
             findLastUserMessageIndex,

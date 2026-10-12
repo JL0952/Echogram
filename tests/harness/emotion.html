@@ -96,6 +96,8 @@
         await sleep(300);
         res.oldStateReplaced = JSON.stringify(start()) === JSON.stringify(window.EchoTextEmotionModel.zeroValues());
         res.statusNeutral = statusRow().textContent === 'Neutral';
+        // Neutral is a chip like the feelings', with its own icon
+        res.neutralChip = !!statusRow().querySelector('.et-status-chip-emotion .et-status-emotion-icon .et-emo-glyph svg');
         res.rowsNsfwOff = rows().length;                                   // 10: no Desire
         res.groups = $p('.et-emo-group-label').toArray().map(e => e.textContent).join(',');
         res.modeShown = $p('.et-emo-seg-on').text();
@@ -111,7 +113,8 @@
         res.rapportShown = $p('[data-emo-dim="rapport"]').siblings('.et-emo-val').text() === '−80';
         const rapportStyle = $p('[data-emo-dim="rapport"]')[0].style;
         res.rapportFill = rapportStyle.getPropertyValue('--emo-from') === '10%' && rapportStyle.getPropertyValue('--emo-to') === '50%';
-        res.statusRapport = statusRow().textContent === 'Rapport';
+        // The relationship isn't a feeling: Rapport −80 doesn't take the chip from Joy 60
+        res.statusSkipsRelation = statusRow().textContent === 'Joy';
         slide('rapport', 0);
 
         // Buttons redraw the popup without closing it
@@ -132,6 +135,9 @@
         emo.clearEmotionState();
         const cleared = emo.getEmotionState();
         res.clearKeepsLock = cleared.joy === 0 && cleared.romance === 80;
+        // Romance 80 alone is a relationship, not a feeling: the chip says Neutral
+        emo.updateEmotionIndicator();
+        res.romanceAloneNeutral = statusRow().textContent === 'Neutral';
 
         // Unlocking hands the value back to the chat
         jQuery('#et-emotion-popup').remove();

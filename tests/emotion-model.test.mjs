@@ -81,6 +81,9 @@ test('the strongest feeling, or none when everything is at 0', () => {
     assert.equal(Model.strongest(values, { nsfw: true }).dim.id, 'desire');
     // A strained relationship counts by how far it is from 0
     assert.deepEqual(Model.strongest({ ...values, rapport: -80 }).value, -80);
+    // The status chip counts feelings only, not the relationship
+    assert.equal(Model.strongest({ ...values, rapport: -80, romance: 95 }, { feelingsOnly: true }).dim.id, 'anger');
+    assert.equal(Model.strongest({ ...Model.zeroValues(), rapport: 60, romance: 90 }, { feelingsOnly: true }), null);
 });
 
 // ── Auto mode (docs/emotion-plan.md 3.8) ───────────────────────────────────
