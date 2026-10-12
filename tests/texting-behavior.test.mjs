@@ -107,20 +107,37 @@ test('a moderate feeling alone only colors the tone; two of them can move a knob
 });
 
 test('Desire counts only with NSFW on, five steps up to desperate', () => {
-    const values = { desire: 90 };
-    assert.deepEqual(build({ values }).lines, []);
+    assert.deepEqual(build({ values: { desire: 90 } }).lines, []);
     const steps = [25, 45, 60, 75, 90].map(desire => build({ values: { desire }, nsfw: true }).lines[0]);
     assert.deepEqual(steps, [
         'Mira feels a flirty spark with Qi: playful, a little suggestive.',
-        'Mira wants Qi: teasing and suggestive, testing how far Qi will go.',
-        'Mira is turned on: talks dirty openly, says plainly what Mira wants.',
-        'Mira is horny and makes the first move: explicit, graphic, uncensored sexting.',
-        'Mira is desperate for Qi — so worked up it\'s all Mira can think about: raw, filthy, graphic sexting, impatient and insistent, pushing for more.',
+        'Mira wants Qi and is testing how far Qi will go: teasing, with the odd dirty joke.',
+        'Mira is turned on and wants Qi to know it: open dirty talk.',
+        'Mira is horny and makes the first move: explicit sexting.',
+        'Mira is desperate for Qi — so worked up it\'s all Mira can think about, impatient and insistent, pushing for more: explicit, graphic sexting.',
     ]);
     // Nothing about what the two are to each other
     assert.equal(build({ values: { desire: 60, rapport: -50 }, nsfw: true }).lines[1], steps[2]);
     assert.equal(build({ values: { desire: 60, rapport: 50 }, nsfw: true }).lines[1], steps[2]);
-    assert.match(Behavior.nsfwPermission('Mira'), /^ADULT CONTENT: Sexting is encouraged./);
+});
+
+test('Morality decides how Desire comes out: crude and sleazy, plain, or indirect', () => {
+    const line = (morality, desire) => build({ morality, values: { desire }, nsfw: true }).lines[0];
+    assert.equal(line('low', 25), 'Mira feels a flirty spark with Qi: heavy on dirty jokes, a little sleazy, pushing the line at every chance.');
+    assert.equal(line('low', 90), 'Mira is desperate for Qi — so worked up it\'s all Mira can think about, impatient and insistent, pushing for more: the filthiest, most graphic sexting — crude, sleazy, shameless, seizing every opening.');
+    assert.equal(line('high', 45), 'Mira wants Qi and is testing how far Qi will go: only hints and light innuendo.');
+    assert.equal(line('high', 90), 'Mira is desperate for Qi — so worked up it\'s all Mira can think about, impatient and insistent, pushing for more: indirect even now — suggestion and innuendo rather than crude words.');
+    // Without Desire, Morality says nothing; with NSFW off, neither does
+    assert.deepEqual(build({ morality: 'low', nsfw: true }).lines, []);
+    assert.deepEqual(build({ morality: 'low', values: { desire: 90 } }).lines, []);
+    assert.equal(line(undefined, 60), line('mid', 60));
+});
+
+test('the NSFW permission gives no examples of how kinds of characters behave', () => {
+    const permission = Behavior.nsfwPermission('Mira');
+    assert.match(permission, /^ADULT CONTENT: Sexting is encouraged, and comments on body parts, especially genitals, are allowed/);
+    assert.match(permission, /How explicit Mira gets follows Mira's desire and morals\./);
+    assert.doesNotMatch(permission, /for example|timid|flustered|reserved/i);
 });
 
 test('moods: the strongest two at 40 and up, two steps each', () => {

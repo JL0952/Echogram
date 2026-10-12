@@ -21,6 +21,7 @@ test('eleven feelings, desire only with NSFW on', () => {
 test('a profile is filled in and cleaned up', () => {
     assert.deepEqual(Model.normalizeProfile(undefined), {
         bigFive: { E: 'mid', A: 'mid', C: 'mid', O: 'mid', N: 'mid' },
+        morality: 'mid',
         locks: {},
         textingStyle: { type: 'instruction', text: '' },
     });
@@ -31,6 +32,8 @@ test('a profile is filled in and cleaned up', () => {
         mbtiType: 'INTJ',
     });
     assert.deepEqual(profile.bigFive, { E: 'high', A: 'mid', C: 'mid', O: 'mid', N: 'low' });
+    assert.equal(Model.normalizeProfile({ morality: 'low' }).morality, 'low');
+    assert.equal(Model.normalizeProfile({ morality: 'evil' }).morality, 'mid');
     assert.deepEqual(profile.locks, { romance: 100, joy: 35 });
     assert.deepEqual(profile.textingStyle, { type: 'example', text: 'lol ok' });
     assert.equal(profile.mbtiType, undefined);

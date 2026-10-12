@@ -6,6 +6,7 @@
 // usage: node tests/harness/prompt-print.cjs <character name or avatar file>
 //          [--values=rapport=-40,romance=80]  set these feelings (the rest stay as saved)
 //          [--big5=A=low,E=high]             set these traits
+//          [--morality=low|mid|high]         set Morality (shown with NSFW on)
 //          [--mode=off|manual|auto] [--nsfw=on|off] [--platform=echotext|wechat] [--verbosity=short|medium|long]
 //          [--tail]                          print only what comes after the story and memories
 const fs = require('fs');
@@ -19,7 +20,7 @@ const args = process.argv.slice(2);
 const opt = name => { const a = args.find(x => x.startsWith(`--${name}=`)); return a ? a.slice(name.length + 3) : null; };
 const pairs = s => Object.fromEntries((s || '').split(',').filter(Boolean).map(p => p.split('=')));
 const who = args.find(a => !a.startsWith('--'));
-if (!who) { console.error('usage: node tests/harness/prompt-print.cjs <character> [--values=…] [--big5=…] [--mode=…] [--nsfw=on|off] [--platform=…] [--verbosity=…] [--tail]'); process.exit(2); }
+if (!who) { console.error('usage: node tests/harness/prompt-print.cjs <character> [--values=…] [--big5=…] [--morality=…] [--mode=…] [--nsfw=on|off] [--platform=…] [--verbosity=…] [--tail]'); process.exit(2); }
 
 global.window = {};
 for (const f of ['lib/config.js', 'lib/rich-messages.js', 'lib/features.js', 'lib/chat-view-model.js', 'platforms/echotext/platform.js', 'platforms/wechat/platform.js',
@@ -78,9 +79,10 @@ if (opt('values')) {
     for (const [id, v] of Object.entries(pairs(opt('values')))) state.start[id] = Model.clampValue(v, id);
     settings.emotionState = { ...settings.emotionState, [avatar]: state };
 }
-if (opt('big5')) {
+if (opt('big5') || opt('morality')) {
     const profile = Model.normalizeProfile(settings.characterProfiles?.[avatar]);
     Object.assign(profile.bigFive, pairs(opt('big5')));
+    if (opt('morality')) profile.morality = opt('morality');
     settings.characterProfiles = { ...settings.characterProfiles, [avatar]: profile };
 }
 
@@ -118,7 +120,7 @@ const prompt = await api(env).buildSystemPrompt();
 const values = env.emotionSystem.getEmotionState();
 console.error(`${char.name} (${avatar}) · user ${userName} · chat ${chatFile || 'none'} · emotions ${settings.emotionMode}`
     + (values ? ` ${JSON.stringify(Object.fromEntries(Object.entries(values).filter(([, v]) => v)))}` : '')
-    + ` · Big Five ${JSON.stringify(Model.normalizeProfile(settings.characterProfiles?.[avatar]).bigFive)} · NSFW ${settings.nsfwEnabled ? 'on' : 'off'}`
+    + ` · Big Five ${JSON.stringify(Model.normalizeProfile(settings.characterProfiles?.[avatar]).bigFive)} · Morality ${Model.normalizeProfile(settings.characterProfiles?.[avatar]).morality} · NSFW ${settings.nsfwEnabled ? 'on' : 'off'}`
     + ` · ${prompt.length} chars\n`);
 const tailAt = prompt.lastIndexOf('</shared_memories>');
 console.log(args.includes('--tail') ? prompt.slice(Math.max(0, tailAt >= 0 ? tailAt + '</shared_memories>'.length : prompt.indexOf('</story_so_far>'))).trim() : prompt);

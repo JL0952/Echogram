@@ -30,7 +30,7 @@
 <script>
 // The emotion popup and status chip (lib/emotion-system.js) on the real panel.
 //   ?platform=echotext|wechat  ?scheme=dark|light  ?width=320  ?nsfw
-//   ?tab=emotions|personality  the popup as a screenshot shows it (filled-in example values)
+//   ?tab=emotions|personality  the popup as a screenshot shows it (filled-in example values; Morality with ?nsfw)
 //   ?report                    runs runEmotionTest() and posts its result to the server
 (async function () {
     const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -155,6 +155,15 @@
         click('[data-emo-trait="E"][data-emo-level="high"]');
         res.traitSaved = profile().bigFive.E === 'high';
         res.traitShown = $p('[data-emo-trait="E"].et-emo-seg-on').text() === 'High';
+        // Morality: under the Big Five, only with NSFW on
+        settings.nsfwEnabled = true;
+        click('[data-emo-tab="personality"]');
+        res.moralityRow = rows().map(r => r.querySelector('.et-emo-label').textContent).pop() === 'Morality';
+        click('[data-emo-trait="morality"][data-emo-level="low"]');
+        res.moralitySaved = profile().morality === 'low' && $p('[data-emo-trait="morality"].et-emo-seg-on').text() === 'Low';
+        settings.nsfwEnabled = false;
+        click('[data-emo-tab="personality"]');
+        res.moralityHidden = !$p('[data-emo-trait="morality"]').length;
         click('[data-emo-style-type="example"]');
         const ta = $p('.et-emo-style-text')[0];
         ta.value = 'lol ok\nwait what';
@@ -221,7 +230,7 @@
     const tab = params.get('tab');
     if (tab) {
         settings.emotionState['mira.png'] = { start: { ...window.EchoTextEmotionModel.zeroValues(), rapport: -40, joy: 35, anticipation: 55, shock: 10, desire: 30 }, startAt: Date.now() };
-        settings.characterProfiles['mira.png'] = { bigFive: { E: 'high', A: 'low', C: 'mid', O: 'mid', N: 'high' }, locks: { romance: 95 },
+        settings.characterProfiles['mira.png'] = { bigFive: { E: 'high', A: 'low', C: 'mid', O: 'mid', N: 'high' }, morality: 'high', locks: { romance: 95 },
             textingStyle: { type: 'instruction', text: 'all lowercase, dry, never uses exclamation marks' } };
         statusRow().innerHTML = emo.buildStatusHtml();
         open();
