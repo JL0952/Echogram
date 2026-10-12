@@ -25,6 +25,7 @@
 <script src="build/bundle-chrome.js"></script>
 <script src="../../lib/emotion-model.js"></script>
 <script src="../../lib/emotion-icons.js"></script>
+<script src="../../lib/texting-behavior.js"></script>
 <script src="../../lib/emotion-system.js"></script>
 <script>
 // The emotion popup and status chip (lib/emotion-system.js) on the real panel.
@@ -65,13 +66,9 @@
     });
     statusRow().innerHTML = emo.buildStatusHtml();
 
-    // index.js centres the popup in the panel after opening it
     function open() {
-        emo.toggleEmotionPopup();
-        const popup = document.getElementById('et-emotion-popup');
-        popup.style.top = `${Math.max(12, Math.round((panel.clientHeight - popup.offsetHeight) / 2))}px`;
-        popup.style.left = `${Math.max(8, Math.round((panel.clientWidth - popup.offsetWidth) / 2))}px`;
-        return popup;
+        emo.openEmotionPopup();
+        return document.getElementById('et-emotion-popup');
     }
     const $p = sel => jQuery('#et-emotion-popup').find(sel);
     const click = sel => $p(sel)[0].click();
@@ -166,8 +163,9 @@
         res.styleSaved = profile().textingStyle.type === 'example' && profile().textingStyle.text === 'lol ok\nwait what';
         res.stylePrompt = emo.buildTextingStyleContext('mira.png', 'Mira').includes('<texting_style_reference>');
 
-        // The header drags it; letting go outside doesn't close it; it stays in the panel
+        // On a computer it sits beside the panel; the header drags it, out of the panel too, but not off the window
         const pop = document.getElementById('et-emotion-popup');
+        res.besidePanel = pop.parentNode === panel.parentNode && getComputedStyle(pop).position === 'fixed';
         const head = pop.querySelector('.et-emotion-popup-header');
         const before = { left: pop.offsetLeft, top: pop.offsetTop };
         const mouse = (type, target, x, y) => target.dispatchEvent(new MouseEvent(type, { bubbles: true, button: 0, clientX: x, clientY: y }));
@@ -181,12 +179,16 @@
         mouse('mousedown', head, 100, 100);
         mouse('mousemove', document, 5000, 5000);
         mouse('mouseup', document, 5000, 5000);
-        res.dragStaysInside = pop.offsetLeft + pop.offsetWidth <= panel.clientWidth && pop.offsetTop < panel.clientHeight;
+        const dragged = pop.getBoundingClientRect();
+        res.dragLeavesPanel = dragged.right > panel.getBoundingClientRect().right && dragged.right <= innerWidth + 0.5 && dragged.top < innerHeight;
         res.draggableCursor = getComputedStyle(head).cursor === 'grab';
         pop.style.left = `${before.left}px`; pop.style.top = `${before.top}px`;
         await sleep(300);
 
-        // Fits the panel
+        // Opens centred on the panel, inside it
+        jQuery('#et-emotion-popup').remove();
+        open();
+        await sleep(300);
         const pr = document.getElementById('et-emotion-popup').getBoundingClientRect();
         const box = panel.getBoundingClientRect();
         res.insidePanel = pr.left >= box.left && pr.right <= box.right + 0.5 && pr.bottom <= box.bottom + 0.5;
@@ -195,12 +197,18 @@
         await sleep(300);
         res.closed = !document.getElementById('et-emotion-popup');
 
-        // A click outside still closes it
+        // Only the × closes it: not a click outside, nor opening it again
         open();
         await sleep(100);
         statusRow().click();
+        panel.click();
+        document.body.click();
+        open();
         await sleep(300);
-        res.outsideCloses = !document.getElementById('et-emotion-popup');
+        res.outsideKeepsOpen = jQuery('#et-emotion-popup').length === 1 && !$p('.et-emo-row').closest('.et-emotion-popup-closing').length;
+        click('[data-emo-action="close"]');
+        await sleep(300);
+        res.closedAgain = !document.getElementById('et-emotion-popup');
 
         const checks = Object.entries(res).filter(([k, v]) => typeof v === 'boolean');
         res.ok = checks.every(([, v]) => v) && res.rowsNsfwOff === 10 && res.rowsNsfwOn === 11 && res.offRows === 0

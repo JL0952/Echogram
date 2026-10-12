@@ -4506,7 +4506,17 @@ html.et-bg-light {
     background: rgba(255, 80, 80, 0.12);
 }
 
-/* On a computer the header drags it (like .et-panel-header) */
+/* On a computer it sits beside the panel, placed against the window, so it can
+   be dragged out of the panel; it brings the panel's text settings along */
+.et-emotion-popup.et-emotion-popup-floating {
+    position: fixed;
+    max-height: min(560px, calc(100vh - 24px));
+    font-family: var(--et-font-family);
+    font-size: var(--et-font-size);
+    color: var(--et-text);
+}
+
+/* The header drags it (like .et-panel-header) */
 .et-emotion-popup-draggable .et-emotion-popup-header {
     cursor: grab;
     user-select: none;

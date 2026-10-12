@@ -3,7 +3,7 @@
 // working index.js, for a few mock characters and settings, and reports any
 // difference. Memories, emotions and world info are stubbed with fixed text,
 // so only how the prompt is put together is compared. Stubs a ref doesn't call
-// (buildTextingStyleContext before step E2) just go unused.
+// (buildTextingStyleContext before step E2, buildBehaviorContext before E3) just go unused.
 // usage: node tests/harness/prompt-compare.cjs [REF] [--print=<case>]
 const fs = require('fs');
 const path = require('path');
@@ -32,7 +32,8 @@ const STUBS = `
     const expandTimeDateMacros = t => t; const getActiveWorldInfoEntries = async () => 'WORLD INFO STUB';
     const buildInsideJokesContext = () => '\\n\\n<memories>MEMORY STUB</memories>';
     const buildEmotionContext = () => '\\n\\n<emotional_state>EMOTION STUB</emotional_state>';
-    const buildTextingStyleContext = () => '\\n\\n<texting_style>STYLE STUB</texting_style>';`;
+    const buildTextingStyleContext = () => '\\n\\n<texting_style>STYLE STUB</texting_style>';
+    const buildBehaviorContext = (char, verbosity) => ({ nsfw: '\\n\\nNSFW STUB', text: '\\n\\n<texting_behavior>BEHAVIOR STUB</texting_behavior>', verbosity });`;
 
 function load(code) {
     const ast = acorn.parse(code, { ecmaVersion: 'latest' });

@@ -63,6 +63,7 @@
     loadEchoTextModule('lib/config.js', 'EchoTextConfig');
     loadEchoTextModule('lib/emotion-model.js', 'EchoTextEmotionModel');
     loadEchoTextModule('lib/emotion-icons.js', 'EchoTextEmotionIcons');
+    loadEchoTextModule('lib/texting-behavior.js', 'EchoTextTextingBehavior');
     loadEchoTextModule('lib/emotion-system.js', 'EchoTextEmotionSystem');
     loadEchoTextModule('lib/proactive-messaging.js', 'EchoTextProactiveMessaging');
     loadEchoTextModule('lib/settings-modal.js', 'EchoTextSettingsModal');
@@ -1654,6 +1655,7 @@
         // In group session the emotion system is off.
         // Show a static group indicator chip instead.
         if (groupManager && groupManager.isGroupSession()) {
+            if (emotionSystem) emotionSystem.closeEmotionPopup();
             row.removeClass('et-panel-status-clickable');
             if (groupManager.isCombineMode()) {
                 row.attr('title', 'Combined mode — all characters will reply in sequence');
@@ -1668,6 +1670,7 @@
         row.addClass('et-panel-status-clickable');
         row.attr('title', 'Open emotion details');
         content.html(emotionSystem ? emotionSystem.buildStatusHtml() : '');
+        if (emotionSystem) emotionSystem.refreshEmotionPopup();
     }
 
     function getUserName() {
@@ -1920,11 +1923,11 @@
         //                  plus the story opening and recent ST roleplay (narrative
         //                  background kept far from the end so its prose style
         //                  doesn't leak into replies)
-        //  3. MEMORY     — inside jokes, emotion state
-        //                  (semi-static contextual colour)
+        //  3. MEMORY     — inside jokes (semi-static contextual colour)
         //  4. LOCK       — fiction frame + persona-lock reminder (recency anchor for
         //                  behaviour — last thing read before the model replies)
-        //  5. VERBOSITY  — how many texts to send
+        //  4b. PERSONALITY AND FEELINGS — NSFW permission, texting style, behavior block
+        //  5. VERBOSITY  — how many texts to send (moved a step by the behavior)
         //  6. FORMAT     — texting-medium anchor + message format (must be last)
         // ───────────────────────────────────────────────────────────────────────
 
@@ -2023,15 +2026,19 @@
             prompt += `\n\n${getPrompt('promptTetheredNoFrame')}`;
         }
 
-        // ── 4b. TEXTING STYLE ────────────────────────────────────────────────────
-        // The character's own way of texting (emotion popup, Personality tab), after
-        // the lock so it is among the last instructions read.
+        // ── 4b. PERSONALITY AND FEELINGS ─────────────────────────────────────────
+        // From the emotion popup, after the lock so they are among the last
+        // instructions read: the NSFW permission, the character's own texting style
+        // (Personality tab), and how the Big Five and current feelings make them text
+        // (lib/texting-behavior.js), which also moves the reply length a step.
+        const charKey = getCharacterKey();
+        const behavior = buildBehaviorContext(char, charKey && settings.verbosityByCharacter ? settings.verbosityByCharacter[charKey] : null);
+        prompt += behavior.nsfw;
         prompt += buildTextingStyleContext(char);
+        prompt += behavior.text;
 
         // ── 5. VERBOSITY ─────────────────────────────────────────────────────────
-        const charKey = getCharacterKey();
-        const verbosity = charKey && settings.verbosityByCharacter ? settings.verbosityByCharacter[charKey] : null;
-        prompt += '\n\n' + getVerbosityPrompt(verbosity);
+        prompt += '\n\n' + getVerbosityPrompt(behavior.verbosity);
 
         // ── 6. TEXTING FORMAT ────────────────────────────────────────────────────
         // Final anchor: with narrative story context in the prompt, models drift into
@@ -4657,6 +4664,8 @@
         }
 
         closeCharacterPicker();
+        // On a computer the emotion popup sits beside the panel, so it doesn't go with it
+        if (emotionSystem) emotionSystem.closeEmotionPopup();
 
         // Close any open emoji overlays
         jQuery('.et-react-overlay').remove();
@@ -4786,16 +4795,12 @@
         // Character picker: click char name row (includes caret)
         jQuery('#et-char-name').on('click', function (e) {
             e.stopPropagation();
-            jQuery('#et-emotion-popup').remove();
-            jQuery(document).off('click.et-emo-popup');
             toggleCharacterPicker();
         });
 
         // Character picker: click caret also opens picker
         jQuery('#et-panel').on('click', '.et-char-name-caret', function (e) {
             e.stopPropagation();
-            jQuery('#et-emotion-popup').remove();
-            jQuery(document).off('click.et-emo-popup');
             toggleCharacterPicker();
         });
 
@@ -4807,7 +4812,7 @@
             // In group session the status row is informational only — no popup
             if (groupManager && groupManager.isGroupSession()) return;
             closeCharacterPicker();
-            toggleEmotionPopup(this);
+            openEmotionPopup();
         });
 
         updatePanelStatusRow();
@@ -5681,6 +5686,13 @@
         return emotionSystem ? emotionSystem.buildTextingStyleContext(char.avatar || char.name, char.name || 'Character') : '';
     }
 
+    /** The NSFW permission, the behavior block and the reply length it moves to (see buildSystemPrompt). */
+    function buildBehaviorContext(char, verbosity) {
+        if (!emotionSystem) return { nsfw: '', text: '', verbosity };
+        return emotionSystem.buildBehaviorContext(char.avatar || char.name, {
+            charName: char.name || 'Character', userName: getUserName(), features: getActiveFeatures(), verbosity });
+    }
+
     // ============================================================
     // AI CHARACTER REACTIONS TO USER MESSAGES
     // ============================================================
@@ -5695,19 +5707,8 @@
         if (panelOpen) updatePanelStatusRow();
     }
 
-    function toggleEmotionPopup(targetEl) {
-        if (emotionSystem) emotionSystem.toggleEmotionPopup(targetEl);
-
-        const popup = jQuery('#et-emotion-popup');
-        const panel = jQuery('#et-panel');
-        if (popup.length && panel.length) {
-            const panelEl = panel[0];
-            const popupHeight = popup.outerHeight() || 420;
-            const popupWidth = popup.outerWidth() || 320;
-            const top = Math.max(12, Math.round((panelEl.clientHeight - popupHeight) / 2));
-            const left = Math.max(8, Math.round((panelEl.clientWidth - popupWidth) / 2));
-            popup.css({ top: `${top}px`, left: `${left}px` });
-        }
+    function openEmotionPopup() {
+        if (emotionSystem) emotionSystem.openEmotionPopup();
     }
 
     function convertEmoticonsToEmojis(text) {
