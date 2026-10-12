@@ -2,7 +2,8 @@
 // Builds the system prompt with index.js at REF (default HEAD) and with the
 // working index.js, for a few mock characters and settings, and reports any
 // difference. Memories, emotions and world info are stubbed with fixed text,
-// so only how the prompt is put together is compared.
+// so only how the prompt is put together is compared. Stubs a ref doesn't call
+// (buildTextingStyleContext before step E2) just go unused.
 // usage: node tests/harness/prompt-compare.cjs [REF] [--print=<case>]
 const fs = require('fs');
 const path = require('path');
@@ -30,7 +31,8 @@ const STUBS = `
     const isCombinedGroupMode = () => false; const groupManager = null; const stripThinkingTags = t => t;
     const expandTimeDateMacros = t => t; const getActiveWorldInfoEntries = async () => 'WORLD INFO STUB';
     const buildInsideJokesContext = () => '\\n\\n<memories>MEMORY STUB</memories>';
-    const buildEmotionContext = () => '\\n\\n<emotional_state>EMOTION STUB</emotional_state>';`;
+    const buildEmotionContext = () => '\\n\\n<emotional_state>EMOTION STUB</emotional_state>';
+    const buildTextingStyleContext = () => '\\n\\n<texting_style>STYLE STUB</texting_style>';`;
 
 function load(code) {
     const ast = acorn.parse(code, { ecmaVersion: 'latest' });

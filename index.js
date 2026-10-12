@@ -61,6 +61,8 @@
     }
 
     loadEchoTextModule('lib/config.js', 'EchoTextConfig');
+    loadEchoTextModule('lib/emotion-model.js', 'EchoTextEmotionModel');
+    loadEchoTextModule('lib/emotion-icons.js', 'EchoTextEmotionIcons');
     loadEchoTextModule('lib/emotion-system.js', 'EchoTextEmotionSystem');
     loadEchoTextModule('lib/proactive-messaging.js', 'EchoTextProactiveMessaging');
     loadEchoTextModule('lib/settings-modal.js', 'EchoTextSettingsModal');
@@ -70,7 +72,6 @@
     loadEchoTextModule('lib/image-generation.js', 'EchoTextImageGeneration');
     loadEchoTextModule('lib/gallery.js', 'EchoTextGallery');
     loadEchoTextModule('lib/character-picker.js', 'EchoTextCharacterPicker');
-    loadEchoTextModule('lib/st-context-emotion.js', 'EchoTextSTContextEmotion');
     loadEchoTextModule('lib/theme-editor.js', 'EchoTextThemeEditor');
     loadEchoTextModule('lib/rich-messages.js', 'EchoTextRichMessages');
     loadEchoTextModule('lib/features.js', 'EchoTextFeatures');
@@ -145,7 +146,6 @@
     let imageGeneration = null;
     let gallery = null;
     let characterPicker = null;
-    let stContextEmotion = null;
     let themeEditor = null;
     let FA_REACTIONS = [];
     let selectedCharacterKey = null;
@@ -372,6 +372,8 @@
             context.extensionSettings[MODULE_NAME] = JSON.parse(JSON.stringify(defaultSettings));
         }
         const s = context.extensionSettings[MODULE_NAME];
+        // The old emotion on/off switch, before the defaults fill in emotionMode
+        if (s.emotionSystemEnabled === false && !Object.hasOwn(s, 'emotionMode')) s.emotionMode = 'off';
         for (const key of Object.keys(defaultSettings)) {
             if (!Object.hasOwn(s, key)) {
                 const val = defaultSettings[key];
@@ -502,7 +504,8 @@
         jQuery('#et_paragraph_spacing').val(settings.paragraphSpacing || 12);
         jQuery('#et_paragraph_spacing_val').text((settings.paragraphSpacing || 12) + 'px');
 
-        jQuery('#et_emotion_system').prop('checked', settings.emotionSystemEnabled !== false);
+        jQuery('#et_emotion_mode').val(settings.emotionMode || 'manual');
+        jQuery('#et_nsfw_enabled').prop('checked', settings.nsfwEnabled === true);
         jQuery('#et_swiped_messages').prop('checked', settings.swipedMessages === true);
         jQuery('#et_fab_size').val(settings.fabSize);
         jQuery('#et_fab_size_val').text(settings.fabSize + 'px');
@@ -518,7 +521,6 @@
         jQuery('#et_ctx_authors_note').prop('checked', settings.ctxAuthorsNote === true);
         jQuery('#et_ctx_world_info').prop('checked', settings.ctxWorldInfo === true);
         jQuery('#et_ctx_st_messages').prop('checked', settings.ctxSTMessages === true);
-        jQuery('#et_ctx_st_context').prop('checked', settings.ctxSTContext === true);
         jQuery('#et_proactive_rate_limit').val(settings.proactiveRateLimitMinutes || 180);
         jQuery('#et_proactive_rate_limit_val').text((settings.proactiveRateLimitMinutes || 180) + ' min');
         // Activity mode
@@ -557,7 +559,8 @@
         jQuery('#et_auto_open_panel').prop('checked', settings.autoOpenOnReload);
         jQuery('#et_auto_load_last_char_panel').prop('checked', settings.autoLoadLastCharacter === true);
         jQuery('#et_auto_scroll_panel').prop('checked', settings.autoScroll);
-        jQuery('#et_emotion_system_panel').prop('checked', settings.emotionSystemEnabled !== false);
+        jQuery('#et_emotion_mode_panel').val(settings.emotionMode || 'manual');
+        jQuery('#et_nsfw_enabled_panel').prop('checked', settings.nsfwEnabled === true);
         jQuery('#et_swiped_messages_panel').prop('checked', settings.swipedMessages === true);
         jQuery('#et_verbosity_default_panel').val(settings.verbosityDefault || 'medium');
 
@@ -599,7 +602,6 @@
             toggleWIPanelRows(_wiMode);
         }
         jQuery('#et_ctx_st_messages_panel').prop('checked', settings.ctxSTMessages === true);
-        jQuery('#et_ctx_st_context_panel').prop('checked', settings.ctxSTContext === true);
         jQuery('#et_proactive_rate_limit_panel').val(settings.proactiveRateLimitMinutes || 180);
         jQuery('#et_proactive_rate_limit_val_panel').text((settings.proactiveRateLimitMinutes || 180) + ' min');
         // Activity mode
@@ -862,13 +864,20 @@
             jQuery('#et_verbosity_default').val(settings.verbosityDefault);
         });
 
-        // Emotion system toggle (panel)
-        jQuery('#et_emotion_system_panel').off('change.panel').on('change.panel', function () {
-            settings.emotionSystemEnabled = jQuery(this).is(':checked');
+        // Emotion mode and NSFW (panel)
+        jQuery('#et_emotion_mode_panel').off('change.panel').on('change.panel', function () {
+            settings.emotionMode = jQuery(this).val();
             saveSettings();
             // Sync with modal
-            jQuery('#et_emotion_system').prop('checked', settings.emotionSystemEnabled);
-            jQuery('#et-emotion-indicator').toggleClass('et-emotion-indicator-hidden', !settings.emotionSystemEnabled);
+            jQuery('#et_emotion_mode').val(settings.emotionMode);
+            updatePanelStatusRow();
+        });
+
+        jQuery('#et_nsfw_enabled_panel').off('change.panel').on('change.panel', function () {
+            settings.nsfwEnabled = jQuery(this).is(':checked');
+            saveSettings();
+            // Sync with modal
+            jQuery('#et_nsfw_enabled').prop('checked', settings.nsfwEnabled);
             updatePanelStatusRow();
         });
 
@@ -1053,13 +1062,6 @@
             saveSettings();
             // Sync with modal
             jQuery('#et_ctx_st_messages').prop('checked', settings.ctxSTMessages);
-        });
-
-        jQuery('#et_ctx_st_context_panel').off('change.panel').on('change.panel', function () {
-            settings.ctxSTContext = jQuery(this).is(':checked');
-            saveSettings();
-            // Sync with modal
-            jQuery('#et_ctx_st_context').prop('checked', settings.ctxSTContext);
         });
 
         // Strip Reasoning Tags toggle
@@ -1589,7 +1591,6 @@
             jQuery('#et-input').attr('placeholder', `Message all: ${charNames}...`).prop('disabled', false);
             jQuery('#et-send-btn, #et-attach-btn, #et-voice-btn').prop('disabled', false);
             setComposeMode(null);
-            jQuery('#et-emotion-indicator').addClass('et-emotion-indicator-hidden');
             updatePanelStatusRow();
             updateImageGenerationVisibility();
             jQuery('#et-overflow-saveload, #et-overflow-char-divider, #et-overflow-clear').show();
@@ -1602,8 +1603,6 @@
         const charName = getCharacterName();
         const hasChar = !!getCurrentCharacter();
         const inGroup = groupManager && groupManager.isGroupSession();
-        // Emotion indicator is always hidden in group sessions
-        const emotionEnabled = settings.emotionSystemEnabled !== false && !inGroup;
 
         jQuery('#et-panel-drag-handle').toggleClass('et-panel-header-no-char', !hasChar);
         jQuery('#et-panel').toggleClass('et-panel-no-char', !hasChar);
@@ -1612,11 +1611,6 @@
         jQuery('#et-input').attr('placeholder', hasChar ? `Text ${charName}...` : 'Text a character...').prop('disabled', !hasChar);
         jQuery('#et-send-btn, #et-attach-btn, #et-voice-btn').prop('disabled', !hasChar);
         setComposeMode(null);
-        jQuery('#et-emotion-indicator').toggleClass('et-emotion-indicator-hidden', !emotionEnabled);
-
-        if (emotionEnabled) {
-            updateEmotionIndicator();
-        }
         updatePanelStatusRow();
         updateImageGenerationVisibility();
 
@@ -1648,50 +1642,6 @@
     function toggleCharacterPicker() { characterPicker.toggleCharacterPicker(); }
     function _pickerAvatarBg(name) { return characterPicker ? characterPicker._pickerAvatarBg(name) : 'var(--et-theme-color)'; }
 
-    function buildEmotionStatusHtml() {
-        const emotionEnabled = settings.emotionSystemEnabled !== false;
-        if (!emotionEnabled) {
-            return '<span class="et-status-placeholder">Emotion system is off</span>';
-        }
-
-        const state = getEmotionState();
-        if (!state || typeof state !== 'object') {
-            return '<span class="et-status-placeholder">Emotion unavailable</span>';
-        }
-
-        // Match icons from PLUTCHIK_EMOTIONS in emotion-system.js
-        const defs = {
-            joy: { label: 'Joy', icon: 'fa-solid fa-sun', color: '#facc15', intensity: ['Serenity', 'Joy', 'Ecstasy'] },
-            trust: { label: 'Trust', icon: 'fa-solid fa-handshake', color: '#4ade80', intensity: ['Acceptance', 'Trust', 'Admiration'] },
-            fear: { label: 'Fear', icon: 'fa-solid fa-ghost', color: '#a78bfa', intensity: ['Apprehension', 'Fear', 'Terror'] },
-            surprise: { label: 'Surprise', icon: 'fa-solid fa-bolt', color: '#38bdf8', intensity: ['Distraction', 'Surprise', 'Amazement'] },
-            sadness: { label: 'Sadness', icon: 'fa-solid fa-cloud-rain', color: '#60a5fa', intensity: ['Pensiveness', 'Sadness', 'Grief'] },
-            disgust: { label: 'Disgust', icon: 'fa-solid fa-face-grimace', color: '#a3e635', intensity: ['Boredom', 'Disgust', 'Loathing'] },
-            anger: { label: 'Anger', icon: 'fa-solid fa-fire-flame-curved', color: '#f87171', intensity: ['Annoyance', 'Anger', 'Rage'] },
-            anticipation: { label: 'Anticipation', icon: 'fa-solid fa-forward', color: '#fb923c', intensity: ['Interest', 'Anticipation', 'Vigilance'] },
-            love: { label: 'Love', icon: 'fa-solid fa-heart', color: '#fb7bb8', intensity: ['Fondness', 'Love', 'Adoration'] }
-        };
-
-        let dominantId = null;
-        let dominantVal = -Infinity;
-        Object.keys(defs).forEach((id) => {
-            const val = Number(state[id] || 0);
-            if (val > dominantVal) {
-                dominantVal = val;
-                dominantId = id;
-            }
-        });
-
-        const dominant = defs[dominantId] || defs.joy;
-        // Get sub-emotion label based on intensity value (matching emotion-system.js logic)
-        const intensityLabel = dominantVal < 33 ? dominant.intensity[0] : dominantVal < 66 ? dominant.intensity[1] : dominant.intensity[2];
-        const intensityPercent = Math.round(Math.max(0, dominantVal));
-        // Tooltip with full emotion info
-        const tooltip = `Current Emotion: ${dominant.label} | ${intensityLabel} (${intensityPercent}%)`;
-
-        return `<span class="et-status-chip et-status-chip-emotion" title="${tooltip}"><span class="et-status-emotion-icon" style="color:${dominant.color}"><i class="${dominant.icon}"></i></span><span class="et-status-main" style="color:${dominant.color}">${intensityLabel}</span></span>`;
-    }
-
     function updatePanelStatusRow(options = {}) {
         const { typing = false } = options;
         const row = jQuery('#et-panel-status-trigger');
@@ -1717,7 +1667,7 @@
 
         row.addClass('et-panel-status-clickable');
         row.attr('title', 'Open emotion details');
-        content.html(buildEmotionStatusHtml());
+        content.html(emotionSystem ? emotionSystem.buildStatusHtml() : '');
     }
 
     function getUserName() {
@@ -2059,10 +2009,9 @@
         }
 
 
-        // ── 3. MEMORY & MOOD ─────────────────────────────────────────────────────
-        // Shared memories (inside jokes, people, hobbies, etc.) and the emotion state.
+        // ── 3. MEMORY ────────────────────────────────────────────────────────────
+        // Shared memories (inside jokes, people, hobbies, etc.).
         prompt += buildInsideJokesContext();
-        prompt += buildEmotionContext();
 
         // ── 4. BEHAVIOUR LOCK ────────────────────────────────────────────────────
         // Fiction frame + persona-lock reminder land last so they act as the final
@@ -2073,6 +2022,11 @@
         } else {
             prompt += `\n\n${getPrompt('promptTetheredNoFrame')}`;
         }
+
+        // ── 4b. TEXTING STYLE ────────────────────────────────────────────────────
+        // The character's own way of texting (emotion popup, Personality tab), after
+        // the lock so it is among the last instructions read.
+        prompt += buildTextingStyleContext(char);
 
         // ── 5. VERBOSITY ─────────────────────────────────────────────────────────
         const charKey = getCharacterKey();
@@ -2962,12 +2916,6 @@
             const hasTextResponse = result && result.trim();
             if (hasTextResponse || imageReply?.triggered) {
                 const trimmedResult = hasTextResponse ? cleanGeneratedResponse(result) : '';
-                
-                if (hasTextResponse) {
-                    // Process character's response for emotion analysis
-                    processMessageEmotion(trimmedResult, false);
-                }
-
 
 
                 const charReply = {
@@ -3226,10 +3174,6 @@
             if (hasTextResponse || imageReply?.triggered) {
                 const trimmedResult = hasTextResponse ? cleanGeneratedResponse(result) : '';
 
-                if (hasTextResponse) {
-                    processMessageEmotion(trimmedResult, false);
-                }
-
                 const newSwipe = {
                     mes: trimmedResult,
                     send_date: Date.now(),
@@ -3483,8 +3427,6 @@
             // Restore to the currently active individual character
             applySelectedCharacterToPanel();
         }
-        // Emotion indicator always hidden in group session
-        jQuery('#et-emotion-indicator').addClass('et-emotion-indicator-hidden');
         updatePanelStatusRow();
         // Load and render the appropriate history (combine vs individual)
         const history = getChatHistory();
@@ -4512,8 +4454,6 @@
         const newAvatarHtml = groupManager.buildAvatarHtmlForChar(charObj, '', 'et-char-avatar-wrap');
         jQuery('#et-char-avatar-wrap').replaceWith(newAvatarHtml);
 
-        // Refresh emotion indicator — hidden in group session
-        jQuery('#et-emotion-indicator').addClass('et-emotion-indicator-hidden');
         updatePanelStatusRow();
 
         // Render this character's history
@@ -4867,15 +4807,9 @@
             // In group session the status row is informational only — no popup
             if (groupManager && groupManager.isGroupSession()) return;
             closeCharacterPicker();
-            if (settings.emotionSystemEnabled !== false) toggleEmotionPopup(this);
+            toggleEmotionPopup(this);
         });
 
-        // Initialize status row
-        // In group sessions, emotion indicator is always hidden
-        const inGroupNow = groupManager && groupManager.isGroupSession();
-        const emotionEnabled = settings.emotionSystemEnabled !== false && !inGroupNow;
-        jQuery('#et-emotion-indicator').toggleClass('et-emotion-indicator-hidden', !emotionEnabled);
-        if (emotionEnabled) updateEmotionIndicator();
         updatePanelStatusRow();
 
         jQuery('#et-send-btn').on('click', handleSend);
@@ -5183,9 +5117,6 @@
         // A photo or transfer is one message; voice from the voice button stays on until switched back, as in WeChat
         if (mode && !isVoiceButtonMode()) setComposeMode(null);
         if (isGenerating) updateSendButton(true);
-
-        // Process user message for emotion analysis
-        if (!mode) processMessageEmotion(text, true);
 
         const userMsg = createUserMessage(mes);
         // Detect memory-worthy spans in the user's message for manual highlighting
@@ -5740,18 +5671,14 @@
         if (emotionSystem) emotionSystem.clearEmotionState();
     }
 
-    function buildEmotionContext() {
-        return emotionSystem ? emotionSystem.buildEmotionContext() : '';
+    /** The chat's emotion state as an archive saves it. */
+    function getEmotionSnapshot() {
+        return emotionSystem ? emotionSystem.getEmotionSnapshot() : null;
     }
 
-    function processMessageEmotion(text, isUser) {
-        if (emotionSystem) emotionSystem.processMessageEmotion(text, isUser);
-        if (panelOpen) updatePanelStatusRow();
-    }
-
-    function applyReactionToEmotions(reactionId, direction = 1) {
-        if (emotionSystem) emotionSystem.applyReactionToEmotions(reactionId, direction);
-        if (panelOpen) updatePanelStatusRow();
+    /** A character's texting style (emotion popup, Personality tab) for its system prompt. */
+    function buildTextingStyleContext(char) {
+        return emotionSystem ? emotionSystem.buildTextingStyleContext(char.avatar || char.name, char.name || 'Character') : '';
     }
 
     // ============================================================
@@ -7134,12 +7061,10 @@
 
         msg.reactions = ChatViewModel.normalizeReactionStore(msg.reactions);
         const current = msg.reactions[reactionId] || { count: 0, mine: false };
-        let direction = 0;
 
         if (current.mine) {
             current.mine = false;
             current.count = Math.max(0, (parseInt(current.count, 10) || 1) - 1);
-            direction = -1;
         } else {
             // Check the 3-reaction limit
             const activeMineCount = Object.values(msg.reactions).filter(r => r.mine === true).length;
@@ -7149,7 +7074,6 @@
             }
             current.mine = true;
             current.count = Math.max(0, parseInt(current.count, 10) || 0) + 1;
-            direction = 1;
         }
 
         if (current.count <= 0) {
@@ -7174,10 +7098,6 @@
                 reactionBar.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
             }
         }, 50);
-
-        if (direction !== 0) {
-            applyReactionToEmotions(reactionId, direction);
-        }
     }
 
     // ============================================================
@@ -7767,13 +7687,10 @@
         emotionSystem = window.EchoTextEmotionSystem.createEmotionSystem({
             getSettings: () => settings,
             saveSettings,
-            getCurrentCharacter,
             getCharacterKey,
-            getChatHistory,
+            getCharacterName,
             isPanelOpen,
-            findLastUserMessageIndex,
-            expandTimeDateMacros,
-            baseUrl: BASE_URL,
+            isMobileDevice,
             onEmotionStateUpdated: ({ dominant, dominantChanged }) => {
                 if (!panelOpen) return;
                 updatePanelStatusRow();
@@ -7876,7 +7793,7 @@
             getChatHistory,
             saveChatHistory,
             renderMessages,
-            getEmotionState,
+            getEmotionSnapshot,
             isPanelOpen,
             isGroupSession: () => groupManager ? groupManager.isGroupSession() : false,
             captureGroupSnapshot: () => groupManager ? groupManager.captureGroupSnapshot(settings) : null,
@@ -7951,7 +7868,6 @@
             renderMessages,
             setTypingIndicatorVisible,
             setFabUnreadIndicator,
-            processMessageEmotion,
             getEmotionState,
             findLastUserMessageIndex,
             requestEchoTextCompletion,
@@ -7994,21 +7910,7 @@
             }
         });
 
-        stContextEmotion = window.EchoTextSTContextEmotion.createSTContextEmotion({
-            getSettings: () => settings,
-            getCurrentCharacter,
-            getCharacterKey,
-            getChatHistory,
-            apiAnalyzeTextEmotionRaw: (text, isUser) => emotionSystem ? emotionSystem.apiAnalyzeTextEmotionRaw(text, isUser) : null,
-            applyEmotionDelta: (deltas, source, reason) => {
-                if (emotionSystem) emotionSystem.applyEmotionDelta(deltas, source, reason);
-            },
-            getEmotionState: () => emotionSystem ? emotionSystem.getEmotionState() : null,
-            log,
-            warn
-        });
-
-        FA_REACTIONS = emotionSystem.FA_REACTIONS;
+        FA_REACTIONS = Features.REACTIONS;
 
         loadSettings();
         loadPersonasModule();
@@ -8080,10 +7982,6 @@
         }
 
         const context = SillyTavern.getContext();
-        
-        if (stContextEmotion && typeof stContextEmotion.bindSTEvents === 'function') {
-            stContextEmotion.bindSTEvents(context);
-        }
 
         _onChatChanged = async () => {
             cancelScheduledReply();
@@ -8155,9 +8053,6 @@
             if (_onGroupUpdated && context.event_types.GROUP_UPDATED) {
                 context.eventSource.removeListener(context.event_types.GROUP_UPDATED, _onGroupUpdated);
                 _onGroupUpdated = null;
-            }
-            if (stContextEmotion && typeof stContextEmotion.unbindSTEvents === 'function') {
-                stContextEmotion.unbindSTEvents(context);
             }
         }
         if (proactiveMessaging && typeof proactiveMessaging.stopProactiveScheduler === 'function') {

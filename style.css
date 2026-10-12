@@ -4432,28 +4432,6 @@ html.et-bg-light {
     opacity: 0.85;
 }
 
-/* Emotion indicator icon in header */
-.et-emotion-indicator {
-    font-size: 0.82rem;
-    cursor: pointer;
-    color: var(--et-theme-color);
-    transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), color 0.2s, opacity 0.2s;
-    flex-shrink: 0;
-    filter: drop-shadow(0 0 4px currentColor);
-    opacity: 0.85;
-}
-
-.et-emotion-indicator:hover {
-    transform: scale(1.3);
-    opacity: 1;
-}
-
-.et-emotion-indicator.et-emotion-indicator-hidden {
-    opacity: 0;
-    pointer-events: none;
-    width: 0;
-    overflow: hidden;
-}
 
 /* ============================================================
    EMOTION POPUP
@@ -4528,177 +4506,323 @@ html.et-bg-light {
     background: rgba(255, 80, 80, 0.12);
 }
 
-/* Dominant emotion display */
-.et-emotion-popup-dominant {
-    padding: 8px 12px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-    background: linear-gradient(90deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.025));
-    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+/* On a computer the header drags it (like .et-panel-header) */
+.et-emotion-popup-draggable .et-emotion-popup-header {
+    cursor: grab;
+    user-select: none;
+    -webkit-user-select: none;
 }
 
-.et-emo-dom-main {
-    min-width: 0;
-    display: flex;
-    align-items: baseline;
-    gap: 8px;
-    flex-wrap: wrap;
+.et-emotion-popup-draggable .et-emotion-popup-header:active {
+    cursor: grabbing;
 }
 
-.et-emo-dom-label {
-    font-size: 0.7rem;
+/* Body: scrolls under the header (Chat Influence's .et-uc-popup-body) */
+.et-emotion-popup {
+    display: flex;
+    flex-direction: column;
+    width: 330px;
+    max-height: min(560px, calc(100% - 24px));
+}
+
+.et-emotion-popup-body {
+    overflow-y: auto;
+    overflow-x: hidden;
+    flex: 1;
+    min-height: 0;
+    padding: 10px 12px 12px;
+    scrollbar-width: thin;
+    scrollbar-color: var(--et-theme-color) rgba(255, 255, 255, 0.06);
+}
+
+.et-emotion-popup-body::-webkit-scrollbar {
+    width: 5px;
+}
+
+.et-emotion-popup-body::-webkit-scrollbar-thumb {
+    background: var(--et-theme-color);
+    border-radius: 4px;
+}
+
+/* Reset, in the header (.et-uc-popup-action-btn) */
+.et-emo-reset {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.12);
     color: var(--et-text-muted);
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    flex-shrink: 0;
-}
-
-.et-emo-dom-value {
-    font-size: 1.0rem;
-    font-weight: 700;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    line-height: 1.1;
-}
-
-.et-emo-dom-pill {
-    --et-emo-pill-color: var(--et-theme-color);
-    flex-shrink: 0;
     font-size: 0.72rem;
     font-weight: 600;
-    letter-spacing: 0.2px;
-    color: color-mix(in srgb, var(--et-emo-pill-color) 80%, #fff 20%);
-    background: color-mix(in srgb, var(--et-emo-pill-color) 16%, transparent);
-    border: 1px solid color-mix(in srgb, var(--et-emo-pill-color) 44%, rgba(255, 255, 255, 0.22));
-    border-radius: 999px;
-    padding: 3px 9px;
-    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+    letter-spacing: 0;
+    text-transform: none;
+    padding: 3px 8px;
+    border-radius: var(--et-radius-sm);
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
 }
 
-/* Emotion rows */
-.et-emotion-popup-rows {
-    padding: 4px 0;
-    max-height: 320px;
-    overflow-y: auto;
-}
-
-.et-emotion-popup-rows::-webkit-scrollbar {
-    width: 3px;
-}
-
-.et-emotion-popup-rows::-webkit-scrollbar-thumb {
+.et-emo-reset:hover {
     background: rgba(255, 255, 255, 0.12);
-    border-radius: 2px;
+    color: var(--et-text);
 }
 
+/* Tabs: Emotions | Personality (.et-uc-tabs-row / .et-uc-tab-btn) */
+.et-emo-tabs {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    margin-bottom: 12px;
+}
+
+.et-emo-tab {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    padding: 8px 6px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 11px;
+    background: rgba(255, 255, 255, 0.04);
+    color: rgba(220, 228, 245, 0.86);
+    cursor: pointer;
+    font-size: 0.74rem;
+    font-family: var(--et-font-family);
+    font-weight: 600;
+    letter-spacing: 0.2px;
+    min-width: 0;
+    transition: background 0.18s, color 0.18s, border-color 0.18s, transform 0.16s;
+}
+
+.et-emo-tab:hover {
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--et-theme-color);
+    transform: translateY(-1px);
+}
+
+.et-emo-tab i {
+    font-size: 0.88rem;
+    color: var(--et-theme-color);
+}
+
+.et-emo-tab.et-emo-tab-active {
+    background: rgba(77, 166, 255, 0.12);
+    border-color: rgba(77, 166, 255, 0.45);
+    color: var(--et-text);
+}
+
+/* Choices in a row: mode, a trait's level, the texting-style type
+   (.et-uc-option-btn and its selected look, in the row's colour) */
+.et-emo-seg {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(0, 1fr);
+    gap: 5px;
+    margin-bottom: 8px;
+}
+
+.et-emo-seg-btn {
+    --seg-color: var(--emo-color, var(--et-theme-color));
+    padding: 6px 4px;
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--et-text);
+    cursor: pointer;
+    font-size: 0.7rem;
+    font-family: var(--et-font-family);
+    font-weight: 500;
+    letter-spacing: 0.2px;
+    transition: background 0.16s, border-color 0.16s, box-shadow 0.16s;
+}
+
+.et-emo-seg-btn:hover {
+    background: rgba(255, 255, 255, 0.09);
+    border-color: rgba(255, 255, 255, 0.3);
+}
+
+.et-emo-seg-btn.et-emo-seg-on {
+    background: color-mix(in srgb, var(--seg-color) 26%, rgba(255, 255, 255, 0.04));
+    border-color: color-mix(in srgb, var(--seg-color) 85%, transparent);
+    color: color-mix(in srgb, var(--seg-color) 45%, #fff);
+    font-weight: 600;
+    box-shadow:
+        0 0 14px color-mix(in srgb, var(--seg-color) 45%, transparent),
+        inset 0 0 8px color-mix(in srgb, var(--seg-color) 20%, transparent);
+}
+
+.et-emo-row .et-emo-seg-sm {
+    flex: 0 0 138px;
+    margin: 0;
+}
+
+.et-emo-seg-sm .et-emo-seg-btn {
+    padding: 4px 2px;
+    font-size: 0.66rem;
+}
+
+/* Group headings: Relationship, Desire, Mood, Texting style (.et-uc-group-label) */
+.et-emo-group-label {
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.6px;
+    text-transform: uppercase;
+    color: rgba(220, 228, 245, 0.92);
+    margin: 10px 0 4px;
+    padding-bottom: 4px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+/* One feeling or trait: icon, name, slider or levels, value, lock */
 .et-emo-row {
     display: flex;
     align-items: center;
-    gap: 10px;
-    padding: 4px 14px;
-    transition: background 0.12s;
-}
-
-.et-emo-row:hover {
-    background: rgba(255, 255, 255, 0.04);
-}
-
-.et-emo-row.et-emo-dominant {
-    background: rgba(255, 255, 255, 0.06);
+    gap: 8px;
+    padding: 4px 0;
 }
 
 .et-emo-icon {
-    width: 22px;
+    width: 20px;
+    flex-shrink: 0;
     text-align: center;
     font-size: 0.9rem;
-    flex-shrink: 0;
     filter: drop-shadow(0 0 4px currentColor);
 }
 
-.et-emo-info {
-    flex: 1;
-    min-width: 0;
+.et-emo-glyph {
+    display: inline-flex;
+    width: 1em;
+    height: 1em;
+    vertical-align: -0.125em;
 }
 
-.et-emo-header {
-    display: flex;
-    align-items: baseline;
-    gap: 6px;
-    margin-bottom: 2px;
-    min-width: 0;
+.et-emo-glyph svg {
+    width: 100%;
+    height: 100%;
+}
+
+/* The SVG icons draw smaller than Font Awesome's at the same size */
+.et-emo-icon .et-emo-glyph {
+    width: 1.2em;
+    height: 1.2em;
+    vertical-align: -0.2em;
 }
 
 .et-emo-label {
+    flex: 0 0 82px;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
     font-size: 0.74rem;
     font-weight: 600;
     color: var(--et-text);
-    flex-shrink: 0;
 }
 
-.et-emo-intensity {
-    font-size: 0.65rem;
-    color: var(--et-text-muted);
+.et-emo-row:has(.et-emo-seg) .et-emo-label {
     flex: 1;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
 }
 
-.et-emo-pct {
-    font-size: 0.65rem;
-    color: var(--et-text-muted);
-    flex-shrink: 0;
-    font-variant-numeric: tabular-nums;
-}
-
-/* Emotion bar */
-.et-emo-bar-track {
+/* The slider (.et-uc-slider), lit in the feeling's colour from 0 to the value */
+.et-emo-slider {
+    flex: 1;
+    min-width: 0;
+    -webkit-appearance: none;
+    appearance: none;
     height: 4px;
-    background: rgba(255, 255, 255, 0.08);
-    border-radius: 2px;
-    overflow: hidden;
+    border-radius: 4px;
+    background: linear-gradient(to right,
+        rgba(255, 255, 255, 0.12) var(--emo-from, 0%),
+        color-mix(in srgb, var(--emo-color) 70%, transparent) var(--emo-from, 0%) var(--emo-to, 0%),
+        rgba(255, 255, 255, 0.12) var(--emo-to, 0%));
+    outline: none;
+    cursor: pointer;
 }
 
-.et-emo-bar-fill {
-    height: 100%;
-    border-radius: 2px;
-    transition: width 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
-    opacity: 0.85;
-    box-shadow: 0 0 6px currentColor;
+.et-emo-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--emo-color);
+    box-shadow: 0 0 6px var(--emo-color);
+    transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
-/* Emotion delta indicator (arrow feedback) */
-.et-emo-delta {
-    font-size: 0.62rem;
-    font-weight: 600;
-    display: inline-flex;
-    align-items: center;
-    gap: 3px;
-    padding: 1px 5px;
-    border-radius: 3px;
-    margin-left: auto;
+.et-emo-slider::-moz-range-thumb {
+    width: 14px;
+    height: 14px;
+    border: none;
+    border-radius: 50%;
+    background: var(--emo-color);
+    box-shadow: 0 0 6px var(--emo-color);
+}
+
+.et-emo-slider:hover::-webkit-slider-thumb {
+    transform: scale(1.3);
+}
+
+.et-emo-slider:disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
+}
+
+.et-emo-val {
+    flex: 0 0 30px;
+    text-align: right;
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: var(--emo-color);
     font-variant-numeric: tabular-nums;
-    white-space: nowrap;
-    flex-shrink: 0;
 }
 
-.et-emo-delta-up {
-    color: #4ade80;
-    background: rgba(74, 222, 128, 0.12);
-}
-
-.et-emo-delta-down {
-    color: #f87171;
-    background: rgba(248, 113, 113, 0.12);
-}
-
-.et-emo-delta-neutral {
+.et-emo-lock {
+    flex: 0 0 20px;
+    padding: 2px 0;
+    background: none;
+    border: none;
     color: var(--et-text-muted);
-    background: rgba(255, 255, 255, 0.05);
+    font-size: 0.72rem;
+    opacity: 0.45;
+    cursor: pointer;
+    transition: opacity 0.15s, color 0.15s;
 }
+
+.et-emo-lock:hover {
+    opacity: 1;
+    color: var(--et-text);
+}
+
+.et-emo-locked .et-emo-lock {
+    opacity: 1;
+    color: var(--emo-color);
+}
+
+/* Texting style (the Context modal's .et-ctx-textarea) */
+.et-emo-style-text {
+    width: 100%;
+    box-sizing: border-box;
+    background: var(--et-input-bg, rgba(255, 255, 255, 0.07));
+    border: 1px solid var(--et-border, rgba(255, 255, 255, 0.12));
+    border-radius: var(--et-radius-sm, 8px);
+    color: var(--et-text, #e0e0e0);
+    font-family: var(--et-font-family, 'Inter', sans-serif);
+    font-size: 0.82rem;
+    line-height: 1.5;
+    padding: 8px 10px;
+    resize: vertical;
+    outline: none;
+    transition: border-color 0.18s, box-shadow 0.18s;
+    -webkit-appearance: none;
+}
+
+.et-emo-style-text::placeholder {
+    color: var(--et-text-muted, rgba(180, 180, 200, 0.45));
+}
+
+.et-emo-style-text:focus {
+    border-color: color-mix(in srgb, var(--et-theme-color, #4da6ff) 60%, transparent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--et-theme-color, #4da6ff) 12%, transparent);
+}
+
 
 @media (max-width: 400px) {
     .et-settings-body {
@@ -5019,12 +5143,6 @@ html.et-bg-light {
    HEADER STATUS ROW
    ============================================================ */
 
-#et-emotion-popup.et-emotion-popup {
-    min-height: 320px;
-    max-height: min(520px, calc(100% - 96px));
-    transform-origin: center center;
-}
-
 /* ─── Header text rows ─── */
 .et-char-name-row {
     display: flex;
@@ -5112,8 +5230,8 @@ html.et-bg-light {
     width: 22px;
     height: 22px;
     border-radius: 50%;
-    background: color-mix(in srgb, currentColor 14%, rgba(255, 255, 255, 0.04));
-    border: 1px solid color-mix(in srgb, currentColor 36%, rgba(255, 255, 255, 0.12));
+    background: color-mix(in srgb, currentColor 22%, rgba(255, 255, 255, 0.04));
+    border: 1px solid color-mix(in srgb, currentColor 60%, rgba(255, 255, 255, 0.12));
     font-size: 0.7rem;
     flex-shrink: 0;
     vertical-align: middle;
@@ -5126,9 +5244,21 @@ html.et-bg-light {
     margin-top: 1px;
 }
 
+/* The strongest feeling, lit in its colour like the popup's icons */
 .et-status-chip-emotion {
     min-height: 22px;
     padding-left: 4px;
+    border-color: color-mix(in srgb, var(--emo-color) 50%, transparent);
+    background: color-mix(in srgb, var(--emo-color) 14%, rgba(255, 255, 255, 0.04));
+}
+
+.et-status-chip-emotion .et-status-emotion-icon > * {
+    filter: drop-shadow(0 0 4px currentColor);
+}
+
+.et-status-chip-emotion .et-status-main {
+    color: color-mix(in srgb, var(--emo-color) 70%, #fff);
+    text-shadow: 0 0 8px color-mix(in srgb, var(--emo-color) 60%, transparent);
 }
 
 .et-status-chip-subtle {
@@ -6448,13 +6578,6 @@ html.et-bg-light {
 
 .et-sl-emo-row.et-sl-emo-dominant .et-sl-emo-track {
     box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08);
-}
-
-.et-sl-emo-intensity-label {
-    font-size: 0.66rem;
-    color: var(--et-text-muted);
-    font-style: italic;
-    white-space: nowrap;
 }
 
 .et-sl-emo-row i {

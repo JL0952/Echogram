@@ -35,13 +35,24 @@
                         </div>
 
                         <div class="et-field">
-                            <label class="et-toggle-row" for="et_emotion_system_panel">
-                                <input type="checkbox" id="et_emotion_system_panel" class="checkbox">
-                                <span class="et-label-text"><i class="fa-solid fa-heart-pulse"></i> Dynamic Emotion
-                                    System</span>
+                            <label class="et-field-label" for="et_emotion_mode_panel"><i class="fa-solid fa-heart-pulse"></i> Emotions</label>
+                            <div class="et-select-wrapper">
+                                <select id="et_emotion_mode_panel" class="et-select">
+                                    <option value="off">Off</option>
+                                    <option value="manual">Manual — you set them</option>
+                                    <option value="auto">Auto — the character updates them</option>
+                                </select>
+                                <i class="fa-solid fa-chevron-down et-select-arrow"></i>
+                            </div>
+                            <div class="et-hint">The character's feelings, which change how they text. Click the line under the character's name to set or lock them and to pick their personality.</div>
+                        </div>
+
+                        <div class="et-field">
+                            <label class="et-toggle-row" for="et_nsfw_enabled_panel">
+                                <input type="checkbox" id="et_nsfw_enabled_panel" class="checkbox">
+                                <span class="et-label-text"><i class="fa-solid fa-fire"></i> NSFW</span>
                             </label>
-                            <div class="et-hint">Track the character's emotional state using Plutchik's Wheel of
-                                Emotions. Click the character's name in the panel to view their state.</div>
+                            <div class="et-hint">Adds Desire to the character's feelings, for adult chats.</div>
                         </div>
 
                         <div class="et-field">
@@ -175,14 +186,6 @@
                                 <span class="et-label-text"><i class="fa-solid fa-comments"></i> EchoText Messages</span>
                             </label>
                             <div class="et-hint et-hint-indent">The other way round: your EchoText texts with the chat's character go into SillyTavern's own roleplay prompt, each exchange placed where it happened in the story. Texts from before the chat began are left out. Not in group chats.</div>
-                        </div>
-
-                        <div class="et-field">
-                            <label class="et-toggle-row" for="et_ctx_st_context_panel">
-                                <input type="checkbox" id="et_ctx_st_context_panel" class="checkbox">
-                                <span class="et-label-text"><i class="fa-solid fa-brain"></i> SillyTavern Context</span>
-                            </label>
-                            <div class="et-hint et-hint-indent">Silently reads the character's recent SillyTavern chat to detect their emotional state. That emotion bleeds into EchoText — if they're distressed in roleplay, they'll carry that mood here. The ST messages are not included in the EchoText conversation.</div>
                         </div>
 
                         <div class="et-field">

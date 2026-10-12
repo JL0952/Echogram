@@ -1,0 +1,229 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Emotion popup test</title>
+<link rel="stylesheet" href="build/vendor/css/fontawesome.min.css">
+<link rel="stylesheet" href="build/vendor/css/solid.min.css">
+<link rel="stylesheet" href="../../style.css">
+<style>
+    body { background: #1b1d2b; margin: 0; color: #ccd; font: 12px sans-serif; }
+    #et-panel { position: fixed !important; left: 16px !important; top: 10px !important; width: var(--w, 380px) !important; height: 640px !important;
+        opacity: 1 !important; transform: none !important; display: flex !important; flex-direction: column; }
+    #et-panel .et-panel-content { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+</style>
+</head><body>
+<div id="host"></div>
+<script src="build/vendor/jquery-3.5.1.min.js"></script>
+<script src="build/vendor/purify.min.js"></script>
+<script>window.SillyTavern = { libs: { DOMPurify: window.DOMPurify } };</script>
+<script src="../../lib/rich-messages.js"></script>
+<script src="../../lib/features.js"></script>
+<script src="../../lib/chat-view-model.js"></script>
+<script src="../../platforms/echotext/platform.js"></script>
+<script src="../../platforms/wechat/platform.js"></script>
+<script src="scenarios.js"></script>
+<script src="build/bundle-chrome.js"></script>
+<script src="../../lib/emotion-model.js"></script>
+<script src="../../lib/emotion-icons.js"></script>
+<script src="../../lib/emotion-system.js"></script>
+<script>
+// The emotion popup and status chip (lib/emotion-system.js) on the real panel.
+//   ?platform=echotext|wechat  ?scheme=dark|light  ?width=320  ?nsfw
+//   ?tab=emotions|personality  the popup as a screenshot shows it (filled-in example values)
+//   ?report                    runs runEmotionTest() and posts its result to the server
+(async function () {
+    const sleep = ms => new Promise(r => setTimeout(r, ms));
+    const params = new URLSearchParams(location.search);
+    const platform = params.get('platform') || 'echotext';
+    const scheme = params.get('scheme') || 'dark';
+    if (params.get('width')) document.documentElement.style.setProperty('--w', params.get('width') + 'px');
+    const sc = window.EchoTextScenarios[0];
+    const history = JSON.parse(JSON.stringify(sc.history));
+
+    // The extension's settings, as the old emotion system left them
+    const settings = {
+        emotionMode: 'manual', nsfwEnabled: params.has('nsfw'), characterProfiles: {},
+        emotionState: { 'mira.png': { joy: 40, trust: 20, love: 70, mbtiType: 'ISFP', personalityAnchor: {} } },
+    };
+    let saves = 0;
+    const env = { settings: { ...sc.settings, defaultPlatform: platform }, groupManager: null, FA_REACTIONS: window.EchoTextScenarioReactions,
+        showTypingIndicator: false, BASE_URL: '', VERSION_QUERY: '',
+        getCurrentCharacter: () => ({ name: 'Mira', avatar: 'mira.png' }), getCharacterName: () => 'Mira', isTetheredMode: () => true,
+        getUserName: () => '我', getCharacterKey: () => 'mira.png', getCharAvatarUrl: () => null, _pickerAvatarBg: () => '#7c6f9c',
+        isMobileDevice: () => false, getChatHistory: () => history, getUserAvatarUrl: () => null, isCombinedGroupMode: () => false };
+    const r = window.EchoTextHarness.chrome(env);
+    document.getElementById('host').innerHTML = r.buildPanelHtml();
+    r.renderMessages(history);
+    const panel = document.getElementById('et-panel');
+    panel.setAttribute('data-et-scheme', scheme);
+
+    const statusRow = () => document.getElementById('et-panel-status-content');
+    const emo = window.EchoTextEmotionSystem.createEmotionSystem({
+        getSettings: () => settings, saveSettings: () => { saves++; },
+        getCharacterKey: () => 'mira.png', getCharacterName: () => 'Mira', isPanelOpen: () => true,
+        onEmotionStateUpdated: () => { statusRow().innerHTML = emo.buildStatusHtml(); },
+    });
+    statusRow().innerHTML = emo.buildStatusHtml();
+
+    // index.js centres the popup in the panel after opening it
+    function open() {
+        emo.toggleEmotionPopup();
+        const popup = document.getElementById('et-emotion-popup');
+        popup.style.top = `${Math.max(12, Math.round((panel.clientHeight - popup.offsetHeight) / 2))}px`;
+        popup.style.left = `${Math.max(8, Math.round((panel.clientWidth - popup.offsetWidth) / 2))}px`;
+        return popup;
+    }
+    const $p = sel => jQuery('#et-emotion-popup').find(sel);
+    const click = sel => $p(sel)[0].click();
+    const slide = (id, value) => { const s = $p(`[data-emo-dim="${id}"]`)[0]; s.value = value; s.dispatchEvent(new Event('input', { bubbles: true })); s.dispatchEvent(new Event('change', { bubbles: true })); };
+    const rows = () => $p('.et-emo-row').toArray();
+    const start = () => settings.emotionState['mira.png'].start;
+    const profile = () => settings.characterProfiles['mira.png'];
+
+    window.runEmotionTest = async function () {
+        const res = {};
+        // The old state is replaced, nothing breaks
+        open();
+        await sleep(300);
+        res.oldStateReplaced = JSON.stringify(start()) === JSON.stringify(window.EchoTextEmotionModel.zeroValues());
+        res.statusNeutral = statusRow().textContent === 'Neutral';
+        res.rowsNsfwOff = rows().length;                                   // 10: no Desire
+        res.groups = $p('.et-emo-group-label').toArray().map(e => e.textContent).join(',');
+        res.modeShown = $p('.et-emo-seg-on').text();
+
+        // A slider sets the chat's value and the status chip
+        slide('joy', 60);
+        res.joySaved = start().joy === 60;
+        res.statusJoy = statusRow().textContent === 'Joy';
+
+        // Rapport goes below 0, lit from the middle
+        slide('rapport', -80);
+        res.rapportSaved = start().rapport === -80;
+        res.rapportShown = $p('[data-emo-dim="rapport"]').siblings('.et-emo-val').text() === '−80';
+        const rapportStyle = $p('[data-emo-dim="rapport"]')[0].style;
+        res.rapportFill = rapportStyle.getPropertyValue('--emo-from') === '10%' && rapportStyle.getPropertyValue('--emo-to') === '50%';
+        res.statusRapport = statusRow().textContent === 'Rapport';
+        slide('rapport', 0);
+
+        // Buttons redraw the popup without closing it
+        click('[data-emo-tab="personality"]');
+        click('[data-emo-tab="emotions"]');
+        await sleep(300);
+        res.staysOpen = !!document.getElementById('et-emotion-popup') && !$p('.et-emo-row').closest('.et-emotion-popup-closing').length;
+
+        // Lock: the value goes to the character, the slider stops moving
+        slide('romance', 80);
+        click('[data-emo-lock="romance"]');
+        res.lockStored = profile().locks.romance === 80;
+        res.lockedDisabled = $p('[data-emo-dim="romance"]')[0].disabled;
+        slide('romance', 10);
+        res.lockedIgnored = emo.getEmotionState().romance === 80;
+
+        // A cleared chat starts at 0; the lock stays
+        emo.clearEmotionState();
+        const cleared = emo.getEmotionState();
+        res.clearKeepsLock = cleared.joy === 0 && cleared.romance === 80;
+
+        // Unlocking hands the value back to the chat
+        jQuery('#et-emotion-popup').remove();
+        open();
+        click('[data-emo-lock="romance"]');
+        res.unlockKeepsValue = !('romance' in profile().locks) && start().romance === 80;
+
+        // Reset sets unlocked feelings to 0, locked ones stay
+        slide('anger', 45);
+        click('[data-emo-lock="anger"]');
+        slide('shock', 30);
+        click('[data-emo-action="reset"]');
+        res.resetKeepsLocks = emo.getEmotionState().shock === 0 && emo.getEmotionState().romance === 0 && emo.getEmotionState().anger === 45;
+        click('[data-emo-lock="anger"]');
+
+        // NSFW shows Desire
+        settings.nsfwEnabled = true;
+        click('[data-emo-tab="emotions"]');
+        res.rowsNsfwOn = rows().length;
+        res.desireRow = $p('[data-emo-dim="desire"]').length === 1;
+        settings.nsfwEnabled = false;
+
+        // Off: only the mode switch, no state, the chip says so
+        click('[data-emo-mode="off"]');
+        res.offRows = rows().length;
+        res.offState = emo.getEmotionState() === null;
+        res.statusOff = statusRow().textContent === 'Emotions off';
+        click('[data-emo-mode="manual"]');
+
+        // Personality: Big Five levels and the texting style
+        click('[data-emo-tab="personality"]');
+        res.traits = rows().map(r => r.querySelector('.et-emo-label').textContent).join(',');
+        click('[data-emo-trait="E"][data-emo-level="high"]');
+        res.traitSaved = profile().bigFive.E === 'high';
+        res.traitShown = $p('[data-emo-trait="E"].et-emo-seg-on').text() === 'High';
+        click('[data-emo-style-type="example"]');
+        const ta = $p('.et-emo-style-text')[0];
+        ta.value = 'lol ok\nwait what';
+        ta.dispatchEvent(new Event('input', { bubbles: true }));
+        await sleep(500);
+        res.styleSaved = profile().textingStyle.type === 'example' && profile().textingStyle.text === 'lol ok\nwait what';
+        res.stylePrompt = emo.buildTextingStyleContext('mira.png', 'Mira').includes('<texting_style_reference>');
+
+        // The header drags it; letting go outside doesn't close it; it stays in the panel
+        const pop = document.getElementById('et-emotion-popup');
+        const head = pop.querySelector('.et-emotion-popup-header');
+        const before = { left: pop.offsetLeft, top: pop.offsetTop };
+        const mouse = (type, target, x, y) => target.dispatchEvent(new MouseEvent(type, { bubbles: true, button: 0, clientX: x, clientY: y }));
+        mouse('mousedown', head, 100, 100);
+        mouse('mousemove', document, 70, 140);
+        mouse('mouseup', document, 70, 140);
+        res.dragMoves = pop.offsetLeft === Math.max(0, before.left - 30) && pop.offsetTop === before.top + 40;
+        panel.click();
+        await sleep(300);
+        res.dragKeepsOpen = !!document.getElementById('et-emotion-popup');
+        mouse('mousedown', head, 100, 100);
+        mouse('mousemove', document, 5000, 5000);
+        mouse('mouseup', document, 5000, 5000);
+        res.dragStaysInside = pop.offsetLeft + pop.offsetWidth <= panel.clientWidth && pop.offsetTop < panel.clientHeight;
+        res.draggableCursor = getComputedStyle(head).cursor === 'grab';
+        pop.style.left = `${before.left}px`; pop.style.top = `${before.top}px`;
+        await sleep(300);
+
+        // Fits the panel
+        const pr = document.getElementById('et-emotion-popup').getBoundingClientRect();
+        const box = panel.getBoundingClientRect();
+        res.insidePanel = pr.left >= box.left && pr.right <= box.right + 0.5 && pr.bottom <= box.bottom + 0.5;
+        res.saves = saves;
+        click('[data-emo-action="close"]');
+        await sleep(300);
+        res.closed = !document.getElementById('et-emotion-popup');
+
+        // A click outside still closes it
+        open();
+        await sleep(100);
+        statusRow().click();
+        await sleep(300);
+        res.outsideCloses = !document.getElementById('et-emotion-popup');
+
+        const checks = Object.entries(res).filter(([k, v]) => typeof v === 'boolean');
+        res.ok = checks.every(([, v]) => v) && res.rowsNsfwOff === 10 && res.rowsNsfwOn === 11 && res.offRows === 0
+            && res.groups === 'Relationship,Mood' && res.modeShown === 'Manual'
+            && res.traits === 'Extraversion,Agreeableness,Conscientiousness,Openness,Neuroticism';
+        return res;
+    };
+
+    // A screenshot: example values, a lock, Desire with ?nsfw
+    const tab = params.get('tab');
+    if (tab) {
+        settings.emotionState['mira.png'] = { start: { ...window.EchoTextEmotionModel.zeroValues(), rapport: -40, joy: 35, anticipation: 55, shock: 10, desire: 30 }, startAt: Date.now() };
+        settings.characterProfiles['mira.png'] = { bigFive: { E: 'high', A: 'low', C: 'mid', O: 'mid', N: 'high' }, locks: { romance: 95 },
+            textingStyle: { type: 'instruction', text: 'all lowercase, dry, never uses exclamation marks' } };
+        statusRow().innerHTML = emo.buildStatusHtml();
+        open();
+        if (tab === 'personality') $p('[data-emo-tab="personality"]')[0].click();
+    } else if (params.has('report')) {
+        const result = await window.runEmotionTest();
+        fetch('/__log', { method: 'POST', body: JSON.stringify({ runEmotionTest: result }) }).catch(() => {});
+    }
+    window.__done = true;
+})().catch(e => { window.__error = String(e && e.stack || e); console.error(e);
+    fetch('/__log', { method: 'POST', body: JSON.stringify({ error: window.__error }) }).catch(() => {}); });
+</script>
+</body></html>
