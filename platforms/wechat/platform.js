@@ -212,7 +212,7 @@
     window.EchoTextPlatforms = window.EchoTextPlatforms || {};
     window.EchoTextPlatforms.wechat = {
         id: 'wechat',
-        name: '微信 WeChat',
+        name: 'WeChat',
         features: ['photo', 'voice', 'transfer', 'file'],
         stylesheet: 'platform.css',
         // Voice messages are typed from the input bar's voice button, as WeChat records them

@@ -29,8 +29,8 @@
 <script src="../../lib/emotion-system.js"></script>
 <script>
 // The emotion popup and status chip (lib/emotion-system.js) on the real panel.
-//   ?platform=echotext|wechat  ?scheme=dark|light  ?width=320  ?nsfw
-//   ?tab=emotions|personality  the popup as a screenshot shows it (filled-in example values; Morality with ?nsfw)
+//   ?platform=echotext|wechat  ?scheme=dark|light  ?width=320  ?desire
+//   ?tab=emotions|personality  the popup as a screenshot shows it (filled-in example values; Desire and Morality with ?desire)
 //   ?report                    runs runEmotionTest() and posts its result to the server
 (async function () {
     const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -43,7 +43,7 @@
 
     // The extension's settings, as the old emotion system left them
     const settings = {
-        emotionMode: 'manual', nsfwEnabled: params.has('nsfw'), characterProfiles: {},
+        emotionMode: 'manual', nsfwEnabled: params.has('desire'), characterProfiles: {},
         emotionState: { 'mira.png': { joy: 40, trust: 20, love: 70, mbtiType: 'ISFP', personalityAnchor: {} } },
     };
     let saves = 0;
