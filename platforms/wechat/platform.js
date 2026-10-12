@@ -147,17 +147,6 @@
         return `<div class="wx-bubble wx-bubble-${side}"><div class="wx-text" data-et-role="text">${ctx.formatText(p.text)}</div></div>`;
     }
 
-    function imageAttachment(attachment) {
-        if (!attachment || attachment.type !== 'image') return '';
-        if (attachment.status === 'error') {
-            return `<div class="wx-placeholder">${attachment.error || '图片发送失败'}</div>`;
-        }
-        if (attachment.status !== 'ready' || !attachment.url) {
-            return '<div class="wx-placeholder">图片加载中…</div>';
-        }
-        return `<div class="wx-image" role="button" tabindex="0" data-et-action="image-open"><img src="${attachment.url}" alt=""></div>`;
-    }
-
     /** One message, from its view-model entry: a row per part, the last one the message's main row. */
     function message(m, ctx) {
         const side = m.isUser ? 'right' : 'left';
@@ -173,7 +162,7 @@
             const menu = j === last
                 ? `data-et-action="menu" data-index="${m.index}"`
                 : `data-et-action="part-menu" data-index="${m.index}" data-part="${j}"`;
-            return `<div class="wx-row wx-row-${side}" data-et-role="bubble${j === last ? ' main' : ''}" title="${tip}">${avatarHtml}<div class="wx-bubble-wrap">${senderHtml}${part(p, ctx, m)}${j === last ? imageAttachment(m.imageAttachment) : ''}</div><button class="wx-more" ${menu} data-is-user="${m.isUser ? 1 : 0}" title="更多">⋯</button></div>`;
+            return `<div class="wx-row wx-row-${side}" data-et-role="bubble${j === last ? ' main' : ''}" title="${tip}">${avatarHtml}<div class="wx-bubble-wrap">${senderHtml}${part(p, ctx, m)}</div><button class="wx-more" ${menu} data-is-user="${m.isUser ? 1 : 0}" title="更多">⋯</button></div>`;
         }).join('');
 
         const swipe = m.swipe
@@ -192,11 +181,6 @@
     /** WeChat says the other side is typing in the title (platform.css, on data-et-typing), not in the list. */
     function typing() {
         return '';
-    }
-
-    function imageGenerating(ctx) {
-        const m = { isUser: false, senderName: ctx.charName };
-        return `<div class="wx-message" data-et-role="image-generating"><div class="wx-row wx-row-left">${avatar(m, ctx)}<div class="wx-bubble-wrap"><div class="wx-placeholder">图片加载中…</div></div></div></div>`;
     }
 
     /** Between the texts of a reply arriving one by one, WeChat shows nothing. */
@@ -228,7 +212,6 @@
             part,
             emptyChat,
             typing,
-            imageGenerating,
             bubbleTyping,
             editToolbar,
         },

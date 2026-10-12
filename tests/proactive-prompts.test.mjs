@@ -42,6 +42,17 @@ test('no template sets the length or the format: the system prompt does', () => 
     }
 });
 
+test('templates read well once exact times are taken out', () => {
+    // buildProactiveTriggerPrompt replaces {{time}} with "this time of day"; only time_window means it
+    const p = proactive([]);
+    const config = p.getDefaultProactiveConfigForCharacter({});
+    for (const type of TRIGGERS) {
+        const text = p.buildProactiveTriggerPrompt(type, config, 0);
+        if (type !== 'time_window') assert.doesNotMatch(text, /this time of day/, type);
+        assert.doesNotMatch(text, /\{\{(time|date)\}\}|It is on /, type);
+    }
+});
+
 test('a trigger turn offers its media when the platform has them', () => {
     assert.equal(turn(WECHAT, 'commute_ping'),
         '[Instruction for this turn — not a message from Me; never quote or answer it: '

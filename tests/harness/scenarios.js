@@ -2,7 +2,6 @@
 (function () {
     const t0 = new Date(2026, 9, 8, 14, 0, 0).getTime();
     const m = min => t0 + min * 60000;
-    const IMG = 'data:image/svg+xml;utf8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="120" height="80"><rect width="120" height="80" fill="#4da6ff"/></svg>');
 
     const FA_REACTIONS = [
         { id: 'heart', icon: 'fa-solid fa-heart', label: 'Love', color: '#ff4d6d' },
@@ -25,18 +24,17 @@
             reactions: { haha: { count: 1, mine: true }, unknown: { count: 2 }, fire: { count: 0 }, star: { count: '2', mine: 'yes' } } },
         { is_user: false, mes: '<transfer>52</transfer>\nfor the tickets', send_date: m(5) },
         { is_user: true, mes: 'ok', send_date: m(30), meta: { receipt: { state: 'weird' } } },
-        { is_user: false, mes: '<react>wow</react>', send_date: m(31), imageAttachment: { type: 'image', status: 'loading' } },
+        { is_user: false, mes: 'wow\n<react>wow</react>', send_date: m(31) },
         { is_user: true, mes: '<transfer_decline>52</transfer_decline>\nnah keep it', send_date: m(32), charReaction: 'fire' },
         { is_user: true, mes: '<photo>my lunch</photo>\nlook', send_date: m(33) },
         { is_user: true, mes: '', send_date: m(34) },
         { is_user: true, mes: '<transfer>20</transfer>', send_date: m(40) },
-        { is_user: false, mes: 'oops', send_date: m(41), imageAttachment: { type: 'image', status: 'error', error: 'No GPU' } },
+        { is_user: false, mes: 'oops', send_date: m(41) },
         { is_user: true, mes: '<transfer>¥8.8</transfer>', send_date: m(42), charReaction: 'unknown-legacy' },
         { is_user: false, mes: '<transfer_accept>8.8</transfer_accept>', send_date: m(43) },
         { is_user: true, mes: 'next day', send_date: m(60 * 24) },
         { is_user: false, mes: '```js\nconst a = 1;\n\nconst b = 2;\n```\n*smiles* ~~no~~ `code` __u__ :D\n<transfer>€5</transfer>', send_date: m(60 * 24 + 1),
             swipes: [{ mes: 'a', send_date: m(1440) }, { mes: 'b', send_date: m(1441) }, { mes: 'c', send_date: m(1442) }], swipeIndex: 1,
-            imageAttachment: { type: 'image', status: 'ready', url: IMG, prompt: 'a blue rectangle' },
             reactions: { heart: { count: 2, mine: false } } },
     ];
 

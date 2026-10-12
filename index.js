@@ -67,8 +67,6 @@
     loadEchoTextModule('lib/memory-system.js', 'EchoTextMemorySystem');
     loadEchoTextModule('lib/saveload-modal.js', 'EchoTextSaveLoadModal');
     loadEchoTextModule('lib/group.js', 'EchoTextGroupManager');
-    loadEchoTextModule('lib/image-generation.js', 'EchoTextImageGeneration');
-    loadEchoTextModule('lib/gallery.js', 'EchoTextGallery');
     loadEchoTextModule('lib/character-picker.js', 'EchoTextCharacterPicker');
     loadEchoTextModule('lib/st-context-emotion.js', 'EchoTextSTContextEmotion');
     loadEchoTextModule('lib/theme-editor.js', 'EchoTextThemeEditor');
@@ -142,8 +140,6 @@
     let memorySystem = null;
     let saveLoadModal = null;
     let groupManager = null;
-    let imageGeneration = null;
-    let gallery = null;
     let characterPicker = null;
     let stContextEmotion = null;
     let themeEditor = null;
@@ -267,92 +263,6 @@
     function log(...args) { console.log(`[${EXTENSION_NAME}]`, ...args); }
     function warn(...args) { console.warn(`[${EXTENSION_NAME}]`, ...args); }
     function error(...args) { console.error(`[${EXTENSION_NAME}]`, ...args); }
-
-    function getImageMimeTypeFromDataUrl(dataUrl) {
-        const match = String(dataUrl || '').match(/^data:([^;]+);base64,/i);
-        return match?.[1] || 'image/png';
-    }
-
-    function extractImageUrlFromPluginResult(result) {
-        if (!result) return null;
-        if (typeof result === 'string') return result;
-        if (Array.isArray(result)) {
-            for (const item of result) {
-                const nested = extractImageUrlFromPluginResult(item);
-                if (nested) return nested;
-            }
-        }
-        if (typeof result === 'object') {
-            if (typeof result.pipe === 'string' && result.pipe.trim()) return result.pipe.trim();
-            if (typeof result.value === 'string' && result.value.trim()) return result.value.trim();
-        }
-        return result.url || result.image || result.path || result.src || result.data || result.base64 || null;
-    }
-
-    async function requestSillyTavernImageGeneration(payload) {
-        // Use sdPrompt (SD-optimized, includes character appearance) for the /sd command.
-        // contextPrompt is reserved for multimodal generators that handle verbose prose.
-        const sdPrompt = payload.sdPrompt || payload.prompt || '';
-        const response = await executeImageGenerationSlashCommand(buildImageGenerationSlashCommand(payload));
-
-        let url = extractImageUrlFromPluginResult(response);
-        if (typeof url === 'string') {
-            const mdMatch = url.match(/\!\[[^\]]*\]\(([^)]+)\)/);
-            if (mdMatch?.[1]) url = mdMatch[1];
-        }
-        if (!url) {
-            throw new Error('The SillyTavern Image Generation plugin did not return an image URL or data payload.');
-        }
-
-        return {
-            ok: true,
-            url,
-            mimeType: String(url).startsWith('data:') ? getImageMimeTypeFromDataUrl(url) : 'image/png',
-            prompt: sdPrompt,
-            provider: 'st_image_plugin'
-        };
-    }
-
-    function buildImageGenerationSlashCommand(payload) {
-        // Always use sdPrompt — the SD-optimized prompt that includes character appearance,
-        // visual descriptors, and scene context. Never use raw userDirectives here, as
-        // those may be unstripped trigger phrases with no appearance information.
-        const subject = String(payload.sdPrompt || payload.prompt || 'a candid photo')
-            .replace(/\r?\n+/g, ' ')
-            .replace(/"/g, '\\"')
-            .trim();
-        return `/sd quiet=true ${subject}`;
-    }
-
-    async function executeImageGenerationSlashCommand(command) {
-        const context = SillyTavern.getContext?.() || {};
-        const executor = context.executeSlashCommandsWithOptions
-            || context.executeSlashCommands
-            || window.executeSlashCommandsWithOptions
-            || window.executeSlashCommands;
-
-        if (typeof executor !== 'function') {
-            throw new Error('SillyTavern slash-command execution API was not available for image generation.');
-        }
-
-        // ST's image generation plugin shows a persistent "Generating an image..." toast.
-        // EchoText already has its own camera indicator, so dismiss that toast after a
-        // brief moment so it doesn't linger for the full generation duration.
-        setTimeout(() => {
-            const container = document.getElementById('toast-container');
-            if (!container) return;
-            container.querySelectorAll('.toast-info').forEach(toast => {
-                const title = toast.querySelector('.toast-title');
-                if (title && title.textContent.includes('Image Generation')) {
-                    jQuery(toast).fadeOut(400, () => jQuery(toast).remove());
-                }
-            });
-        }, 1500);
-
-        const result = await executor(command, { quiet: true, source: 'echotext' });
-        if (typeof result === 'string') return result.trim();
-        return result;
-    }
 
     function getIsGenerating() {
         return isGenerating;
@@ -487,9 +397,6 @@
         jQuery('#et_openai_key').val(settings.openai_key);
         jQuery('#et_openai_model').val(settings.openai_model);
         jQuery('#et_anti_refusal').prop('checked', settings.antiRefusal === true);
-        jQuery('#et_image_generation_enabled').prop('checked', settings.imageGenerationEnabled === true);
-        jQuery('#et_image_generation_include_text_reply').prop('checked', settings.imageGenerationIncludeTextReply !== false);
-        jQuery('#et_image_generation_plugin_notice').toggle(settings.imageGenerationEnabled === true);
         jQuery('#et_font_size').val(settings.fontSize);
         jQuery('#et_font_size_val').text(settings.fontSize + 'px');
         jQuery('#et_theme').val(settings.theme);
@@ -570,10 +477,6 @@
         jQuery('#et_openai_key_panel').val(settings.openai_key);
         jQuery('#et_openai_model_panel').val(settings.openai_model);
         jQuery('#et_anti_refusal_panel').prop('checked', settings.antiRefusal === true);
-        jQuery('#et_image_generation_enabled_panel').prop('checked', settings.imageGenerationEnabled === true);
-        jQuery('#et_image_generation_include_text_reply_panel').prop('checked', settings.imageGenerationIncludeTextReply !== false);
-        jQuery('#et_image_generation_plugin_notice_panel').toggle(settings.imageGenerationEnabled === true);
-        updateImageGenerationVisibility();
         updateProviderVisibilityPanel();
 
         // Populate connection profiles for panel
@@ -705,19 +608,9 @@
         jQuery('#et_profile_settings_panel').hide();
         jQuery('#et_ollama_settings_panel').hide();
         jQuery('#et_openai_settings_panel').hide();
-        jQuery('#et_image_generation_plugin_notice_panel').toggle(settings.imageGenerationEnabled === true);
         if (source === 'profile') jQuery('#et_profile_settings_panel').show();
         if (source === 'ollama') jQuery('#et_ollama_settings_panel').show();
         if (source === 'openai') jQuery('#et_openai_settings_panel').show();
-    }
-
-    function updateImageGenerationVisibility() {
-        const imgEnabled = settings.imageGenerationEnabled === true;
-        const hasChar = !!getCurrentCharacter();
-        const inGroup = groupManager && groupManager.isGroupSession();
-        jQuery('#et_image_generation_plugin_notice').toggle(imgEnabled);
-        jQuery('#et_image_generation_plugin_notice_panel').toggle(imgEnabled);
-        jQuery('#et-overflow-gallery').toggle(imgEnabled && hasChar && !inGroup);
     }
 
     // Initialize custom dropdowns for panel
@@ -957,16 +850,6 @@
             saveSettings();
             // Sync with modal
             jQuery('#et_anti_refusal').prop('checked', settings.antiRefusal);
-        });
-
-        // Image Generation toggle (panel)
-        jQuery('#et_image_generation_enabled_panel').off('change.panel').on('change.panel', function () {
-            settings.imageGenerationEnabled = jQuery(this).is(':checked');
-            saveSettings();
-            // Sync with modal
-            jQuery('#et_image_generation_enabled').prop('checked', settings.imageGenerationEnabled);
-            jQuery('#et_image_generation_plugin_notice').toggle(settings.imageGenerationEnabled === true);
-            updateImageGenerationVisibility();
         });
 
         // Context settings
@@ -1281,17 +1164,6 @@
             triggerTestProactiveMessage();
         });
 
-        // Trigger pill click-to-copy (panel accordion)
-        jQuery(document).off('click.pillcopy').on('click.pillcopy', '.et-imagetrig-pill-copyable', function () {
-            const pill = jQuery(this);
-            const text = pill.data('copy');
-            if (!text) return;
-            navigator.clipboard.writeText(text).then(() => {
-                pill.addClass('et-imagetrig-pill-copied');
-                setTimeout(() => pill.removeClass('et-imagetrig-pill-copied'), 1400);
-            }).catch(() => {});
-        });
-
         // iOS: patch panel sliders for touch. Called here — after the panel
         // HTML is guaranteed to be in the DOM and all jQuery input.panel
         // handlers above are already bound — so the touch handler's
@@ -1532,7 +1404,6 @@
         jQuery('#et_profile_settings').hide();
         jQuery('#et_ollama_settings').hide();
         jQuery('#et_openai_settings').hide();
-        updateImageGenerationVisibility();
         if (source === 'profile') jQuery('#et_profile_settings').show();
         if (source === 'ollama') jQuery('#et_ollama_settings').show();
         if (source === 'openai') jQuery('#et_openai_settings').show();
@@ -1591,7 +1462,6 @@
             setComposeMode(null);
             jQuery('#et-emotion-indicator').addClass('et-emotion-indicator-hidden');
             updatePanelStatusRow();
-            updateImageGenerationVisibility();
             jQuery('#et-overflow-saveload, #et-overflow-char-divider, #et-overflow-clear').show();
             const history = getChatHistory();
             renderMessages(history);
@@ -1618,7 +1488,6 @@
             updateEmotionIndicator();
         }
         updatePanelStatusRow();
-        updateImageGenerationVisibility();
 
         // Show/hide character-dependent overflow menu items
         jQuery('#et-overflow-saveload, #et-overflow-char-divider, #et-overflow-clear').toggle(hasChar);
@@ -2761,34 +2630,6 @@
         return getUserReactionIds(msg).map(id => `<react>${id}</react>`).join('\n');
     }
 
-    /**
-     * Resolves the text to use for a history message when building API context.
-     *
-     * For assistant turns where image generation ran but no text reply was included
-     * (mes is empty/whitespace), the AI would otherwise see a blank response to the
-     * user's photo request — making sophisticated models (e.g. Claude Thinking, GLM-5)
-     * interpret the request as "unfulfilled" and fixate on it in subsequent turns.
-     *
-     * This function synthesises a brief, natural acknowledgement stub for those turns
-     * so the conversational loop is always closed in the model's context window.
-     * The saved history is never modified — only the text sent to the API changes.
-     *
-     * @param {object} msg - a raw history message object
-     * @returns {string|null} the text to inject into the API context for this turn,
-     *   or null when the turn is left out (see getContextMessageText)
-     */
-    function resolveHistoryMessageText(msg) {
-        const rawText = getContextMessageText(msg.mes);
-        if (rawText === null) return null;
-        if (!msg.is_user && !rawText.trim() && msg.imageAttachment?.status === 'ready') {
-            // A silent image turn — give the model a compact, in-character stub so it
-            // knows the action was completed.  The exact phrasing is deliberately terse
-            // to avoid bloating the context with fabricated prose.
-            return '*[shared a photo]*';
-        }
-        return rawText;
-    }
-
     async function buildApiMessagesFromHistory(history, extraSystemMessages = [], targetCharOverride = null) {
         const systemPrompt = await buildSystemPrompt(targetCharOverride);
         const apiMessages = [{ role: 'system', content: systemPrompt }];
@@ -2800,9 +2641,7 @@
         history.forEach(msg => {
             // Strip thinking/reasoning tags from history messages before sending to context.
             // This prevents internal model reasoning blocks from inflating token budgets.
-            // resolveHistoryMessageText also fills in a natural stub for silent image turns
-            // so the model never sees an empty assistant response to a photo request.
-            const contextText = resolveHistoryMessageText(msg);
+            const contextText = getContextMessageText(msg.mes);
             if (contextText !== null) apiMessages.push({ role: msg.is_user ? 'user' : 'assistant', content: contextText });
             const reactionText = buildUserReactionText(msg);
             if (reactionText) apiMessages.push({ role: 'user', content: reactionText });
@@ -2819,7 +2658,7 @@
 
         let rawPrompt = '';
         history.forEach(msg => {
-            const contextText = resolveHistoryMessageText(msg);
+            const contextText = getContextMessageText(msg.mes);
             if (contextText !== null) rawPrompt += `${msg.is_user ? getUserName() : getCharacterName()}: ${contextText}\n`;
             const reactionText = buildUserReactionText(msg);
             if (reactionText) rawPrompt += `${getUserName()}: ${reactionText}\n`;
@@ -2860,9 +2699,7 @@
         }
 
         history.forEach(msg => {
-            // Apply the same silent-image-turn resolution used in buildApiMessagesFromHistory
-            // so group-member context windows also see a closed loop for image turns.
-            const contextText = resolveHistoryMessageText(msg);
+            const contextText = getContextMessageText(msg.mes);
             if (contextText !== null) apiMessages.push({ role: msg.is_user ? 'user' : 'assistant', content: contextText });
             const reactionText = buildUserReactionText(msg);
             if (reactionText) apiMessages.push({ role: 'user', content: reactionText });
@@ -2872,7 +2709,7 @@
         const userName = getUserName();
         let rawPrompt = '';
         history.forEach(msg => {
-            const contextText = resolveHistoryMessageText(msg);
+            const contextText = getContextMessageText(msg.mes);
             if (contextText !== null) rawPrompt += `${msg.is_user ? userName : charName}: ${contextText}\n`;
             const reactionText = buildUserReactionText(msg);
             if (reactionText) rawPrompt += `${userName}: ${reactionText}\n`;
@@ -2899,22 +2736,8 @@
         const unreadIdx = getUnreadUserMessageIndices(workingHistory);
         const markUnread = (state, note) => unreadIdx.forEach(i => setUserMessageReceiptState(workingHistory, i, state, note));
         const timing = getEmotionReplyTimingModel();
-        const latestUserMessage = Array.isArray(history) && history.length ? history[history.length - 1] : null;
 
-        // Pre-detect image requests BEFORE building API messages so the triggering
-        // user message can be hidden from the AI character. This prevents the character
-        // from awkwardly commenting on "send me a photo" when an image silently appears.
-        let pendingImageDetection = null;
-        let apiHistory = history;
-        if (imageGeneration && settings.imageGenerationEnabled === true && latestUserMessage?.is_user) {
-            pendingImageDetection = imageGeneration.detectImageRequest(latestUserMessage.mes, history);
-            if (pendingImageDetection.triggered) {
-                // Strip the image-triggering message — the AI never sees it
-                apiHistory = history.slice(0, -1);
-            }
-        }
-
-        const { apiMessages, rawPrompt, systemPrompt } = await buildApiMessagesFromHistory(apiHistory);
+        const { apiMessages, rawPrompt, systemPrompt } = await buildApiMessagesFromHistory(history);
 
         let result = '';
 
@@ -2938,82 +2761,22 @@
             }
 
             await sleepWithAbort(timing.typingLeadMs, abortController.signal);
-            
-            const bypassTextGeneration = (imageGeneration && latestUserMessage?.is_user && pendingImageDetection?.triggered && settings.imageGenerationIncludeTextReply === false);
 
-            if (!bypassTextGeneration) {
-                setTypingIndicatorVisible(true);
-                await sleepWithAbort(timing.replyDelayMs, abortController.signal);
-                result = await requestEchoTextCompletion({ apiMessages, rawPrompt, systemPrompt, signal: abortController.signal });
-            }
+            setTypingIndicatorVisible(true);
+            await sleepWithAbort(timing.replyDelayMs, abortController.signal);
+            result = await requestEchoTextCompletion({ apiMessages, rawPrompt, systemPrompt, signal: abortController.signal });
 
-            let imageReply = null;
-            if (imageGeneration && settings.imageGenerationEnabled === true && latestUserMessage?.is_user) {
-                // Reuse the pre-detection result — no need to call detectImageRequest again
-                if (pendingImageDetection?.triggered) {
-                    // Replace typing indicator with the dedicated image-generating indicator
-                    setTypingIndicatorVisible(false);
-                    setImageGeneratingIndicatorVisible(true);
-                }
-                imageReply = await imageGeneration.maybeGenerateImageReply(latestUserMessage.mes, history, abortController.signal);
-                setImageGeneratingIndicatorVisible(false);
-            }
+            if (result && result.trim()) {
+                const trimmedResult = cleanGeneratedResponse(result);
 
-            const hasTextResponse = result && result.trim();
-            if (hasTextResponse || imageReply?.triggered) {
-                const trimmedResult = hasTextResponse ? cleanGeneratedResponse(result) : '';
-                
-                if (hasTextResponse) {
-                    // Process character's response for emotion analysis
-                    processMessageEmotion(trimmedResult, false);
-                }
-
-
+                // Process character's response for emotion analysis
+                processMessageEmotion(trimmedResult, false);
 
                 const charReply = {
                     is_user: false,
                     mes: trimmedResult,
                     send_date: Date.now()
                 };
-
-                if (imageReply?.triggered) {
-                    charReply.imageAttachment = imageReply.result?.ok
-                        ? {
-                            status: 'ready',
-                            type: 'image',
-                            url: imageReply.result.url,
-                            mimeType: imageReply.result.mimeType || 'image/png',
-                            prompt: imageReply.result.prompt || imageReply.promptPayload?.prompt || '',
-                            triggerType: imageReply.detection?.type || 'direct_request'
-                        }
-                        : {
-                            status: 'error',
-                            type: 'image',
-                            error: imageReply.result?.error || 'Sorry, I could not generate an image right now.',
-                            triggerType: imageReply.detection?.type || 'direct_request'
-                        };
-
-                    if (imageReply.result?.ok && gallery) {
-                        try {
-                            gallery.addImage({
-                                charKey: getCharacterKey(),
-                                charName: getCharacterName(),
-                                avatarUrl: getAvatarUrlForCharacter(getCurrentCharacter()),
-                                url: imageReply.result.url,
-                                mimeType: imageReply.result.mimeType || 'image/png',
-                                prompt: imageReply.result.prompt || imageReply.promptPayload?.prompt || '',
-                                triggerType: imageReply.detection?.type || 'direct_request',
-                                createdAt: Date.now()
-                            });
-                        } catch (galleryErr) {
-                            warn('Failed to save generated image to gallery:', galleryErr);
-                        }
-                    }
-
-                    if (settings.imageGenerationIncludeTextReply === false && imageReply.result?.ok) {
-                        charReply.mes = '';
-                    }
-                }
 
                 const newHistory = [...withMessagesSentSince(workingHistory), charReply];
                 pruneSwipesOnPrevLastChar(newHistory);
@@ -3041,7 +2804,6 @@
             }
         } finally {
             setTypingIndicatorVisible(false);
-            setImageGeneratingIndicatorVisible(false);
             isGenerating = false;
             abortController = null;
             updateSendButton(false);
@@ -3087,14 +2849,13 @@
         msg.swipes = [{
             mes: msg.mes || '',
             send_date: msg.send_date || Date.now(),
-            imageAttachment: msg.imageAttachment ?? null,
         }];
         msg.swipeIndex = 0;
     }
 
     /**
-     * Syncs the parent message's top-level fields (mes, send_date, reactions,
-     * imageAttachment) from the swipe slot at `msg.swipeIndex`.
+     * Syncs the parent message's top-level fields (mes, send_date) from the swipe
+     * slot at `msg.swipeIndex`.
      */
     function syncMsgFromSwipe(msg) {
         if (!msg.swipes || msg.swipes.length === 0) return;
@@ -3104,11 +2865,6 @@
         msg.mes = swipe.mes;
         msg.send_date = swipe.send_date;
         // Reactions are message-level (not per-swipe) — never wiped by navigation
-        if (swipe.imageAttachment !== undefined && swipe.imageAttachment !== null) {
-            msg.imageAttachment = swipe.imageAttachment;
-        } else {
-            delete msg.imageAttachment;
-        }
     }
 
     /**
@@ -3189,90 +2945,21 @@
 
         const timing = getEmotionReplyTimingModel();
 
-        // Image detection on the last user message in the context slice
-        let pendingImageDetection = null;
-        let apiHistory = contextHistory;
-        const lastContextMsg = contextHistory.length > 0 ? contextHistory[contextHistory.length - 1] : null;
-        if (imageGeneration && settings.imageGenerationEnabled === true && lastContextMsg?.is_user) {
-            pendingImageDetection = imageGeneration.detectImageRequest(lastContextMsg.mes, contextHistory);
-            if (pendingImageDetection?.triggered) {
-                apiHistory = contextHistory.slice(0, -1);
-            }
-        }
-
         let result = '';
 
         try {
-            const { apiMessages, rawPrompt, systemPrompt } = await buildApiMessagesFromHistory(apiHistory);
+            const { apiMessages, rawPrompt, systemPrompt } = await buildApiMessagesFromHistory(contextHistory);
             await sleepWithAbort(Math.min(timing.replyDelayMs, 1500), abortController.signal);
+            result = await requestEchoTextCompletion({ apiMessages, rawPrompt, systemPrompt, signal: abortController.signal });
 
-            const bypassTextGeneration = (imageGeneration && lastContextMsg?.is_user && pendingImageDetection?.triggered && settings.imageGenerationIncludeTextReply === false);
-
-            if (!bypassTextGeneration) {
-                result = await requestEchoTextCompletion({ apiMessages, rawPrompt, systemPrompt, signal: abortController.signal });
-            }
-
-            let imageReply = null;
-            if (imageGeneration && settings.imageGenerationEnabled === true && lastContextMsg?.is_user) {
-                if (pendingImageDetection?.triggered) {
-                    setTypingIndicatorVisible(false);
-                    setImageGeneratingIndicatorVisible(true);
-                }
-                imageReply = await imageGeneration.maybeGenerateImageReply(lastContextMsg.mes, contextHistory, abortController.signal);
-                setImageGeneratingIndicatorVisible(false);
-            }
-
-            const hasTextResponse = result && result.trim();
-            if (hasTextResponse || imageReply?.triggered) {
-                const trimmedResult = hasTextResponse ? cleanGeneratedResponse(result) : '';
-
-                if (hasTextResponse) {
-                    processMessageEmotion(trimmedResult, false);
-                }
+            if (result && result.trim()) {
+                const trimmedResult = cleanGeneratedResponse(result);
+                processMessageEmotion(trimmedResult, false);
 
                 const newSwipe = {
                     mes: trimmedResult,
                     send_date: Date.now(),
                 };
-
-                if (imageReply?.triggered) {
-                    newSwipe.imageAttachment = imageReply.result?.ok
-                        ? {
-                            status: 'ready',
-                            type: 'image',
-                            url: imageReply.result.url,
-                            mimeType: imageReply.result.mimeType || 'image/png',
-                            prompt: imageReply.result.prompt || imageReply.promptPayload?.prompt || '',
-                            triggerType: imageReply.detection?.type || 'direct_request'
-                        }
-                        : {
-                            status: 'error',
-                            type: 'image',
-                            error: imageReply.result?.error || 'Sorry, I could not generate an image right now.',
-                            triggerType: imageReply.detection?.type || 'direct_request'
-                        };
-
-                    if (imageReply.result?.ok && gallery) {
-                        try {
-                            gallery.addImage({
-                                charKey: getCharacterKey(),
-                                charName: getCharacterName(),
-                                avatarUrl: getAvatarUrlForCharacter(getCurrentCharacter()),
-                                url: imageReply.result.url,
-                                mimeType: imageReply.result.mimeType || 'image/png',
-                                prompt: imageReply.result.prompt || imageReply.promptPayload?.prompt || '',
-                                triggerType: imageReply.detection?.type || 'direct_request',
-                                createdAt: Date.now()
-                            });
-                        } catch (galleryErr) {
-                            warn('Failed to save generated image to gallery:', galleryErr);
-                        }
-                    }
-
-                    if (settings.imageGenerationIncludeTextReply === false && imageReply.result?.ok) {
-                        newSwipe.mes = '';
-                    }
-                }
 
                 // Append as a new swipe and navigate to it
                 msg.swipes.push(newSwipe);
@@ -3298,7 +2985,6 @@
             renderMessages(history);
         } finally {
             setTypingIndicatorVisible(false);
-            setImageGeneratingIndicatorVisible(false);
             isGenerating = false;
             abortController = null;
             updateSendButton(false);
@@ -3969,35 +3655,6 @@
         }
     }
 
-    // ── Image generating indicator ────────────────────────────────────────────
-    // Shown INSTEAD of the typing indicator while SD image generation is in
-    // progress. Distinct appearance: camera icon + aperture-spin ring + label.
-    function setImageGeneratingIndicatorVisible(visible) {
-        if (!panelOpen) return;
-        const inner = jQuery('#et-messages-inner');
-        if (!inner.length) return;
-
-        if (visible) {
-            if (!inner.find('[data-et-role~="image-generating"]').length) {
-                const el = jQuery(getActivePlatform().templates.imageGenerating(getMessageRenderContext()).trim());
-                inner.append(el);
-                if (settings.autoScroll) {
-                    const messagesEl = document.getElementById('et-messages');
-                    if (messagesEl) {
-                        messagesEl.scrollTop = messagesEl.scrollHeight;
-                        el.find('img').on('load', function() {
-                            if (settings.autoScroll) {
-                                messagesEl.scrollTop = messagesEl.scrollHeight;
-                            }
-                        });
-                    }
-                }
-            }
-        } else {
-            inner.find('[data-et-role~="image-generating"]').remove();
-        }
-    }
-
     function setFabUnreadIndicator(hasUnread) {
         hasUnreadCharacterMessage = !!hasUnread;
         const fab = jQuery('#et-fab');
@@ -4585,10 +4242,6 @@
                             <i class="fa-solid fa-heart-pulse"></i>
                             <span>Status</span>
                         </div>
-                        <div class="et-overflow-menu-item" id="et-overflow-gallery" style="display:none">
-                            <i class="fa-regular fa-images"></i>
-                            <span>Gallery</span>
-                        </div>
                         <div class="et-overflow-menu-item" id="et-overflow-saveload" style="display:none">
                             <i class="fa-solid fa-floppy-disk"></i>
                             <span>Archives</span>
@@ -4814,13 +4467,6 @@
             closeOverflowMenu();
             settingsModal.openSettingsModal();
             moveModalToPortal('.et-settings-modal');
-        });
-
-        jQuery('#et-overflow-gallery').on('click', (e) => {
-            e.stopPropagation();
-            closeOverflowMenu();
-            if (gallery) gallery.openGalleryModal();
-            moveModalToPortal('.et-gallery-overlay');
         });
 
         // Shown only by platforms whose header hides the picker caret and status row
@@ -5946,177 +5592,6 @@
         setTimeout(revealNext, 260);
     }
 
-    function openGeneratedImageLightbox(imageUrl, promptText, options) {
-        if (!imageUrl) return;
-        jQuery('#et-generated-image-lightbox').remove();
-        const titleText = String(options?.title || '').trim();
-
-        // Navigation context — provided when caller has multiple images to step through
-        const navItems = Array.isArray(options?.navItems) && options.navItems.length > 1 ? options.navItems : null;
-        let currentNavIndex = navItems
-            ? Math.max(0, Math.min(Number(options?.navIndex) || 0, navItems.length - 1))
-            : 0;
-
-        // Read persisted accordion state (default: open)
-        let promptOpen = true;
-        try { promptOpen = localStorage.getItem('et_lightbox_prompt_open') !== 'false'; } catch (e) {}
-
-        const safePrompt = String(promptText || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-        const safeTitle = titleText ? String(titleText).replace(/</g, '&lt;').replace(/>/g, '&gt;') : '';
-
-        // Prompt panel — always rendered so navigateTo can update it in-place;
-        // hidden via class when the current item has no prompt.
-        const promptPanelClass = `et-lightbox-prompt-panel${safePrompt ? (promptOpen ? ' et-lightbox-prompt-open' : '') : ' et-lightbox-prompt-hidden'}`;
-        const promptHtml = `
-            <div class="${promptPanelClass}">
-                <button class="et-lightbox-prompt-toggle" title="${promptOpen ? 'Hide prompt' : 'Show prompt'}">
-                    <i class="fa-solid fa-wand-magic-sparkles"></i>
-                    <span>Image Prompt</span>
-                    <i class="fa-solid fa-chevron-down et-lightbox-prompt-chevron"></i>
-                </button>
-                <div class="et-lightbox-prompt-body">
-                    <p class="et-lightbox-prompt-text">${safePrompt}</p>
-                </div>
-            </div>`;
-
-        const navHtml = navItems ? `
-                    <button class="et-lightbox-nav et-lightbox-nav-prev" title="Previous image" aria-label="Previous image"${currentNavIndex === 0 ? ' disabled' : ''}><i class="fa-solid fa-chevron-left"></i></button>
-                    <button class="et-lightbox-nav et-lightbox-nav-next" title="Next image" aria-label="Next image"${currentNavIndex === navItems.length - 1 ? ' disabled' : ''}><i class="fa-solid fa-chevron-right"></i></button>` : '';
-
-        const counterHtml = navItems
-            ? `<span class="et-lightbox-nav-counter">${currentNavIndex + 1} / ${navItems.length}</span>`
-            : '';
-
-        const lightbox = jQuery(`
-            <div id="et-generated-image-lightbox" class="et-generated-image-lightbox-overlay">
-                <div class="et-lightbox-container">
-                    <button class="et-lightbox-close" title="Close"><i class="fa-solid fa-xmark"></i></button>
-                    ${counterHtml}
-                    <div class="et-lightbox-img-wrap">
-                        <img src="${imageUrl}" class="et-lightbox-img" alt="Generated image" />
-                        ${navHtml}
-                    </div>
-                    <div class="et-lightbox-title-bar${safeTitle ? '' : ' et-lightbox-title-bar-hidden'}"><i class="fa-regular fa-image"></i><span>${safeTitle}</span></div>
-                    ${promptHtml}
-                </div>
-            </div>
-        `);
-
-        // On mobile the panel lives inside the portal on <html>, so anything
-        // appended to <body> renders behind it. Append the lightbox to the
-        // portal directly so it stacks above the panel.
-        (isMobileDevice() ? jQuery(ensurePortal()) : jQuery('body')).append(lightbox);
-        requestAnimationFrame(() => lightbox.addClass('et-generated-image-lightbox-open'));
-
-        // ── Navigation ────────────────────────────────────────────────────────
-        function navigateTo(idx) {
-            if (!navItems) return;
-            const clamped = Math.max(0, Math.min(idx, navItems.length - 1));
-            if (clamped === currentNavIndex) return;
-            const dir = idx > currentNavIndex ? 'fwd' : 'bck';
-            currentNavIndex = clamped;
-            const item = navItems[currentNavIndex];
-
-            const wrap = lightbox.find('.et-lightbox-img-wrap');
-            const img = lightbox.find('.et-lightbox-img');
-            wrap.attr('data-nav-dir', dir);
-            img.addClass('et-lightbox-img-nav-fade');
-            setTimeout(() => {
-                img.attr('src', item.url)
-                   .removeClass('et-lightbox-img-nav-fade')
-                   .addClass('et-lightbox-img-nav-in');
-                setTimeout(() => img.removeClass('et-lightbox-img-nav-in'), 300);
-
-                lightbox.find('.et-lightbox-nav-counter').text(`${currentNavIndex + 1} / ${navItems.length}`);
-
-                const titleBar = lightbox.find('.et-lightbox-title-bar');
-                if (item.title) {
-                    titleBar.removeClass('et-lightbox-title-bar-hidden').find('span').text(item.title);
-                } else {
-                    titleBar.addClass('et-lightbox-title-bar-hidden');
-                }
-
-                const promptPanel = lightbox.find('.et-lightbox-prompt-panel');
-                if (item.prompt) {
-                    promptPanel.removeClass('et-lightbox-prompt-hidden');
-                    promptPanel.find('.et-lightbox-prompt-text').text(item.prompt);
-                } else {
-                    promptPanel.addClass('et-lightbox-prompt-hidden');
-                }
-
-                lightbox.find('.et-lightbox-nav-prev').prop('disabled', currentNavIndex === 0);
-                lightbox.find('.et-lightbox-nav-next').prop('disabled', currentNavIndex === navItems.length - 1);
-            }, 150);
-        }
-
-        if (navItems) {
-            lightbox.find('.et-lightbox-nav-prev').on('click', function (e) {
-                e.stopPropagation();
-                navigateTo(currentNavIndex - 1);
-            });
-            lightbox.find('.et-lightbox-nav-next').on('click', function (e) {
-                e.stopPropagation();
-                navigateTo(currentNavIndex + 1);
-            });
-        }
-
-        // Accordion toggle
-        lightbox.find('.et-lightbox-prompt-toggle').on('click', function (e) {
-            e.stopPropagation();
-            const panel = lightbox.find('.et-lightbox-prompt-panel');
-            const isOpen = panel.hasClass('et-lightbox-prompt-open');
-            panel.toggleClass('et-lightbox-prompt-open', !isOpen);
-            lightbox.find('.et-lightbox-prompt-toggle').attr('title', isOpen ? 'Show prompt' : 'Hide prompt');
-            try { localStorage.setItem('et_lightbox_prompt_open', String(!isOpen)); } catch (e) {}
-        });
-
-        // ── Close helpers ─────────────────────────────────────────────────────
-        function closeLightbox() {
-            lightbox.removeClass('et-generated-image-lightbox-open');
-            setTimeout(() => lightbox.remove(), 280);
-            jQuery(document).off('keydown', keyHandler);
-        }
-
-        // Close on click anywhere outside the prompt, title bar, or nav buttons
-        const closeHandler = (e) => {
-            const $t = jQuery(e.target);
-            if ($t.closest('.et-lightbox-prompt-panel').length ||
-                $t.closest('.et-lightbox-title-bar').length ||
-                $t.closest('.et-lightbox-nav').length) return;
-            closeLightbox();
-        };
-        lightbox.on('click', closeHandler);
-
-        // ── Keyboard navigation ───────────────────────────────────────────────
-        const keyHandler = (e) => {
-            if (e.key === 'Escape') {
-                closeLightbox();
-            } else if (e.key === 'ArrowLeft') {
-                navigateTo(currentNavIndex - 1);
-            } else if (e.key === 'ArrowRight') {
-                navigateTo(currentNavIndex + 1);
-            }
-        };
-        jQuery(document).on('keydown', keyHandler);
-
-        // ── Touch swipe navigation (mobile) ──────────────────────────────────
-        if (navItems) {
-            let touchStartX = 0, touchStartY = 0;
-            lightbox[0].addEventListener('touchstart', function (e) {
-                touchStartX = e.touches[0].clientX;
-                touchStartY = e.touches[0].clientY;
-            }, { passive: true });
-            lightbox[0].addEventListener('touchend', function (e) {
-                const dx = e.changedTouches[0].clientX - touchStartX;
-                const dy = e.changedTouches[0].clientY - touchStartY;
-                if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 45) {
-                    if (dx < 0) navigateTo(currentNavIndex + 1); // swipe left → next
-                    else        navigateTo(currentNavIndex - 1); // swipe right → prev
-                }
-            }, { passive: true });
-        }
-    }
-
     // ============================================================
     // MESSAGE ACTIONS
     // ============================================================
@@ -6150,22 +5625,6 @@
         syncMsgFromSwipe(msg);
         saveChatHistory(h);
         updateSwipeInPlace(msgIndex, h);
-    }
-
-    /** Opens a message's generated image, with every image in the chat to step through. */
-    function openImageAttachment(msgIndex) {
-        const history = getChatHistory();
-        const msg = history[msgIndex];
-        const navItems = history
-            .filter(m => m?.imageAttachment?.url)
-            .map(m => ({ url: m.imageAttachment.url, prompt: m.imageAttachment.prompt || '' }));
-        const currentUrl = msg?.imageAttachment?.url || '';
-        const navIndex = navItems.findIndex(x => x.url === currentUrl);
-        openGeneratedImageLightbox(
-            currentUrl,
-            msg?.imageAttachment?.prompt || '',
-            { navItems, navIndex: navIndex >= 0 ? navIndex : 0 }
-        );
     }
 
     /**
@@ -6203,7 +5662,6 @@
         // The character's avatar beside a message (platforms that draw one)
         'avatar': ({ el }) => openAvatarMenu(el),
         'transfer-respond': ({ el }) => openTransferResponseMenu(jQuery(el)),
-        'image-open': ({ msgIndex }) => openImageAttachment(msgIndex),
         // A remembered phrase opens the save modal, or the remove modal once saved
         'memory-highlight': ({ el }) => {
             if (el.classList.contains('et-mem-highlight-saved')) showMemoryRemoveModal(el);
@@ -6499,7 +5957,7 @@
         const children = inner.children();
         const messageEls = children.filter('[data-et-role~="message"]');
         const onlyMessages = children.toArray().every(el =>
-            /(^|\s)(message|typing|image-generating)(\s|$)/.test(el.getAttribute('data-et-role') || ''));
+            /(^|\s)(message|typing)(\s|$)/.test(el.getAttribute('data-et-role') || ''));
         if (!onlyMessages || !messageEls.length) return false;
 
         const platform = getActivePlatform();
@@ -6534,7 +5992,6 @@
         }
 
         // Indicators as a full render leaves them: the typing indicator last, if on
-        children.filter('[data-et-role~="image-generating"]').remove();
         const typing = inner.children('[data-et-role~="typing"]');
         if (!showTypingIndicator) typing.remove();
         else if (!typing.length) inner.append(platform.templates.typing(ctx));
@@ -6615,8 +6072,8 @@
                 messagesEl.scrollTop = messagesEl.scrollHeight;
                 messagesEl.style.scrollBehavior = '';
 
-                // Re-scroll when images (specifically generated images) finish loading
-                // so they don't break the auto-scroll flow by pushing text up.
+                // Re-scroll when images finish loading so they don't break the
+                // auto-scroll flow by pushing text up.
                 inner.find('img').on('load', scrollMessagesToEnd);
             }
         }
@@ -6755,7 +6212,7 @@
             && part.type !== 'reaction_note' && (part.type !== 'text' || part.text));
         // <react> tags aren't bubbles, so they survive deleting one
         const reactions = RichMessages.parseMessageParts(msg.mes).filter(part => part.type === 'react');
-        if (!remaining.length && !reactions.length && !msg.imageAttachment) {
+        if (!remaining.length && !reactions.length) {
             history.splice(msgIndex, 1);
             return;
         }
@@ -7804,7 +7261,6 @@
             toggleEchoTextMaster,
             updateProviderVisibility,
             updateProviderVisibilityPanel,
-            updateImageGenerationVisibility,
             getChatHistory,
             renderMessages,
             isPanelOpen,
@@ -7885,19 +7341,6 @@
             getCurrentGroupId: () => groupManager ? groupManager.getCurrentGroupId() : null
         });
 
-        imageGeneration = window.EchoTextImageGeneration.createImageGeneration({
-            getSettings,
-            getCurrentCharacter,
-            getCharacterName,
-            getCharacterKey,
-            getUserName,
-            requestSillyTavernImageGeneration,
-            requestEchoTextCompletion,
-            saveSettings,
-            log,
-            warn
-        });
-
         characterPicker = window.EchoTextCharacterPicker.createCharacterPicker({
             getSettings: getSettings,
             saveSettings,
@@ -7921,16 +7364,6 @@
             getSwitchGroupCharFn: () => (typeof switchGroupChar === 'function' ? switchGroupChar : null),
             getOnCombineModeToggleFn: () => (typeof onCombineModeToggle === 'function' ? onCombineModeToggle : null),
             getTriggerManualCombineCharFn: () => (typeof triggerManualCombineChar === 'function' ? triggerManualCombineChar : null)
-        });
-
-        gallery = window.EchoTextGallery.createGallery({
-            getSettings,
-            saveSettings,
-            getCurrentCharacter,
-            getCharacterKey,
-            getCharacterName,
-            getAvatarUrlForCharacter,
-            openGeneratedImageLightbox
         });
 
         groupManager = window.EchoTextGroupManager.createGroupManager({
@@ -7957,11 +7390,6 @@
             requestEchoTextCompletion,
             buildApiMessagesFromHistory,
             buildApiMessagesFromHistoryForChar,
-            // Exposes image-request detection so proactive messaging can also hide
-            // image-triggering user messages from the character's context window.
-            detectImageRequest: (msg, hist) => imageGeneration
-                ? imageGeneration.detectImageRequest(msg, hist)
-                : { triggered: false },
             expandTimeDateMacros,
             replaceMacros,
             isPanelOpen,

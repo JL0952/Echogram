@@ -147,20 +147,6 @@
         ).join('');
     }
 
-    function imageAttachment(attachment) {
-        if (!attachment || attachment.type !== 'image') return '';
-
-        if (attachment.status === 'error') {
-            return `<div class="et-image-attachment et-image-attachment-error"><div class="et-image-error"><i class="fa-solid fa-triangle-exclamation"></i><span>${attachment.error || 'Sorry, I could not generate an image right now.'}</span></div></div>`;
-        }
-
-        if (attachment.status !== 'ready' || !attachment.url) {
-            return `<div class="et-image-attachment et-image-attachment-loading"><div class="et-image-gen-indicator"><div class="et-image-gen-ring"><svg viewBox="0 0 36 36" class="et-image-gen-svg"><circle class="et-image-gen-track" cx="18" cy="18" r="14" fill="none" stroke-width="2.5"/><circle class="et-image-gen-arc" cx="18" cy="18" r="14" fill="none" stroke-width="2.5" stroke-dasharray="22 66" stroke-linecap="round"/></svg><i class="fa-solid fa-camera et-image-gen-icon"></i></div><span class="et-image-gen-label">Generating image…</span></div></div>`;
-        }
-
-        return `<div class="et-image-attachment et-image-attachment-ready" data-et-action="image-open"><img src="${attachment.url}" alt="Generated image" class="et-generated-image"><div class="et-image-attachment-meta"><i class="fa-solid fa-expand"></i><span>Tap to enlarge</span></div></div>`;
-    }
-
     /** Read-receipt icon for a user message's view-model receipt ({ state, note }). */
     function receipt(r, ctx) {
         const def = RECEIPT_STATES[r.state] || RECEIPT_STATES.sent;
@@ -243,7 +229,6 @@
                     ${leadingBubbles(m, 'et-bubble-char', ctx)}
                     <div class="et-bubble et-bubble-char et-bubble-main${mainCardClass}" data-et-role="bubble main">
                         ${part(mainPart, ctx)}
-                        ${imageAttachment(m.imageAttachment)}
                         ${swipeNavHtml}
                     </div>
                     <div class="et-message-footer">
@@ -279,28 +264,6 @@
             </div>`;
     }
 
-    /** An image is being generated: shown instead of the typing indicator. */
-    function imageGenerating() {
-        return `
-            <div class="et-message et-message-char et-message-typing" id="et-image-gen-indicator-msg" data-et-role="image-generating">
-                <div class="et-message-body">
-                    <div class="et-bubble et-bubble-char et-image-gen-bubble" title="Generating image…">
-                        <div class="et-image-gen-indicator">
-                            <div class="et-image-gen-ring">
-                                <svg viewBox="0 0 36 36" class="et-image-gen-svg">
-                                    <circle class="et-image-gen-track" cx="18" cy="18" r="14" fill="none" stroke-width="2.5"/>
-                                    <circle class="et-image-gen-arc" cx="18" cy="18" r="14" fill="none" stroke-width="2.5" stroke-dasharray="22 66" stroke-linecap="round"/>
-                                </svg>
-                                <i class="fa-solid fa-camera et-image-gen-icon"></i>
-                            </div>
-                            <span class="et-image-gen-label">Generating image…</span>
-                        </div>
-                    </div>
-                </div>
-            </div>`;
-    }
-
-    /** The typing bubble shown between the bubbles of a reply arriving one by one. */
     function bubbleTyping() {
         return '<div class="et-bubble et-bubble-char et-typing-bubble"><div class="et-typing-dots"><span></span><span></span><span></span></div></div>';
     }
@@ -321,7 +284,6 @@
             part,
             emptyChat,
             typing,
-            imageGenerating,
             bubbleTyping,
             editToolbar,
         },

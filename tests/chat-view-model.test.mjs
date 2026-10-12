@@ -171,15 +171,12 @@ test('senders: combine mode keeps each message\'s own character', () => {
     assert.deepEqual(single.map(m => [m.senderName, m.charKey]), [['Me', null], ['Mira', null], ['Mira', null]]);
 });
 
-test('memory highlights and image attachments pass through', () => {
+test('memory highlights pass through', () => {
     const highlights = [{ text: 'pizza', category: 'preference', label: 'Likes' }];
-    const attachment = { type: 'image', status: 'ready', url: 'x.png' };
-    const history = [user('pizza', 0, { memoryHighlights: highlights }), char('look', 1, { imageAttachment: attachment })];
+    const history = [user('pizza', 0, { memoryHighlights: highlights }), char('look', 1)];
     const on = build(history, { memoryHighlights: true });
     assert.deepEqual(on[0].memoryHighlights, highlights);
-    assert.deepEqual(on[1].imageAttachment, attachment);
     assert.deepEqual(build(history)[0].memoryHighlights, []);
-    assert.equal(on[0].imageAttachment, null);
 });
 
 test('messages without a send_date have no timestamp and do not break grouping', () => {
@@ -210,15 +207,13 @@ test('without reactions: reaction-only replies, tapbacks and character reactions
         char('<react>heart</react>', 1),
         user('two', 2),
         char('ok\n<react>haha</react>', 3, { reactions: { fire: { count: 1, mine: true } } }),
-        char('<react>wow</react>', 4, { imageAttachment: { type: 'image', status: 'ready', url: 'x.png' } }),
+        char('<react>wow</react>', 4),
     ];
     const view = build(history, { features: ['photo', 'transfer'] });
-    assert.deepEqual(view.map(m => m.index), [0, 2, 3, 4]);
-    assert.deepEqual(view.map(m => m.charReaction), [null, null, null, null]);
+    assert.deepEqual(view.map(m => m.index), [0, 2, 3]);
+    assert.deepEqual(view.map(m => m.charReaction), [null, null, null]);
     assert.deepEqual(view[2].reactions, []);
     assert.deepEqual(view[2].parts, [{ type: 'text', text: 'ok' }]);
-    // A reply that was only a reaction still shows its image
-    assert.deepEqual(view[3].parts, [{ type: 'text', text: '' }]);
     // The history keeps everything, and all features show it again
     assert.deepEqual(build(history).map(m => m.index), [0, 1, 2, 3, 4]);
     assert.equal(build(history)[0].charReaction, 'heart');
