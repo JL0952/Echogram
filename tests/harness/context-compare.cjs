@@ -27,9 +27,7 @@ function load(code) {
     }
     return new Function('env', `const FA_REACTIONS = env.FA_REACTIONS; const settings = env.settings; const getCharacterKey = () => 'mira.png'; const getUserName = () => 'Me'; const getCharacterName = () => 'Mira'; const stripThinkingTags = t => t;
         ${parts.join('\n')}
-        // A history message's context text (resolveHistoryMessageText until image generation was removed)
-        const historyText = typeof resolveHistoryMessageText === 'function' ? resolveHistoryMessageText : msg => getContextMessageText(msg.mes);
-        return { getContextMessageText, historyText, buildUserReactionText, buildCombinedReactionTurns, buildMessageFormatPrompt };`);
+        return { getContextMessageText, resolveHistoryMessageText, buildUserReactionText, buildCombinedReactionTurns, buildMessageFormatPrompt };`);
 }
 const { execSync } = require('child_process');
 const settings = { defaultPlatform: 'echotext', platformByCharacter: {} };
@@ -39,7 +37,7 @@ const newApi = load(fs.readFileSync(`${REPO}/index.js`, 'utf8'))({ FA_REACTIONS:
 const run = api => {
     const out = [api.buildMessageFormatPrompt('Mira', 'Me')];
     for (const sc of window.EchoTextScenarios) for (const msg of sc.history) {
-        out.push(api.getContextMessageText(msg.mes), api.historyText(msg), api.buildUserReactionText(msg), JSON.stringify(api.buildCombinedReactionTurns(msg, 'Mira')));
+        out.push(api.getContextMessageText(msg.mes), api.resolveHistoryMessageText(msg), api.buildUserReactionText(msg), JSON.stringify(api.buildCombinedReactionTurns(msg, 'Mira')));
     }
     return out;
 };
@@ -54,7 +52,7 @@ await new Promise(r => setTimeout(r));
 const sc = window.EchoTextScenarios[0];
 console.log('\n--- main chat, react disabled: what each turn sends ---');
 sc.history.forEach((msg, i) => {
-    const text = newApi.historyText(msg);
+    const text = newApi.resolveHistoryMessageText(msg);
     const tap = newApi.buildUserReactionText(msg);
     console.log(`${String(i).padStart(2)} ${msg.is_user ? 'user' : 'char'}  ${text === null ? '(left out)' : JSON.stringify(text)}${tap ? '  + tapbacks ' + JSON.stringify(tap) : ''}`);
 });

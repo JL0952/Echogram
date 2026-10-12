@@ -280,7 +280,7 @@
         await refreshTest('read receipt changes', 0,
             h => { h[0].meta = { receipt: { state: 'ghosted', note: 'left on read' } }; }, ['0']);
         await refreshTest('swipe changes text, cards and the reaction on the user message', 0,
-            h => { const m = h[16]; m.swipeIndex = 2; m.mes = 'Mira: new version\n<react>sad</react>\n<photo>x</photo>'; }, currentPlatform === 'wechat' ? ['16'] : ['15', '16']);
+            h => { const m = h[16]; m.swipeIndex = 2; m.mes = 'Mira: new version\n<react>sad</react>\n<photo>x</photo>'; delete m.imageAttachment; }, currentPlatform === 'wechat' ? ['16'] : ['15', '16']);
         await refreshTest('nothing changed', 0, () => {}, []);
         await refreshTest('a message not on screen is skipped', 0,
             h => { h.push({ is_user: true, mes: 'new', send_date: h[16].send_date + 1000 }); }, [], null, false);
@@ -659,7 +659,7 @@
     // ?report: post a summary to the server (serve.py prints it), for a phone or simulator
     if (location.search.includes('report')) {
         fetch('/__log', { method: 'POST', body: JSON.stringify({
-            scenarios: `${results.filter(x => x.ok || x.actionsSame).length}/${results.length} same (${results.filter(x => x.ok).length} with identical HTML and clicks)`,
+            scenarios: `${results.filter(x => x.ok || x.actionsSame).length}/${results.length} same`,
             tests: `${refreshResults.filter(x => x.ok).length}/${refreshResults.length} pass`,
             failed: refreshResults.filter(x => !x.ok).map(x => x.name),
             different: results.filter(x => !(x.ok || x.actionsSame)).map(x => x.name),

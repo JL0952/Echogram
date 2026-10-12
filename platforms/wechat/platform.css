@@ -611,6 +611,15 @@
     margin: 0;
 }
 
+/* A reply that is only an image has no text bubble (editing fills the text, so it shows again) */
+[data-platform="wechat"] .wx-bubble-wrap:has(.wx-image, .wx-placeholder) > .wx-bubble:has(> .wx-text > p:only-child:empty) {
+    display: none;
+}
+
+[data-platform="wechat"] .wx-bubble-wrap:has(> .wx-bubble:first-child:has(> .wx-text > p:only-child:empty)) > .wx-image,
+[data-platform="wechat"] .wx-bubble-wrap:has(> .wx-bubble:first-child:has(> .wx-text > p:only-child:empty)) > .wx-placeholder {
+    margin-top: 0;
+}
 
 /* A voice message (soloshow .voiceBubble): its width, set inline, grows with its
    length; the glyph faces the sender. A red dot sits beside one of the character's
@@ -976,6 +985,39 @@
     display: flex;
 }
 
+/* A generated image, or its placeholder */
+[data-platform="wechat"] .wx-image {
+    display: block;
+    max-width: 220px;
+    max-height: 300px;
+    margin-top: 6px;
+    overflow: hidden;
+    border-radius: 5px;
+    cursor: zoom-in;
+}
+
+[data-platform="wechat"] .wx-image img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+[data-platform="wechat"] .wx-placeholder {
+    min-width: 120px;
+    margin-top: 6px;
+    padding: 18px 14px;
+    box-sizing: border-box;
+    border-radius: 5px;
+    color: var(--wx-muted);
+    background: var(--wx-bubble-in);
+    font-size: 13px;
+    text-align: center;
+}
+
+[data-platform="wechat"] .wx-bubble-wrap > .wx-placeholder:first-child {
+    margin-top: 0;
+}
 
 /* ── Transfer card ──────────────────────────────────────────── */
 
