@@ -313,7 +313,7 @@
     window.EchoTextPlatforms = window.EchoTextPlatforms || {};
     window.EchoTextPlatforms.echotext = {
         id: 'echotext',
-        name: 'EchoText',
+        name: 'Echogram',
         // Rich-message features this look supports (lib/features.js)
         features: ['photo', 'voice', 'react', 'transfer', 'file'],
         templates: {

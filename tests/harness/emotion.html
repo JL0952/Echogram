@@ -22,16 +22,20 @@
 <script src="../../platforms/echotext/platform.js"></script>
 <script src="../../platforms/wechat/platform.js"></script>
 <script src="scenarios.js"></script>
-<script src="build/bundle-chrome.js"></script>
+<script src="build/bundle-reply.js"></script>
 <script src="../../lib/emotion-model.js"></script>
 <script src="../../lib/emotion-icons.js"></script>
 <script src="../../lib/texting-behavior.js"></script>
 <script src="../../lib/emotion-system.js"></script>
 <script>
-// The emotion popup and status chip (lib/emotion-system.js) on the real panel.
+// The emotion popup and status chip (lib/emotion-system.js) on the real panel, and
+// how a reply lands in Auto mode (index.js's generateEchoText / generateEchoTextSwipe,
+// with the model stubbed).
 //   ?platform=echotext|wechat  ?scheme=dark|light  ?width=320  ?desire
-//   ?tab=emotions|personality  the popup as a screenshot shows it (filled-in example values; Desire and Morality with ?desire)
-//   ?report                    runs runEmotionTest() and posts its result to the server
+//   ?tab=emotions|personality  the popup as a screenshot shows it (filled-in example values; Desire and Morality with ?desire;
+//                              &auto: in Auto mode, the last reply's changes beside the values for a few seconds)
+//   ?auto                      a reply in Auto mode arriving with the popup closed: the chips under the header
+//   ?report                    runs runEmotionTest() and runAutoTest() and posts their results to the server
 (async function () {
     const sleep = ms => new Promise(r => setTimeout(r, ms));
     const params = new URLSearchParams(location.search);
@@ -47,23 +51,31 @@
         emotionState: { 'mira.png': { joy: 40, trust: 20, love: 70, mbtiType: 'ISFP', personalityAnchor: {} } },
     };
     let saves = 0;
-    const env = { settings: { ...sc.settings, defaultPlatform: platform }, groupManager: null, FA_REACTIONS: window.EchoTextScenarioReactions,
-        showTypingIndicator: false, BASE_URL: '', VERSION_QUERY: '',
-        getCurrentCharacter: () => ({ name: 'Mira', avatar: 'mira.png' }), getCharacterName: () => 'Mira', isTetheredMode: () => true,
-        getUserName: () => '我', getCharacterKey: () => 'mira.png', getCharAvatarUrl: () => null, _pickerAvatarBg: () => '#7c6f9c',
-        isMobileDevice: () => false, getChatHistory: () => history, getUserAvatarUrl: () => null, isCombinedGroupMode: () => false };
-    const r = window.EchoTextHarness.chrome(env);
-    document.getElementById('host').innerHTML = r.buildPanelHtml();
-    r.renderMessages(history);
-    const panel = document.getElementById('et-panel');
-    panel.setAttribute('data-et-scheme', scheme);
-
+    let r;
     const statusRow = () => document.getElementById('et-panel-status-content');
     const emo = window.EchoTextEmotionSystem.createEmotionSystem({
         getSettings: () => settings, saveSettings: () => { saves++; },
         getCharacterKey: () => 'mira.png', getCharacterName: () => 'Mira', isPanelOpen: () => true,
+        getChatHistory: key => r.getEmotionHistory(key),
         onEmotionStateUpdated: () => { statusRow().innerHTML = emo.buildStatusHtml(); },
     });
+    // What a failed generation reports
+    const errors = [];
+    window.toastr = { error: m => errors.push(m), warning: m => errors.push(m), success() {}, info() {} };
+    const env = { settings: { ...sc.settings, defaultPlatform: platform, chatHistory: { 'mira.png': history } }, groupManager: null, FA_REACTIONS: window.EchoTextScenarioReactions,
+        showTypingIndicator: false, BASE_URL: '', VERSION_QUERY: '', panelOpen: true, isGenerating: false,
+        emotionSystem: emo, imageGeneration: null, memorySystem: null, gallery: null, abortController: null,
+        getCurrentCharacter: () => ({ name: 'Mira', avatar: 'mira.png' }), getCharacterName: () => 'Mira', isTetheredMode: () => true,
+        getUserName: () => '我', getCharacterKey: () => 'mira.png', getCharAvatarUrl: () => null, _pickerAvatarBg: () => '#7c6f9c',
+        isMobileDevice: () => false, getUserAvatarUrl: () => null, isCombinedGroupMode: () => false,
+        // A reply: no delays, the model stubbed (runAutoTest sets what it answers)
+        getEmotionReplyTimingModel: () => ({ deliveredDelayMs: 0, readDelayMs: 0, ghostDelayMs: 0, typingLeadMs: 0, replyDelayMs: 0 }),
+        sleepWithAbort: async () => {}, error: (...a) => errors.push(a.join(' ')) };
+    r = window.EchoTextHarness.reply(env);
+    document.getElementById('host').innerHTML = r.buildPanelHtml();
+    r.renderMessages(history);
+    const panel = document.getElementById('et-panel');
+    panel.setAttribute('data-et-scheme', scheme);
     statusRow().innerHTML = emo.buildStatusHtml();
 
     function open() {
@@ -226,18 +238,137 @@
         return res;
     };
 
+    // Auto mode (docs/emotion-plan.md 3.8): each reply reports changed feelings in a hidden <mood> line
+    window.runAutoTest = async function () {
+        const res = {};
+        jQuery('#et-emotion-popup').remove();
+        Object.assign(settings, { characterProfiles: {}, emotionState: {}, nsfwEnabled: false, emotionMode: 'manual' });
+        errors.length = 0;
+        const chat = () => env.settings.chatHistory['mira.png'];
+        const val = id => emo.getEmotionState()[id];
+        const shown = id => $p(`[data-emo-dim="${id}"]`).siblings('.et-emo-val').text();
+        const flash = id => $p(`[data-emo-dim="${id}"]`).closest('.et-emo-row').find('.et-emo-flash');
+        const layout = () => $p('.et-emo-row').toArray().map(row => [...row.children].filter(el => !el.classList.contains('et-emo-flash'))
+            .map(el => `${Math.round(el.getBoundingClientRect().left)}:${Math.round(el.getBoundingClientRect().width)}`).join(',')).join('|');
+        const rules = () => emo.buildMoodRules('mira.png', { charName: 'Mira', userName: 'Qi' });
+        env.settings.chatHistory['mira.png'] = [{ is_user: true, mes: 'hey, you up?', send_date: Date.now() - 60000 }];
+        r.renderMessages(chat());
+        open();
+        click('[data-emo-tab="emotions"]');
+        const manualLayout = layout();
+        click('[data-emo-mode="auto"]');
+        res.autoShown = $p('.et-emo-seg-on').text() === 'Auto';
+        res.sameLayoutAsManual = layout() === manualLayout;
+        res.firstRule = rules().includes('<mood>joy 60, anger 15</mood>') && rules().includes('In this first report');
+
+        // The model, stubbed: what each reply says, and the chats it was given
+        const sent = [];
+        let next = '';
+        env.buildApiMessagesFromHistory = async h => { sent.push(h.map(m => m.mes).join('\n')); return { apiMessages: [], rawPrompt: '', systemPrompt: '' }; };
+        env.requestEchoTextCompletion = async () => next;
+
+        // A reply with a <mood> line: the line is neither shown nor kept; the chat's first report goes straight there
+        next = 'yeah\ncan\'t sleep\n<mood>joy 60, anticipation 40</mood>';
+        await r.generateEchoText(chat());
+        const first = chat()[chat().length - 1];
+        res.lineTakenOut = first.mes === 'yeah\ncan\'t sleep';
+        res.moodKept = JSON.stringify(first.mood) === '{"joy":60,"anticipation":40}';
+        res.notShown = panel.textContent.includes('can\'t sleep') && !panel.textContent.includes('mood>') && !panel.textContent.includes('joy 60');
+        res.valuesMoved = val('joy') === 60 && val('anticipation') === 40;
+        res.statusJoy = statusRow().textContent === 'Joy';
+        res.burstChips = jQuery('#et-emo-burst .et-emo-burst-chip').length === 2;
+        res.popupRedrawn = shown('joy') === '60';
+        res.flashShown = flash('joy').hasClass('et-emo-flash-up') && flash('joy').text() === '60' && flash('anticipation').text() === '40' && $p('.et-emo-flash').length === 2;
+        res.flashTakesNoRoom = layout() === manualLayout;
+        const valBox = $p('[data-emo-dim="joy"]').siblings('.et-emo-val')[0].getBoundingClientRect();
+        res.flashRightOfValue = flash('joy')[0].getBoundingClientRect().left >= valBox.right - 1;
+        await sleep(3500);
+        res.flashFades = !$p('.et-emo-flash').length;
+        click('[data-emo-action="close"]');
+        await sleep(300);
+        open();
+        res.flashOnOpen = flash('joy').text() === '60' && flash('anticipation').text() === '40';
+        await sleep(3500);
+        res.flashOnOpenFades = !$p('.et-emo-flash').length;
+        res.ruleNotFirst = !rules().includes('first report') && rules().includes('joy 60');
+
+        // The next report moves a feeling 25 at most (Neuroticism mid); the model never sees a <mood> line
+        next = '<mood>joy 100, anger 90</mood>\nok wait';
+        await r.generateEchoText([...chat(), { is_user: true, mes: 'same lol', send_date: Date.now() }]);
+        res.capped = val('joy') === 85 && val('anger') === 25;
+        res.flashes = flash('anger').text() === '25' && flash('joy').text() === '25' && !flash('anticipation').length;
+        res.contextClean = sent.length === 2 && sent.every(text => !text.includes('<mood'));
+
+        // A new version of the reply brings its own report; going back to the first brings that one back
+        env.settings.swipedMessages = true;
+        const idx = chat().length - 1;
+        next = 'nvm\n<mood>sadness 30</mood>';
+        await r.generateEchoTextSwipe(chat(), idx, chat().slice(0, idx));
+        res.swipeReport = val('joy') === 60 && val('anger') === 0 && val('sadness') === 25 && shown('sadness') === '25';
+        const msg = chat()[idx];
+        msg.swipeIndex = 0;
+        r.syncMsgFromSwipe(msg);
+        r.saveChatHistory(chat());
+        res.swipeBack = val('joy') === 85 && val('sadness') === 0 && shown('joy') === '85';
+
+        // Deleting the reply takes its report back
+        r.saveChatHistory(chat().slice(0, idx));
+        res.deleteReverts = val('joy') === 60 && val('anger') === 0 && shown('joy') === '60' && !$p('.et-emo-flash').length;
+
+        // A slider in Auto mode starts over from there: the last reply's changes go, the next report is capped
+        await sleep(5);
+        slide('joy', 20);
+        res.slideKeeps = val('joy') === 20 && val('anticipation') === 40;
+        next = 'ok\n<mood>joy 90</mood>';
+        await r.generateEchoText(chat());
+        res.slideThenCapped = val('joy') === 45;
+
+        // A locked feeling ignores reports, and the rule says it's fixed
+        click('[data-emo-lock="anger"]');
+        next = 'grr\n<mood>anger 70</mood>';
+        await r.generateEchoText([...chat(), { is_user: true, mes: '?', send_date: Date.now() }]);
+        res.lockIgnores = val('anger') === 0 && rules().includes('anger 0 (fixed)');
+        click('[data-emo-lock="anger"]');
+
+        // Back to Manual: the values stay; no rule, and a stray <mood> line is taken out but not kept
+        const before = JSON.stringify(emo.getEmotionState());
+        click('[data-emo-mode="manual"]');
+        res.manualKeeps = JSON.stringify(emo.getEmotionState()) === before;
+        res.manualNoRule = rules() === '';
+        next = 'fine\n<mood>joy 100</mood>';
+        await r.generateEchoText([...chat(), { is_user: true, mes: '!', send_date: Date.now() }]);
+        const last = chat()[chat().length - 1];
+        res.manualStrips = last.mes === 'fine' && !('mood' in last) && JSON.stringify(emo.getEmotionState()) === before;
+
+        res.errors = errors.slice();
+        click('[data-emo-action="close"]');
+        await sleep(300);
+        res.ok = Object.values(res).filter(v => typeof v === 'boolean').every(Boolean) && !errors.length;
+        return res;
+    };
+
     // A screenshot: example values, a lock, Desire with ?nsfw
     const tab = params.get('tab');
-    if (tab) {
+    if (tab || params.has('auto')) {
         settings.emotionState['mira.png'] = { start: { ...window.EchoTextEmotionModel.zeroValues(), rapport: -40, joy: 35, anticipation: 55, shock: 10, desire: 30 }, startAt: Date.now() };
         settings.characterProfiles['mira.png'] = { bigFive: { E: 'high', A: 'low', C: 'mid', O: 'mid', N: 'high' }, morality: 'high', locks: { romance: 95 },
             textingStyle: { type: 'instruction', text: 'all lowercase, dry, never uses exclamation marks' } };
+        if (params.has('auto')) {
+            // The last reply reported more anticipation and less joy
+            settings.emotionMode = 'auto';
+            const now = Date.now();
+            env.settings.chatHistory['mira.png'] = [...history, { is_user: false, mes: 'ok', send_date: now, mood: { anticipation: 75, joy: 20, anger: 30 } }];
+            settings.emotionState['mira.png'].startAt = now - 1000;
+        }
         statusRow().innerHTML = emo.buildStatusHtml();
-        open();
+        // ?auto without a tab: the reply arriving with the popup closed (the chips under the header)
+        if (!tab) emo.noteReport();
+        else open();
         if (tab === 'personality') $p('[data-emo-tab="personality"]')[0].click();
     } else if (params.has('report')) {
         const result = await window.runEmotionTest();
-        fetch('/__log', { method: 'POST', body: JSON.stringify({ runEmotionTest: result }) }).catch(() => {});
+        const auto = await window.runAutoTest();
+        fetch('/__log', { method: 'POST', body: JSON.stringify({ runEmotionTest: result, runAutoTest: auto }) }).catch(() => {});
     }
     window.__done = true;
 })().catch(e => { window.__error = String(e && e.stack || e); console.error(e);

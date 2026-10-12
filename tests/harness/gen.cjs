@@ -1,6 +1,8 @@
 // Extracts EchoText's real message-list functions from an index.js into a
 // browser bundle the harness pages can run, with everything else stubbed.
-// usage: node gen.cjs <index.js> <label> <out.js>   (EXTRA=name,name adds functions)
+// usage: node gen.cjs <index.js> <label> <out.js>
+//   EXTRA=name,name adds functions; VALUES=name,name and STUBS=name,name stub more
+//   values and functions from env (for the functions EXTRA brings in)
 //
 // The bundle registers window.EchoTextHarness[label] = env => { ...functions },
 // where env supplies the stubbed values and functions (see the pages).
@@ -50,6 +52,8 @@ const FUNC_STUBS = [
 ];
 
 for (const name of (process.env.EXTRA || '').split(',').filter(Boolean)) WANT.push(name);
+for (const name of (process.env.VALUES || '').split(',').filter(Boolean)) VALUE_STUBS.push(name);
+for (const name of (process.env.STUBS || '').split(',').filter(Boolean)) FUNC_STUBS.push(name);
 
 const found = new Map();
 const functions = [];

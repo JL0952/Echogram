@@ -3,7 +3,9 @@
 // working index.js, for a few mock characters and settings, and reports any
 // difference. Memories, emotions and world info are stubbed with fixed text,
 // so only how the prompt is put together is compared. Stubs a ref doesn't call
-// (buildTextingStyleContext before step E2, buildBehaviorContext before E3) just go unused.
+// (buildTextingStyleContext before step E2, buildBehaviorContext before E3,
+// buildMoodRules before E4) just go unused. Every case is in Manual mode, where
+// Auto mode's <mood> rule adds nothing.
 // usage: node tests/harness/prompt-compare.cjs [REF] [--print=<case>]
 const fs = require('fs');
 const path = require('path');
@@ -33,7 +35,8 @@ const STUBS = `
     const buildInsideJokesContext = () => '\\n\\n<memories>MEMORY STUB</memories>';
     const buildEmotionContext = () => '\\n\\n<emotional_state>EMOTION STUB</emotional_state>';
     const buildTextingStyleContext = () => '\\n\\n<texting_style>STYLE STUB</texting_style>';
-    const buildBehaviorContext = (char, verbosity) => ({ nsfw: '\\n\\nNSFW STUB', text: '\\n\\n<texting_behavior>BEHAVIOR STUB</texting_behavior>', verbosity });`;
+    const buildBehaviorContext = (char, verbosity) => ({ nsfw: '\\n\\nNSFW STUB', text: '\\n\\n<texting_behavior>BEHAVIOR STUB</texting_behavior>', verbosity });
+    const buildMoodRules = () => '';`;
 
 function load(code) {
     const ast = acorn.parse(code, { ecmaVersion: 'latest' });

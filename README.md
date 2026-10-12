@@ -1,4 +1,4 @@
-# EchoText Custom
+# Echogram
 
 A personal fork of [SillyTavern-EchoText](https://github.com/mattjaybe/SillyTavern-EchoText) by mattjaybe.
 

@@ -4683,6 +4683,7 @@ html.et-bg-light {
 
 /* One feeling or trait: icon, name, slider or levels, value, lock */
 .et-emo-row {
+    position: relative;
     display: flex;
     align-items: center;
     gap: 8px;
@@ -4782,6 +4783,46 @@ html.et-bg-light {
     font-weight: 700;
     color: var(--emo-color);
     font-variant-numeric: tabular-nums;
+}
+
+/* Auto mode: what the last reply changed, to the right of the value for a few
+   seconds. It covers the lock (a feeling that changed is never locked) rather
+   than taking a column, so the rows stay laid out as in Manual. */
+.et-emo-flash {
+    position: absolute;
+    right: -6px;
+    top: 50%;
+    transform: translateY(-50%);
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    padding: 1px 4px;
+    border-radius: 6px;
+    background: rgba(14, 14, 26, 0.95);
+    font-size: 0.62rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    pointer-events: none;
+    animation: et-emo-flash 3.2s ease forwards;
+}
+
+.et-emo-flash i {
+    font-size: 0.52rem;
+}
+
+.et-emo-flash-up {
+    color: #4ade80;
+}
+
+.et-emo-flash-down {
+    color: #f87171;
+}
+
+@keyframes et-emo-flash {
+    0%   { opacity: 0; }
+    10%  { opacity: 1; }
+    75%  { opacity: 1; }
+    100% { opacity: 0; }
 }
 
 .et-emo-lock {

@@ -867,7 +867,7 @@
 
         // Emotion mode and NSFW (panel)
         jQuery('#et_emotion_mode_panel').off('change.panel').on('change.panel', function () {
-            settings.emotionMode = jQuery(this).val();
+            setEmotionMode(jQuery(this).val());
             saveSettings();
             // Sync with modal
             jQuery('#et_emotion_mode').val(settings.emotionMode);
@@ -2050,6 +2050,11 @@
         // ── 7. MESSAGE FORMAT ────────────────────────────────────────────────────
         prompt += '\n\n' + buildMessageFormatPrompt(name, userName);
 
+        // ── 8. MOOD ──────────────────────────────────────────────────────────────
+        // Auto mode: the hidden <mood> line the model reports changed feelings in.
+        // After the format rules, the one line that isn't a text; readReply takes it out.
+        prompt += buildMoodRules(char);
+
         return prompt;
     }
 
@@ -2453,6 +2458,12 @@
         settings.chatHistory[key] = history;
         syncProactiveStateWithHistory(key, history);
         saveSettings();
+        refreshAutoEmotions();
+    }
+
+    /** Auto mode's values come from the chat's replies: a changed chat (deleted, regenerated, swiped) redraws them. */
+    function refreshAutoEmotions() {
+        if (emotionSystem && emotionSystem.getMode() === 'auto') emotionSystem.refresh();
     }
 
     function clearChatHistory() {
@@ -2601,7 +2612,7 @@
         }
 
         if (settings.source === 'profile') {
-            if (!settings.preset) throw new Error('Please select a connection profile in EchoText settings.');
+            if (!settings.preset) throw new Error('Please select a connection profile in Echogram settings.');
             const context = SillyTavern.getContext();
             const cm = context.extensionSettings?.connectionManager;
             const profile = cm?.profiles?.find(p => p.name === settings.preset);
@@ -2920,15 +2931,14 @@
                 setImageGeneratingIndicatorVisible(false);
             }
 
-            const hasTextResponse = result && result.trim();
+            const reply = readReply(result);
+            const hasTextResponse = !!reply.mes;
             if (hasTextResponse || imageReply?.triggered) {
-                const trimmedResult = hasTextResponse ? cleanGeneratedResponse(result) : '';
-
-
                 const charReply = {
                     is_user: false,
-                    mes: trimmedResult,
-                    send_date: Date.now()
+                    mes: reply.mes,
+                    send_date: Date.now(),
+                    ...(reply.mood ? { mood: reply.mood } : {})
                 };
 
                 if (imageReply?.triggered) {
@@ -2977,6 +2987,7 @@
                 try { if (memorySystem) memorySystem.incrementTurn(); } catch (e) { /* ignore */ }
                 renderMessages(newHistory);
                 setFabUnreadIndicator(panelOpen ? false : true);
+                if (charReply.mood) noteMoodReport();
             }
 
         } catch (err) {
@@ -2988,7 +2999,7 @@
                 }
             } else {
                 error('Generation failed:', err);
-                toastr.error(`EchoText: ${err.message}`);
+                toastr.error(`Echogram: ${err.message}`);
                 if (backupHistory) {
                     saveChatHistory(backupHistory);
                     renderMessages(backupHistory);
@@ -3043,13 +3054,14 @@
             mes: msg.mes || '',
             send_date: msg.send_date || Date.now(),
             imageAttachment: msg.imageAttachment ?? null,
+            ...(msg.mood ? { mood: msg.mood } : {}),
         }];
         msg.swipeIndex = 0;
     }
 
     /**
      * Syncs the parent message's top-level fields (mes, send_date, reactions,
-     * imageAttachment) from the swipe slot at `msg.swipeIndex`.
+     * imageAttachment, Auto mode's mood) from the swipe slot at `msg.swipeIndex`.
      */
     function syncMsgFromSwipe(msg) {
         if (!msg.swipes || msg.swipes.length === 0) return;
@@ -3064,6 +3076,9 @@
         } else {
             delete msg.imageAttachment;
         }
+        // Each version's report goes with it, so a swipe moves the feelings back and forth
+        if (swipe.mood) msg.mood = swipe.mood;
+        else delete msg.mood;
     }
 
     /**
@@ -3177,13 +3192,13 @@
                 setImageGeneratingIndicatorVisible(false);
             }
 
-            const hasTextResponse = result && result.trim();
+            const reply = readReply(result);
+            const hasTextResponse = !!reply.mes;
             if (hasTextResponse || imageReply?.triggered) {
-                const trimmedResult = hasTextResponse ? cleanGeneratedResponse(result) : '';
-
                 const newSwipe = {
-                    mes: trimmedResult,
+                    mes: reply.mes,
                     send_date: Date.now(),
+                    ...(reply.mood ? { mood: reply.mood } : {})
                 };
 
                 if (imageReply?.triggered) {
@@ -3235,6 +3250,7 @@
                 try { if (memorySystem) memorySystem.incrementTurn(); } catch (e) { /* ignore */ }
                 renderMessages(workingHistory);
                 setFabUnreadIndicator(panelOpen ? false : true);
+                if (newSwipe.mood) noteMoodReport();
             }
 
         } catch (err) {
@@ -3242,7 +3258,7 @@
                 log('Swipe generation cancelled');
             } else {
                 error('Swipe generation failed:', err);
-                toastr.error(`EchoText: ${err.message}`);
+                toastr.error(`Echogram: ${err.message}`);
             }
             // On any failure or cancel, re-render with the unmodified original history
             // (the new swipe was never pushed since we only push on success)
@@ -3641,7 +3657,7 @@
                 log('Manual combine nudge cancelled');
             } else {
                 error('Manual combine nudge failed:', err);
-                toastr.error(`EchoText: ${err.message}`);
+                toastr.error(`Echogram: ${err.message}`);
             }
         } finally {
             setTypingIndicatorVisible(false);
@@ -3746,7 +3762,7 @@
                 log('Combined generation cancelled');
             } else {
                 error('Combined generation failed:', err);
-                toastr.error(`EchoText: ${err.message}`);
+                toastr.error(`Echogram: ${err.message}`);
             }
         } finally {
             setTypingIndicatorVisible(false);
@@ -3840,7 +3856,7 @@
                 }
             } else {
                 error('Combined single-char regen failed:', err);
-                toastr.error(`EchoText: ${err.message}`);
+                toastr.error(`Echogram: ${err.message}`);
                 if (backupHistory) {
                     saveChatHistory(backupHistory);
                     renderMessages(backupHistory);
@@ -3952,7 +3968,7 @@
         const fab = jQuery('#et-fab');
         if (!fab.length) return;
         fab.toggleClass('et-fab-unread', hasUnreadCharacterMessage);
-        fab.attr('title', hasUnreadCharacterMessage ? 'Open EchoText (new message)' : 'Open EchoText');
+        fab.attr('title', hasUnreadCharacterMessage ? 'Open Echogram (new message)' : 'Open Echogram');
     }
 
     function setUserMessageReceiptState(history, msgIndex, state, note = '') {
@@ -4088,7 +4104,7 @@
 
     function buildFabHtml() {
         const icon = settings.fabIcon || 'fa-message';
-        return `<div id="et-fab" title="Open EchoText"><i class="fa-solid ${icon}"></i></div>`;
+        return `<div id="et-fab" title="Open Echogram"><i class="fa-solid ${icon}"></i></div>`;
     }
 
     function positionFab() {
@@ -4356,7 +4372,7 @@
         // Special placeholder when no character is loaded (name is the fallback 'Character' and no image)
         const isNoChar = !getCurrentCharacter();
         if (isNoChar && !avatarUrl && !small) {
-            return `<div class="${sizeClass} et-no-char-avatar et-echo-logo${extraClass ? ' ' + extraClass : ''}"${idAttr} title="EchoText"><svg width="62%" height="62%" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><rect x="5" y="4" width="2.6" height="16" rx="1.3" fill="rgba(255,255,255,0.92)"/><rect x="5" y="4" width="13.5" height="2.6" rx="1.3" fill="rgba(255,255,255,0.92)"/><rect x="5" y="10.7" width="10.5" height="2.6" rx="1.3" fill="rgba(255,255,255,0.92)"/><rect x="5" y="17.4" width="13.5" height="2.6" rx="1.3" fill="rgba(255,255,255,0.92)"/></svg></div>`;
+            return `<div class="${sizeClass} et-no-char-avatar et-echo-logo${extraClass ? ' ' + extraClass : ''}"${idAttr} title="Echogram"><svg width="62%" height="62%" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><rect x="5" y="4" width="2.6" height="16" rx="1.3" fill="rgba(255,255,255,0.92)"/><rect x="5" y="4" width="13.5" height="2.6" rx="1.3" fill="rgba(255,255,255,0.92)"/><rect x="5" y="10.7" width="10.5" height="2.6" rx="1.3" fill="rgba(255,255,255,0.92)"/><rect x="5" y="17.4" width="13.5" height="2.6" rx="1.3" fill="rgba(255,255,255,0.92)"/></svg></div>`;
         }
 
         if (avatarUrl) {
@@ -4504,7 +4520,7 @@
             <div class="et-panel-header${noCharClass}" id="et-panel-drag-handle" data-et-role="header">
                 <div class="et-header-left">
                     ${buildAvatarHtml(charName, '', 'et-char-avatar-wrap')}
-                    <span class="et-panel-echotext-title">EchoText</span>
+                    <span class="et-panel-echotext-title">Echogram</span>
                     <div class="et-header-info">
                         <div class="et-char-name-row">
                             <div class="et-char-name" id="et-char-name" title="Select character">${escapeHtml(displayName)}<i class="fa-solid fa-chevron-down et-char-name-caret" aria-hidden="true"></i></div>
@@ -4546,7 +4562,7 @@
                             <span>Clear History</span>
                         </div>
                     </div>
-                    <div class="et-header-btn et-close-btn" id="et-close-btn" title="Close EchoText">
+                    <div class="et-header-btn et-close-btn" id="et-close-btn" title="Close Echogram">
                         <i class="fa-solid fa-xmark"></i>
                     </div>
                 </div>
@@ -4980,7 +4996,7 @@
             setCustomCharAvatar(charKey, path);
         } catch (err) {
             error('Could not change the avatar:', err);
-            toastr.error(`Could not change the avatar: ${err.message}`, 'EchoText');
+            toastr.error(`Could not change the avatar: ${err.message}`, 'Echogram');
         }
     }
 
@@ -5691,6 +5707,43 @@
         if (!emotionSystem) return { nsfw: '', text: '', verbosity };
         return emotionSystem.buildBehaviorContext(char.avatar || char.name, {
             charName: char.name || 'Character', userName: getUserName(), features: getActiveFeatures(), verbosity });
+    }
+
+    // Auto mode (docs/emotion-plan.md 3.8) runs in a character's own chat; group chats
+    // leave the emotion system paused, so they neither ask for nor keep reports.
+    const inGroupSession = () => !!(groupManager && groupManager.isGroupSession());
+
+    /** Auto mode's rule for the <mood> line (see buildSystemPrompt); '' in the other modes. */
+    function buildMoodRules(char) {
+        if (!emotionSystem || inGroupSession()) return '';
+        return emotionSystem.buildMoodRules(char.avatar || char.name, { charName: char.name || 'Character', userName: getUserName() });
+    }
+
+    /**
+     * A generated reply as it is kept: { mes, mood } — the text without its <mood>
+     * line, and in Auto mode the feelings that line reports (stored as msg.mood).
+     */
+    function readReply(text) {
+        const mes = cleanGeneratedResponse(text);
+        if (!emotionSystem) return { mes, mood: null };
+        const reply = emotionSystem.readReply(mes);
+        return inGroupSession() ? { mes: reply.mes, mood: null } : reply;
+    }
+
+    /** After a reply with a <mood> line for the open character: the values redrawn, the change shown. */
+    function noteMoodReport() {
+        if (emotionSystem) emotionSystem.noteReport();
+    }
+
+    /** A character's own chat, whose replies carry Auto mode's reports. */
+    function getEmotionHistory(key) {
+        return settings.chatHistory?.[key] || [];
+    }
+
+    /** Changes the emotion mode, keeping every chat's values as they are. */
+    function setEmotionMode(mode) {
+        if (emotionSystem) emotionSystem.setMode(mode);
+        else settings.emotionMode = mode;
     }
 
     // ============================================================
@@ -7690,6 +7743,7 @@
             saveSettings,
             getCharacterKey,
             getCharacterName,
+            getChatHistory: getEmotionHistory,
             isPanelOpen,
             isMobileDevice,
             onEmotionStateUpdated: ({ dominant, dominantChanged }) => {
@@ -7726,6 +7780,7 @@
             getChatHistory,
             renderMessages,
             isPanelOpen,
+            setEmotionMode,
             refreshProactiveInsights,
             updateProactiveToggleButtons,
             startProactiveScheduler,
@@ -7870,6 +7925,8 @@
             setTypingIndicatorVisible,
             setFabUnreadIndicator,
             getEmotionState,
+            readReply,
+            noteMoodReport,
             findLastUserMessageIndex,
             requestEchoTextCompletion,
             buildApiMessagesFromHistory,

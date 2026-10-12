@@ -77,6 +77,8 @@ if (opt('verbosity')) settings.verbosityByCharacter = { ...settings.verbosityByC
 if (opt('values')) {
     const state = Model.normalizeChatState(settings.emotionState?.[avatar], Date.now());
     for (const [id, v] of Object.entries(pairs(opt('values')))) state.start[id] = Model.clampValue(v, id);
+    // As if just set in the popup: Auto mode replays only later reports and fades from now
+    state.startAt = Date.now();
     settings.emotionState = { ...settings.emotionState, [avatar]: state };
 }
 if (opt('big5') || opt('morality')) {
@@ -91,7 +93,7 @@ if (opt('big5') || opt('morality')) {
 const NAMES = ['buildSystemPrompt', 'getVerbosityPrompt', 'getEchoTextFirstMessage', 'getSTStoryContext', 'findSTOpeningIndex',
     'isCharInCurrentSTChat', 'cleanSTMessageText', 'ST_STORY_MAX_MESSAGES', 'ST_STORY_MAX_CHARS', 'replaceMacros', 'buildMessageFormatPrompt',
     'RichMessages', 'Features', 'Platforms', 'activePlatformMemo', 'getActivePlatform', 'getActiveFeatures', 'platformHas', 'getReactionIds',
-    'getActiveWorldInfoEntries', 'buildInsideJokesContext', 'buildTextingStyleContext', 'buildBehaviorContext',
+    'getActiveWorldInfoEntries', 'buildInsideJokesContext', 'buildTextingStyleContext', 'buildBehaviorContext', 'buildMoodRules', 'inGroupSession',
     'stripThinkingTags', 'getStripTagsRegex', 'STRIP_TAGS_DEFAULTS', 'SPECIAL_PATTERNS', '_stripTagsRegex', '_stripTagsListHash'];
 const STUBS = `
     const FA_REACTIONS = window.EchoTextFeatures.REACTIONS; const settings = env.settings; const SillyTavern = env.SillyTavern; const emotionSystem = env.emotionSystem; const memorySystem = env.memorySystem;
@@ -112,7 +114,7 @@ const env = {
     settings, char, userName,
     SillyTavern: { getContext: () => ({ chat: stChat, characters: [char], characterId: 0, groupId: null,
         powerUserSettings: { persona_description: personaDescription }, extensionSettings: st.extension_settings }) },
-    emotionSystem: window.EchoTextEmotionSystem.createEmotionSystem({ ...common, isPanelOpen: () => false }),
+    emotionSystem: window.EchoTextEmotionSystem.createEmotionSystem({ ...common, isPanelOpen: () => false, getChatHistory: key => settings.chatHistory?.[key] || [] }),
     memorySystem: window.EchoTextMemorySystem.createMemorySystem(common),
 };
 const prompt = await api(env).buildSystemPrompt();
