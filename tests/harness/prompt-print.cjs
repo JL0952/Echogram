@@ -7,7 +7,7 @@
 //          [--values=rapport=-40,romance=80]  set these feelings (the rest stay as saved)
 //          [--big5=A=low,E=high]             set these traits
 //          [--morality=low|mid|high]         set Morality (shown with NSFW on)
-//          [--mode=off|manual|auto] [--nsfw=on|off] [--platform=echotext|wechat] [--verbosity=short|medium|long]
+//          [--mode=off|manual|auto] [--nsfw=on|off] [--platform=echotext|wechat|instagram] [--verbosity=short|medium|long]
 //          [--tail]                          print only what comes after the story and memories
 const fs = require('fs');
 const path = require('path');
@@ -23,7 +23,7 @@ const who = args.find(a => !a.startsWith('--'));
 if (!who) { console.error('usage: node tests/harness/prompt-print.cjs <character> [--values=…] [--big5=…] [--morality=…] [--mode=…] [--nsfw=on|off] [--platform=…] [--verbosity=…] [--tail]'); process.exit(2); }
 
 global.window = {};
-for (const f of ['lib/config.js', 'lib/rich-messages.js', 'lib/features.js', 'lib/chat-view-model.js', 'platforms/echotext/platform.js', 'platforms/wechat/platform.js',
+for (const f of ['lib/config.js', 'lib/rich-messages.js', 'lib/features.js', 'lib/chat-view-model.js', 'platforms/echotext/platform.js', 'platforms/wechat/platform.js', 'platforms/instagram/platform.js',
     'lib/emotion-model.js', 'lib/emotion-icons.js', 'lib/texting-behavior.js', 'lib/emotion-system.js', 'lib/memory-recall.js', 'lib/memory-system.js', 'lib/chat-summaries.js']) new Function(fs.readFileSync(`${REPO}/${f}`, 'utf8'))();
 
 // ── SillyTavern's data ──────────────────────────────────────────────────────

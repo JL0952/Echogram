@@ -19,7 +19,7 @@ const REF = args.find(a => !a.startsWith('--')) || 'HEAD';
 const PRINT = (args.find(a => a.startsWith('--print=')) || '').slice('--print='.length);
 
 global.window = {};
-for (const f of ['lib/config.js', 'lib/rich-messages.js', 'lib/features.js', 'lib/chat-view-model.js', 'platforms/echotext/platform.js', 'platforms/wechat/platform.js']) new Function(fs.readFileSync(`${REPO}/${f}`, 'utf8'))();
+for (const f of ['lib/config.js', 'lib/rich-messages.js', 'lib/features.js', 'lib/chat-view-model.js', 'platforms/echotext/platform.js', 'platforms/wechat/platform.js', 'platforms/instagram/platform.js']) new Function(fs.readFileSync(`${REPO}/${f}`, 'utf8'))();
 new Function(fs.readFileSync(`${__dirname}/scenarios.js`, 'utf8'))();
 
 // Real index.js code: the prompt builder and the helpers it uses

@@ -12,7 +12,7 @@ const REF = process.argv[2] || 'HEAD';
 const H = __dirname;
 
 global.window = {};
-for (const f of ['lib/rich-messages.js', 'lib/features.js', 'lib/chat-view-model.js', 'platforms/echotext/platform.js', 'platforms/wechat/platform.js']) new Function(fs.readFileSync(`${REPO}/${f}`, 'utf8'))();
+for (const f of ['lib/rich-messages.js', 'lib/features.js', 'lib/chat-view-model.js', 'platforms/echotext/platform.js', 'platforms/wechat/platform.js', 'platforms/instagram/platform.js']) new Function(fs.readFileSync(`${REPO}/${f}`, 'utf8'))();
 new Function(fs.readFileSync(`${H}/scenarios.js`, 'utf8'))();
 // index.js before step 9c read the user's tapbacks (whole-message, msg.reactions) with
 // getStoredReactions, which the view model no longer has

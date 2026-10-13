@@ -781,7 +781,11 @@
 
         // A tapback on the first bubble shows as emoji on its lower edge, popping in
         rows(2)[0].querySelector('.ig-tools [data-et-action="react"]').click();
-        document.querySelector('.et-react-overlay [data-emoji="heart"]').click();
+        // The picker is Instagram's emoji bar
+        const heartBtn = document.querySelector('.et-react-overlay [data-emoji="heart"]');
+        res.pickerEmoji = getComputedStyle(heartBtn, '::before').content === '"❤️"' && css(heartBtn.querySelector('i'), 'display') === 'none'
+            && getComputedStyle(document.querySelector('.et-react-overlay [data-emoji="haha"]'), '::before').content === '"😂"';
+        heartBtn.click();
         await sleep(450);
         document.querySelectorAll('.et-react-overlay').forEach(o => o.remove());
         const pill = rows(2)[0].querySelector('.ig-reactions');

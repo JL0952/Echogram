@@ -18,6 +18,8 @@
     --ig-pill-border: #2c2c2e;
     --ig-quote: #1a1a1a;
     --ig-border: rgba(255, 255, 255, 0.1);
+    --ig-picker: #262626;
+    --ig-picker-on: rgba(255, 255, 255, 0.16);
     /* A bubble's corners: 22px, the ones toward the next or previous bubble of the run tighter */
     --ig-round: 22px;
     --ig-joined: 5px;
@@ -42,6 +44,8 @@
     --ig-pill-border: #ffffff;
     --ig-quote: #f5f5f5;
     --ig-border: #dbdbdb;
+    --ig-picker: #ffffff;
+    --ig-picker-on: #efefef;
 }
 
 /* ── Panel surfaces ─────────────────────────────────────────── */
@@ -867,6 +871,52 @@
     [data-platform="instagram"] .ig-reactions-new {
         animation: none;
     }
+}
+
+/* ── The tapback picker: Instagram's bar of emoji ─────────────
+   EchoText's own picker (index.js toggleReactOverlay), its icons and labels
+   swapped for the same emoji the pills show; its open animation and the lift
+   on hover stay. The ones already on the bubble sit on a grey circle. */
+
+[data-platform="instagram"] .et-react-overlay-inner {
+    gap: 2px;
+    padding: 5px 8px;
+    border: 0;
+    border-radius: 999px;
+    background: var(--ig-picker);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.3);
+}
+
+[data-platform="instagram"] .et-overlay-emoji i,
+[data-platform="instagram"] .et-overlay-emoji-label {
+    display: none;
+}
+
+[data-platform="instagram"] .et-overlay-emoji::before {
+    content: var(--ig-emoji);
+    font-size: 25px;
+    line-height: 1;
+    pointer-events: none;
+}
+
+[data-platform="instagram"] .et-overlay-emoji[data-emoji="heart"] { --ig-emoji: "❤️"; }
+[data-platform="instagram"] .et-overlay-emoji[data-emoji="haha"] { --ig-emoji: "😂"; }
+[data-platform="instagram"] .et-overlay-emoji[data-emoji="wow"] { --ig-emoji: "😮"; }
+[data-platform="instagram"] .et-overlay-emoji[data-emoji="sad"] { --ig-emoji: "😢"; }
+[data-platform="instagram"] .et-overlay-emoji[data-emoji="fire"] { --ig-emoji: "🔥"; }
+[data-platform="instagram"] .et-overlay-emoji[data-emoji="like"] { --ig-emoji: "👍"; }
+[data-platform="instagram"] .et-overlay-emoji[data-emoji="star"] { --ig-emoji: "⭐"; }
+[data-platform="instagram"] .et-overlay-emoji[data-emoji="bolt"] { --ig-emoji: "⚡"; }
+
+[data-platform="instagram"] .et-overlay-emoji:hover {
+    background: none;
+}
+
+[data-platform="instagram"] .et-overlay-emoji.et-overlay-emoji-on {
+    background: var(--ig-picker-on);
+    box-shadow: none;
 }
 
 /* ── Typing: three dots in a received bubble ────────────────── */
