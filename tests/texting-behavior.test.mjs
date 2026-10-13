@@ -195,7 +195,7 @@ test('Romance shows guarded or direct by Extraversion, then Agreeableness', () =
 test('Auto mode: the <mood> rule lists the feelings, marks fixed ones and gives the steps', () => {
     const values = { rapport: -20, romance: 100, joy: 35, anticipation: 0, eagerness: 0, shock: 0, sadness: 0, anxiety: 0, anger: 0, disgust: 0 };
     const rules = Behavior.moodRules({ values, fixed: ['romance'], steps: { relation: 10, mood: 25 }, charName: 'Mira', userName: 'Qi' });
-    assert.equal(rules, `MOOD: When this reply changes how Mira feels, end it with one more line, <mood>joy 60, anger 15</mood>: the new values of just the feelings that changed. If nothing changed, leave it out. Qi never sees this line.
+    assert.equal(rules, `MOOD: How Mira feels shifts with what happens (news, a tease, a quarrel, a long silence), as much as it fairly would. Weigh Qi's latest messages against the values below; when they move any of them, end the reply with one more line, Use the format <mood>feeling_1 value, feeling_2 value</mood>, with multiple entries separated by commas, indicating the new values of just the feelings that changed. If nothing changed, leave it out. A reserved Mira may hide it in the texts, but the values still move.
 How Mira feels now, 0 (not at all) to 100 (overwhelming): rapport -20 (how they get along, from -100 hostile to 100 deep trust), romance 100 (romantic attraction, fixed), joy 35, anticipation 0, eagerness 0, shock 0, sadness 0, anxiety 0, anger 0, disgust 0.
 Fixed feelings never change. A feeling moves at most 25 per reply, rapport and romance at most 10.`);
     // The chat's first report can set what's still at 0 straight away
@@ -204,11 +204,17 @@ Fixed feelings never change. A feeling moves at most 25 per reply, rapport and r
     assert.match(first, /desire 0 \(sexual desire\)/);
 });
 
-test('Auto mode: the rule\'s example line reads back as what it says', () => {
+test('Auto mode: a line in the rule\'s format, with the feelings it lists, reads back', () => {
     globalThis.window.EchoTextEmotionModel || new Function(readFileSync(new URL('../lib/emotion-model.js', import.meta.url), 'utf8'))();
-    const rules = Behavior.moodRules({ values: { joy: 0 }, steps: { relation: 10, mood: 25 } });
-    const example = rules.match(/<mood>.*?<\/mood>/)[0];
-    assert.deepEqual(window.EchoTextEmotionModel.parseMoodTag(`hi\n${example}`), { text: 'hi', mood: { joy: 60, anger: 15 } });
+    const values = { rapport: 0, romance: 0, desire: 0, joy: 0, anticipation: 0, eagerness: 0, shock: 0, sadness: 0, anxiety: 0, anger: 0, disgust: 0 };
+    const rules = Behavior.moodRules({ values, steps: { relation: 10, mood: 25 } });
+    // <mood>feeling_1 value, feeling_2 value</mood>, filled in with the names listed
+    const format = rules.match(/<mood>(.*?)<\/mood>/)[1];
+    assert.equal(format, 'feeling_1 value, feeling_2 value');
+    const listed = rules.split('\n')[1].match(/\b([a-z]+) 0\b/g).map(m => m.split(' ')[0]);
+    assert.deepEqual(listed, Object.keys(values));
+    const line = `<mood>${listed.map((id, i) => `${id} ${(i + 1) * 5}`).join(', ')}</mood>`;
+    assert.deepEqual(window.EchoTextEmotionModel.parseMoodTag(`hi\n${line}`), { text: 'hi', mood: Object.fromEntries(listed.map((id, i) => [id, (i + 1) * 5])) });
 });
 
 // ── Pace (docs/emotion-plan.md 3.9) ─────────────────────────────────────────
