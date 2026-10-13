@@ -8295,6 +8295,12 @@ html.et-bg-light {
     border: 1px solid rgba(255, 255, 255, 0.09);
 }
 
+/* ── This chat's summaries, below the memories ──────────── */
+
+.et-memo-section {
+    margin-top: 14px;
+}
+
 .et-mem-form-keys,
 .et-mem-save-keys {
     margin-bottom: 0;

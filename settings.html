@@ -625,6 +625,19 @@
                         </div>
 
                         <div class="et-field">
+                            <label class="et-toggle-row" for="et_memory_summaries_panel">
+                                <input type="checkbox" id="et_memory_summaries_panel" class="checkbox">
+                                <span class="et-label-text"><i class="fa-solid fa-scroll"></i> Summarize Older Messages</span>
+                            </label>
+                            <div class="et-hint">The model gets the latest messages in full and short summaries of the ones before.</div>
+                            <div class="et-ctx-wi-field" style="margin-top:8px;">
+                                <i class="fa-solid fa-comments et-ctx-wi-field-icon"></i>
+                                <span class="et-ctx-wi-field-label">Messages in Full</span>
+                                <input type="number" class="et-ctx-wi-field-input" id="et_memory_keep_panel" min="20" max="500" step="10" placeholder="60">
+                            </div>
+                        </div>
+
+                        <div class="et-field">
                             <label class="et-field-label"><i class="fa-solid fa-folder-open"></i> Memory Scope</label>
                             <div class="et-mem-scope-pills" id="et_memory_scope_pills_panel">
                                 <button class="et-mem-scope-btn" data-scope="per-character" type="button">
@@ -676,6 +689,11 @@
                             </div>
                             <div class="et-mem-empty" id="et_memory_empty_panel" style="display:none;">
                                 <i class="fa-solid fa-box-open"></i><br>No memories yet.<br>Add one here or from a bubble's menu.
+                            </div>
+                            <!-- This chat's summaries -->
+                            <div class="et-memo-section" style="display:none;">
+                                <div class="et-mem-list-header"><span class="et-mem-list-title">Summaries</span></div>
+                                <div class="et-mem-list et-memo-list"></div>
                             </div>
                         </div>
 

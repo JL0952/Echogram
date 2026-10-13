@@ -68,6 +68,7 @@
     loadEchoTextModule('lib/proactive-messaging.js', 'EchoTextProactiveMessaging');
     loadEchoTextModule('lib/settings-modal.js', 'EchoTextSettingsModal');
     loadEchoTextModule('lib/memory-recall.js', 'EchoTextMemoryRecall');
+    loadEchoTextModule('lib/chat-summaries.js', 'EchoTextChatSummaries');
     loadEchoTextModule('lib/memory-system.js', 'EchoTextMemorySystem');
     loadEchoTextModule('lib/saveload-modal.js', 'EchoTextSaveLoadModal');
     loadEchoTextModule('lib/group.js', 'EchoTextGroupManager');
@@ -96,6 +97,7 @@
     const RichMessages = window.EchoTextRichMessages;
     const Features = window.EchoTextFeatures;
     const ChatViewModel = window.EchoTextChatViewModel;
+    const ChatSummaries = window.EchoTextChatSummaries;
     const StoryTexts = window.EchoTextStoryTexts;
     const Platforms = window.EchoTextPlatforms;
 
@@ -654,8 +656,10 @@
         if (typeof settingsModal !== 'undefined' && settingsModal && typeof settingsModal.renderMemoryListInto === 'function') {
             settingsModal.renderMemoryListInto('#et_memory_list_panel', '#et_memory_empty_panel', '#et_memory_list_label_panel');
         }
-        // Memory panel toggle
+        // Memory panel toggles
         jQuery('#et_memory_enabled_panel').prop('checked', settings.memoryEnabled !== false);
+        jQuery('#et_memory_summaries_panel').prop('checked', settings.memorySummaries !== false);
+        jQuery('#et_memory_keep_panel').val(settings.memoryKeepMessages || 60);
         // Memory scope pills
         const _memScope = settings.memoryScope || 'per-character';
         jQuery('#et_memory_scope_pills_panel .et-mem-scope-btn').removeClass('et-mem-scope-btn-active');
@@ -2775,7 +2779,9 @@
             if (msg) apiMessages.push({ role: 'system', content: msg });
         }
 
-        history.forEach(msg => {
+        // Summarized early messages go in the system prompt instead
+        const sent = historyToSend(history);
+        sent.forEach(msg => {
             // Strip thinking/reasoning tags from history messages before sending to context.
             // This prevents internal model reasoning blocks from inflating token budgets.
             // resolveHistoryMessageText also fills in a natural stub for silent image turns
@@ -2796,7 +2802,7 @@
         }
 
         let rawPrompt = '';
-        history.forEach(msg => {
+        sent.forEach(msg => {
             const contextText = resolveHistoryMessageText(msg);
             if (contextText !== null) rawPrompt += `${msg.is_user ? getUserName() : getCharacterName()}: ${contextText}\n`;
             const reactionText = buildUserReactionText(msg);
@@ -2837,7 +2843,8 @@
             if (msg) apiMessages.push({ role: 'system', content: msg });
         }
 
-        history.forEach(msg => {
+        const sent = historyToSend(history);
+        sent.forEach(msg => {
             // Apply the same silent-image-turn resolution used in buildApiMessagesFromHistory
             // so group-member context windows also see a closed loop for image turns.
             const contextText = resolveHistoryMessageText(msg);
@@ -2849,7 +2856,7 @@
         const charName = (char && char.name) || getCharacterName();
         const userName = getUserName();
         let rawPrompt = '';
-        history.forEach(msg => {
+        sent.forEach(msg => {
             const contextText = resolveHistoryMessageText(msg);
             if (contextText !== null) rawPrompt += `${msg.is_user ? userName : charName}: ${contextText}\n`;
             const reactionText = buildUserReactionText(msg);
@@ -5293,6 +5300,8 @@
             replyQueued = false;
             scheduleCharacterReply(600);
         }
+        // Once things are quiet, the background summary of older messages
+        setTimeout(() => { summarizeOldMessages(); }, 2000);
     }
 
     /**
@@ -7453,14 +7462,118 @@
     // MEMORY SYSTEM — THIN WRAPPERS
     // ============================================================
 
-    /** The memories block for the prompt, picked against `history`'s messages as plain text. */
+    /** The memories block for the prompt, picked against `history`'s messages as plain text, with its summaries. */
     function buildMemoryContext(history) {
         if (!memorySystem) return '';
         const texts = (history || []).flatMap(msg => {
             const text = resolveHistoryMessageText(msg);
             return text === null ? [] : [RichMessages.toPlainText(text)];
         });
-        return memorySystem.buildMemoryContext(texts);
+        return memorySystem.buildMemoryContext(texts, summariesOn() ? ChatSummaries.summaries(history || []) : []);
+    }
+
+    // ── Summaries of a long chat (docs/platform-plan.md 10b) ─────────────────
+    // The model gets the latest messages word for word and summaries of the ones
+    // before, written in the background a chunk at a time (lib/chat-summaries.js).
+    // Off with the memory system or the setting, and in group chats: everything is
+    // sent word for word, as before.
+
+    function summariesOn() {
+        return !!settings.memoryEnabled && settings.memorySummaries !== false;
+    }
+
+    function keepMessageCount() {
+        const n = Math.round(Number(settings.memoryKeepMessages));
+        return Number.isFinite(n) && n >= 20 ? Math.min(n, 500) : ChatSummaries.KEEP;
+    }
+
+    /** The messages of `history` the model is sent word for word. */
+    function historyToSend(history) {
+        return summariesOn() ? ChatSummaries.toSend(history, { keep: keepMessageCount() }) : history;
+    }
+
+    let summarizing = false;
+    // After a failed summary, the chat length to try again at, by character
+    const summaryRetryAt = {};
+
+    /**
+     * Summarizes the oldest messages no summary covers, once enough wait beyond
+     * the latest ones, and keeps the summary on the last of them. One request,
+     * without the character card; the chat must be unchanged when it comes back.
+     */
+    async function summarizeOldMessages() {
+        if (summarizing || isGenerating || !summariesOn() || inGroupSession()) return;
+        const char = getCurrentCharacter();
+        const key = getCharacterKey();
+        if (!char || !key) return;
+        const history = getChatHistory();
+        if (history.length < (summaryRetryAt[key] || 0)) return;
+        const chunk = ChatSummaries.nextChunk(history, { keep: keepMessageCount() });
+        if (!chunk) return;
+
+        summarizing = true;
+        try {
+            const messages = history.slice(chunk.start, chunk.end + 1);
+            const lines = messages.flatMap(msg => {
+                const text = resolveHistoryMessageText(msg);
+                if (text === null || !text.trim()) return [];
+                return [`${msg.is_user ? getUserName() : (msg.charName || char.name)}: ${RichMessages.toPlainText(text).replace(/\s*\n\s*/g, ' / ')}`];
+            });
+            const previous = ChatSummaries.summaries(history.slice(0, chunk.start)).pop()?.text || '';
+            const request = ChatSummaries.buildRequest({ lines, previous, charName: char.name, userName: getUserName() });
+            const { prompt } = request;
+            // The same framing as the replies get, when it's on
+            const frame = settings.antiRefusal === true
+                ? replaceMacros(settings.promptAntiRefusalFrame || window.EchoTextConfig?.defaultSettings?.promptAntiRefusalFrame || '') : '';
+            const systemPrompt = frame ? `${request.systemPrompt}\n\n${frame}` : request.systemPrompt;
+            const raw = await sendCompletionRequest({
+                apiMessages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: prompt }],
+                rawPrompt: prompt, systemPrompt, signal: new AbortController().signal,
+            });
+            const text = ChatSummaries.cleanSummary(stripThinkingTags(String(raw ?? '')));
+            if (!text) throw new Error('the model sent back no summary');
+            if (ChatSummaries.looksLikeRefusal(text)) throw new Error(`the model declined: ${text.slice(0, 80)}`);
+
+            // Another chat now, or the last message gone or summarized meanwhile: try later
+            if (getCharacterKey() !== key || inGroupSession()) return;
+            const now = getChatHistory();
+            const at = now.indexOf(messages[messages.length - 1]);
+            if (at === -1 || ChatSummaries.covered(now)[at]) return;
+            now[at].memo = { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 7), text, count: messages.length, at: Date.now() };
+            delete summaryRetryAt[key];
+            saveSettings();
+            refreshMemoryLists();
+        } catch (err) {
+            warn('Summarizing older messages failed:', err);
+            summaryRetryAt[key] = history.length + 10;
+        } finally {
+            summarizing = false;
+        }
+    }
+
+    function refreshMemoryLists() {
+        if (!settingsModal || typeof settingsModal.renderMemoryListInto !== 'function') return;
+        settingsModal.renderMemoryListInto('#et_memory_list', '#et_memory_empty', '#et_memory_list_label');
+        settingsModal.renderMemoryListInto('#et_memory_list_panel', '#et_memory_empty_panel', '#et_memory_list_label_panel');
+    }
+
+    /** The open chat's summaries for the settings list: { id, text, from, to, recalled } (1-based message numbers). */
+    function getChatSummariesForList() {
+        if (inGroupSession() || !getCharacterKey()) return [];
+        const recalled = memorySystem ? memorySystem.getRecalledIds() : new Set();
+        return ChatSummaries.summaries(getChatHistory()).map(s => ({ ...s, from: s.from + 1, to: s.to + 1, recalled: recalled.has(`memo:${s.id}`) }));
+    }
+
+    /** Edits (text) or deletes (null) one of the open chat's summaries; deleted, its messages are summarized again later. */
+    function setChatSummary(id, text) {
+        const history = getChatHistory();
+        const msg = history.find(m => m.memo && String(m.memo.id) === String(id));
+        if (!msg) return;
+        const clean = text === null ? '' : String(text).trim();
+        if (clean) msg.memo = { ...msg.memo, text: clean };
+        else delete msg.memo;
+        saveChatHistory(history);
+        refreshMemoryLists();
     }
 
     const _MEM_CATEGORY_LABELS = {
@@ -7720,8 +7833,10 @@
         // Expose character accessor helpers for the settings-modal memory UI
         window._etGetCharacterKey  = getCharacterKey;
         window._etGetCharacterName = getCharacterName;
-        // The memories the last prompt carried, marked in the memory list
+        // The memories the last prompt carried, marked in the memory list; the chat's summaries
         window._etGetRecalledMemoryIds = () => memorySystem.getRecalledIds();
+        window._etGetChatSummaries = getChatSummariesForList;
+        window._etSetChatSummary = setChatSummary;
 
         saveLoadModal = window.EchoTextSaveLoadModal.createSaveLoadModal({
             getSettings: () => settings,

@@ -29,6 +29,7 @@
 <script src="../../lib/emotion-system.js"></script>
 <script src="../../lib/memory-recall.js"></script>
 <script src="../../lib/memory-system.js"></script>
+<script src="../../lib/chat-summaries.js"></script>
 <script src="../../lib/settings-modal.js"></script>
 <script>
 // The emotion popup and status chip (lib/emotion-system.js) on the real panel, and
@@ -38,9 +39,9 @@
 //   ?tab=emotions|personality  the popup as a screenshot shows it (filled-in example values; Desire and Morality with ?desire;
 //                              &auto: in Auto mode, the last reply's changes beside the values for a few seconds)
 //   ?auto                      a reply in Auto mode arriving with the popup closed: the chips under the header
-//   ?report                    runs runEmotionTest(), runAutoTest(), runReplyTest(), runTapbackTest() and runMemoryTest() and posts their results
+//   ?report                    runs runEmotionTest(), runAutoTest(), runReplyTest(), runTapbackTest(), runMemoryTest() and runSummaryTest() and posts their results
 //   ?draft=N                   Reply picked on message N: the quote waiting above the input bar
-//   ?memory                    Add Memory open on a bubble, and the settings panel's memory list beside the panel
+//   ?memory                    Add Memory open on a bubble, and the settings panel's memory list and summaries beside the panel
 (async function () {
     const sleep = ms => new Promise(r => setTimeout(r, ms));
     const params = new URLSearchParams(location.search);
@@ -75,7 +76,7 @@
         isMobileDevice: () => false, getUserAvatarUrl: () => null, isCombinedGroupMode: () => false,
         // A reply: no delays, the model stubbed (runAutoTest sets what it answers)
         getEmotionReplyTimingModel: () => ({ deliveredDelayMs: 0, readDelayMs: 0, ghostDelayMs: 0, typingLeadMs: 0, replyDelayMs: 0 }),
-        sleepWithAbort: async () => {}, error: (...a) => errors.push(a.join(' ')) };
+        sleepWithAbort: async () => {}, error: (...a) => errors.push(a.join(' ')), stripThinkingTags: t => t };
     env.memorySystem = window.EchoTextMemorySystem.createMemorySystem({ getSettings: () => env.settings, saveSettings: () => {}, getCharacterKey: () => 'mira.png' });
     r = window.EchoTextHarness.reply(env);
     document.getElementById('host').innerHTML = r.buildPanelHtml();
@@ -524,6 +525,7 @@
         r.toggleDotsMenu(jQuery(document.querySelector(sel)), msgIndex, isUser, part);
         return [...document.querySelectorAll('.et-dots-menu .et-dots-item')];
     };
+    let settingsModal = null;
     async function mountSettingsPanel() {
         const host = document.createElement('div');
         host.id = 'settings-host';
@@ -532,7 +534,10 @@
         window._etGetCharacterKey = () => 'mira.png';
         window._etGetCharacterName = () => 'Mira';
         window._etGetRecalledMemoryIds = () => env.memorySystem.getRecalledIds();
-        const sm = window.EchoTextSettingsModal.createSettingsModal({ getSettings: () => env.settings, saveSettings: () => {} });
+        window._etGetChatSummaries = r.getChatSummariesForList;
+        window._etSetChatSummary = r.setChatSummary;
+        // Once: it binds its handlers on the document
+        const sm = settingsModal || (settingsModal = window.EchoTextSettingsModal.createSettingsModal({ getSettings: () => env.settings, saveSettings: () => {} }));
         const render = () => sm.renderMemoryListInto('#et_memory_list_panel', '#et_memory_empty_panel', '#et_memory_list_label_panel');
         render();
         return { host, render };
@@ -613,6 +618,100 @@
         return res;
     };
 
+    // Summaries of a long chat (docs/platform-plan.md 10b): through the real code, the
+    // model stubbed — when one is due, what it's asked, where it's kept, what's then sent
+    // word for word, the settings list editing and deleting it, off, a failure, a chat
+    // that changed while it was written
+    window.runSummaryTest = async function () {
+        const res = {};
+        errors.length = 0;
+        const chat = () => env.settings.chatHistory['mira.png'];
+        const long = n => Array.from({ length: n }, (_, i) => ({ is_user: i % 2 === 0, mes: i === 1 ? 'hey\n<photo>a ticket</photo>' : `line ${i}`, send_date: Date.now() - (n - i) * 60000 }));
+        env.settings.memoryEnabled = true;
+        delete env.settings.memorySummaries;
+        env.settings.characterMemories = {};
+        const asked = [];
+        let answer = async () => '```\nSummary: 我和Mira约好周末去看电影\n\nMira送了一张票\n```';
+        env.sendCompletionRequest = async req => { asked.push(req); return answer(req); };
+
+        // 89 messages: not yet; 90: the oldest 30
+        env.settings.chatHistory['mira.png'] = long(89);
+        await r.summarizeOldMessages();
+        res.notYet = asked.length === 0 && r.historyToSend(chat()).length === 89;
+        chat().push({ is_user: true, mes: 'line 89', send_date: Date.now() });
+        await r.summarizeOldMessages();
+        const req = asked[0];
+        const user = req?.apiMessages?.[1]?.content || '';
+        res.asked = asked.length === 1 && /between Mira and 我/.test(req.systemPrompt) && !/Notes so far/.test(user)
+            && user.startsWith('Messages:\n我: line 0\nMira: hey / [Photo: a ticket]\n') && user.endsWith('Mira: line 29') && req.rawPrompt === user;
+        const memo = chat()[29].memo;
+        res.kept = !!memo && memo.text === '我和Mira约好周末去看电影\nMira送了一张票' && memo.count === 30 && chat().filter(m => m.memo).length === 1;
+        res.sentAfter = r.historyToSend(chat()).length === 60 && r.historyToSend(chat())[0] === chat()[30];
+        await r.summarizeOldMessages();
+        res.onlyWhenDue = asked.length === 1;
+
+        // The next chunk carries the notes before it
+        for (let i = 90; i < 120; i++) chat().push({ is_user: i % 2 === 0, mes: `line ${i}`, send_date: Date.now() + i });
+        await r.summarizeOldMessages();
+        res.nextChunk = asked.length === 2 && /^Notes so far \(for context, don't repeat them\):\n我和Mira约好周末去看电影\nMira送了一张票\n\nMessages:\n我: line 30\n/.test(asked[1].apiMessages[1].content)
+            && !!chat()[59].memo && r.historyToSend(chat()).length === 60;
+
+        // The settings list: both summaries, editing one, deleting the other
+        const { host, render } = await mountSettingsPanel();
+        const cards = () => [...host.querySelectorAll('.et-memo-section .et-memo-card')];
+        res.listed = !host.querySelector('.et-memo-section').hidden && host.querySelector('.et-memo-section').style.display !== 'none'
+            && cards().map(c => c.querySelector('.et-mem-cat-chip').textContent.trim()).join('|') === 'Messages 1–30|Messages 31–60';
+        cards()[0].querySelector('[data-memo-action="edit"]').click();
+        jQuery(cards()[0]).find('.et-memo-edit-text').val('改过的摘要');
+        cards()[0].querySelector('.et-memo-edit-save').click();
+        render();
+        res.edited = chat()[29].memo.text === '改过的摘要' && cards()[0].querySelector('.et-mem-card-content').textContent === '改过的摘要';
+        const del = () => cards()[1].querySelector('[data-memo-action="delete"]');
+        del().click();
+        res.deleteAsks = !!chat()[59].memo;
+        del().click();
+        render();
+        res.deleted = !chat()[59].memo && cards().length === 1 && r.historyToSend(chat()).length === 90;
+        // The prompt: the latest summary marked in the list once a prompt carried it
+        env.memorySystem.buildMemoryContext(['hi'], window.EchoTextChatSummaries.summaries(chat()));
+        render();
+        res.marked = !!cards()[0].querySelector('.et-mem-recalled-dot');
+        host.remove();
+
+        // Off: everything in full, nothing asked
+        env.settings.memorySummaries = false;
+        res.offSendsAll = r.historyToSend(chat()).length === chat().length;
+        await r.summarizeOldMessages();
+        res.offAsksNothing = asked.length === 2;
+        env.settings.memorySummaries = true;
+
+        // A failure waits 10 more messages before trying again
+        answer = async () => { throw new Error('down'); };
+        await r.summarizeOldMessages();
+        res.failed = asked.length === 3 && !chat()[59].memo;
+        await r.summarizeOldMessages();
+        res.waitsAfterFailure = asked.length === 3;
+        for (let i = 0; i < 10; i++) chat().push({ is_user: true, mes: 'more', send_date: Date.now() + 1000 + i });
+        answer = async () => 'ok';
+        await r.summarizeOldMessages();
+        res.retries = asked.length === 4 && chat()[59].memo?.text === 'ok';
+
+        // The last message deleted while the summary was written: it's dropped
+        for (let i = 0; i < 30; i++) chat().push({ is_user: false, mes: 'x', send_date: Date.now() + 2000 + i });
+        answer = async () => { chat().splice(89, 1); return 'too late'; };
+        await r.summarizeOldMessages();
+        res.changedChatDropped = asked.length === 5 && !chat().some(m => m.memo?.text === 'too late');
+
+        // A refusal isn't kept as a summary
+        answer = async () => '抱歉，我无法总结这段对话。';
+        await r.summarizeOldMessages();
+        res.refusalNotKept = asked.length === 6 && !chat().some(m => m.memo?.text?.startsWith('抱歉'));
+
+        res.errors = errors.slice();
+        res.ok = Object.values(res).filter(v => typeof v === 'boolean').every(Boolean) && !errors.length;
+        return res;
+    };
+
     // A screenshot: example values, a lock, Desire with ?nsfw
     const tab = params.get('tab');
     if (tab || params.has('auto')) {
@@ -637,16 +736,19 @@
         const reply = await window.runReplyTest();
         const tapback = await window.runTapbackTest();
         const memory = await window.runMemoryTest();
-        fetch('/__log', { method: 'POST', body: JSON.stringify({ runEmotionTest: result, runAutoTest: auto, runReplyTest: reply, runTapbackTest: tapback, runMemoryTest: memory }) }).catch(() => {});
+        const summary = await window.runSummaryTest();
+        fetch('/__log', { method: 'POST', body: JSON.stringify({ runEmotionTest: result, runAutoTest: auto, runReplyTest: reply, runTapbackTest: tapback, runMemoryTest: memory, runSummaryTest: summary }) }).catch(() => {});
     } else if (params.has('memory')) {
         // Two memories, one pinned, the other in the last prompt; Add Memory open on a bubble
         env.settings.characterMemories = { 'mira.png': [
             { id: 'm1', category: 'custom', label: 'Night shift', content: '我在便利店上夜班', keys: ['夜班', '便利店'], pinned: false },
             { id: 'm2', category: 'person', label: 'Qi', content: '齐宁怕黑，晚上不敢一个人走夜路', keys: [], pinned: true },
         ] };
-        env.settings.chatHistory['mira.png'] = memoryChat();
+        // and a summary of earlier messages
+        env.settings.chatHistory['mira.png'] = [{ is_user: true, mes: '早', send_date: Date.now() - 900000,
+            memo: { id: 'x1', text: '齐宁发现Mira是间谍，Mira没有否认\n两人约好周末在便利店见面', count: 30 } }, ...memoryChat()];
         r.renderMessages(env.settings.chatHistory['mira.png']);
-        env.memorySystem.buildMemoryContext(['夜班累吗']);
+        env.memorySystem.buildMemoryContext(['夜班累吗'], window.EchoTextChatSummaries.summaries(env.settings.chatHistory['mira.png']));
         const { host, render } = await mountSettingsPanel();
         host.style.cssText = 'position:fixed;left:416px;top:10px;width:360px;height:640px;overflow:auto';
         const section = host.querySelector('[data-section="memory"]');
@@ -654,7 +756,7 @@
         host.querySelectorAll('.et-accordion-section').forEach(sec => { if (sec !== section) sec.style.display = 'none'; });
         jQuery('#et_memory_add_form_panel').show();
         render();
-        bubbleMenu('[data-et-action="part-menu"][data-index="1"][data-part="1"]', 1, false, 1).find(i => i.dataset.action === 'add_memory').click();
+        bubbleMenu('[data-et-action="part-menu"][data-index="2"][data-part="1"]', 2, false, 1).find(i => i.dataset.action === 'add_memory').click();
         // The harness's closeAllDotMenus is a stub
         document.querySelectorAll('.et-dots-menu').forEach(m => m.remove());
     }
