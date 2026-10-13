@@ -818,15 +818,37 @@
         await sleep(3500);
         res.allArrive = [...arriving.querySelectorAll('.ig-row')].filter(row => row.offsetParent).length === 3 && !arriving.querySelector('.ig-typing');
 
-        // The header (5b): back · avatar · name over "Active now" · call · video · more; the status row tucked away
+        // The header (5b, 5d): back · avatar in its ring · name over the feeling · call · video · more
         const header = panel.querySelector('[data-et-role~="header"]');
         const box = sel => panel.querySelector(sel).getBoundingClientRect();
         res.headerOrder = box('#et-close-btn').right <= box('#et-char-avatar-wrap').left && box('#et-char-avatar-wrap').right <= box('#et-char-name').left
             && box('#et-char-name').right <= box('#et-overflow-btn').left && Math.abs(box('#et-close-btn').top - box('#et-overflow-btn').top) < 4;
-        res.headerSub = getComputedStyle(panel.querySelector('.et-header-info'), '::after').content === '"Active now"'
-            && css(panel.querySelector('#et-panel-status-trigger'), 'display') === 'none'
-            && css(panel.querySelector('#et-overflow-status'), 'display') === 'flex'
+        const avatarWrap = panel.querySelector('#et-char-avatar-wrap');
+        res.ring = box('#et-char-avatar-wrap').width === 44 && getComputedStyle(avatarWrap, '::after').backgroundImage.includes('linear-gradient')
             && getComputedStyle(header, '::before').content === '""' && getComputedStyle(header, '::after').content === '""';
+        // The grey line under the name is the status row: the strongest feeling, plain, and it opens the popup
+        const trigger = panel.querySelector('#et-panel-status-trigger');
+        const modeBefore = settings.emotionMode;
+        settings.emotionMode = 'manual';
+        statusRow().innerHTML = emo.buildStatusHtml();
+        const label = trigger.querySelector('.et-status-main')?.textContent || '';
+        res.statusLine = css(trigger, 'display') !== 'none' && box('#et-panel-status-trigger').top >= box('#et-char-name').bottom - 1
+            && label.length > 0 && trigger.textContent.trim() === label && css(trigger.querySelector('.et-status-chip'), 'borderTopWidth') === '0px'
+            && css(panel.querySelector('#et-overflow-status'), 'display') === 'none';
+        // (bindPanelEvents, not in this bundle, opens the popup on a click of the clickable row)
+        res.statusClickable = trigger.classList.contains('et-panel-status-clickable') && css(trigger, 'cursor') === 'pointer';
+        // Emotions off: "Active now"
+        settings.emotionMode = 'off';
+        statusRow().innerHTML = emo.buildStatusHtml();
+        res.activeNowWhenOff = getComputedStyle(trigger.querySelector('.et-status-placeholder'), '::after').content === '"Active now"';
+        settings.emotionMode = modeBefore;
+        statusRow().innerHTML = emo.buildStatusHtml();
+        // An empty chat: the profile card
+        r.renderMessages([]);
+        const card = panel.querySelector('.ig-profile');
+        res.emptyProfile = !!card && card.querySelector('.ig-profile-name')?.textContent === 'Mira'
+            && card.querySelector('.ig-profile-line')?.textContent === 'You follow each other on Instagram' && card.querySelector('.ig-profile-avatar').getBoundingClientRect().width === 96;
+        r.renderMessages(chat());
 
         // The input bar: the blue camera ("+") on the left, the round field with the mic in it
         const input = panel.querySelector('#et-input');

@@ -6654,7 +6654,7 @@
             renderedFrame = null;
             const char = getCurrentCharacter();
             if (!char) { showNoCharacterMessage(); return; }
-            inner.html(getActivePlatform().templates.emptyChat());
+            inner.html(getActivePlatform().templates.emptyChat(getMessageRenderContext()));
             return;
         }
 

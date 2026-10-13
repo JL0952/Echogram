@@ -59,20 +59,21 @@
     gap: 0;
 }
 
-/* ── Header (MockSocial InstagramSkin): back · avatar · name over "Active now" ·
-   call · video · more ─────────────────────────────────────────
+/* ── Header (MockSocial InstagramSkin): back · avatar in its story ring · name
+   over a line of grey · call · video · more ────────────────────
    EchoText's own header elements, laid out as Instagram's: the close button is
    the back arrow, the character's avatar and name stay (tap the name to switch
-   chats), the overflow button the last icon. The status row steps aside; the
-   overflow menu offers it instead. Call and video are drawn, not buttons. */
+   chats), the overflow button the last icon. The grey line under the name is
+   EchoText's status row, the strongest feeling (tap it for the emotion popup);
+   "Active now" while emotions are off. Call and video are drawn, not buttons. */
 
 [data-platform="instagram"] [data-et-role~="header"] {
     position: relative;
     display: grid;
-    grid-template-columns: 26px 32px minmax(0, 1fr) 26px 26px 26px;
+    grid-template-columns: 26px 44px minmax(0, 1fr) 26px 26px 26px;
     align-items: center;
     gap: 12px;
-    height: 56px;
+    height: 66px;
     padding: 0 14px;
     box-sizing: border-box;
     border-bottom: 0.5px solid var(--ig-border);
@@ -87,16 +88,18 @@
     display: contents;
 }
 
-[data-platform="instagram"] .et-panel-echotext-title,
-[data-platform="instagram"] #et-panel-status-trigger {
+[data-platform="instagram"] .et-panel-echotext-title {
     display: none !important;
 }
 
+/* The avatar in Instagram's story ring (fakechat-studio's gradient): the photo
+   inset 4px, a 2px gap in the background colour, the 2px ring outside it */
 [data-platform="instagram"] #et-char-avatar-wrap {
     grid-column: 2;
     grid-row: 1;
-    width: 32px;
-    height: 32px;
+    width: 44px;
+    height: 44px;
+    box-shadow: none;
 }
 
 [data-platform="instagram"] #et-char-avatar-wrap:hover {
@@ -104,25 +107,100 @@
     box-shadow: none;
 }
 
-/* Name over "Active now" */
+[data-platform="instagram"] #et-char-avatar-wrap .et-avatar-img {
+    inset: 4px !important;
+    width: calc(100% - 8px) !important;
+    height: calc(100% - 8px) !important;
+}
+
+[data-platform="instagram"] #et-char-avatar-wrap:not(.et-no-char-avatar)::before,
+[data-platform="instagram"] #et-char-avatar-wrap:not(.et-no-char-avatar)::after {
+    content: "";
+    position: absolute;
+    border-radius: 50%;
+    pointer-events: none;
+}
+
+[data-platform="instagram"] #et-char-avatar-wrap:not(.et-no-char-avatar)::before {
+    inset: 2px;
+    border: 2px solid var(--ig-bg);
+}
+
+[data-platform="instagram"] #et-char-avatar-wrap:not(.et-no-char-avatar)::after {
+    inset: 0;
+    padding: 2px;
+    background: linear-gradient(45deg, #f09433, #e6683c, #dc2743, #cc2366, #bc1888);
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+}
+
+/* Name over the grey line */
 [data-platform="instagram"] .et-header-info {
     grid-column: 3;
     grid-row: 1;
     display: flex;
     flex-direction: column;
     justify-content: center;
+    gap: 1px;
     min-width: 0;
 }
 
-[data-platform="instagram"] .et-header-info::after {
+/* The grey line: the strongest feeling as plain text, its icon small in its colour */
+[data-platform="instagram"] #et-panel-status-trigger {
+    min-height: 0;
+    margin: 0;
+}
+
+[data-platform="instagram"] #et-panel-status-trigger.et-panel-status-clickable {
+    cursor: pointer;
+}
+
+[data-platform="instagram"] .et-status-chip,
+[data-platform="instagram"] .et-status-chip-emotion {
+    gap: 4px;
+    min-height: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: none;
+    color: var(--ig-muted);
+    font-size: 12px;
+    line-height: 1.3;
+}
+
+[data-platform="instagram"] .et-status-chip-emotion .et-status-main {
+    color: var(--ig-muted);
+    font-weight: 400;
+    text-shadow: none;
+}
+
+[data-platform="instagram"] .et-status-emotion-icon {
+    width: 13px;
+    height: 13px;
+    border: 0;
+    background: none;
+    font-size: 11px;
+}
+
+[data-platform="instagram"] .et-status-chip-emotion .et-status-emotion-icon > * {
+    filter: none;
+}
+
+/* Emotions off: Instagram's own line */
+[data-platform="instagram"] .et-status-placeholder {
+    font-size: 0;
+}
+
+[data-platform="instagram"] .et-status-placeholder::after {
     content: "Active now";
     color: var(--ig-muted);
     font-size: 12px;
     line-height: 1.3;
 }
 
-[data-platform="instagram"].et-panel-no-char .et-header-info::after {
-    content: none;
+[data-platform="instagram"].et-panel-no-char #et-panel-status-trigger {
+    display: none;
 }
 
 [data-platform="instagram"] #et-char-name {
@@ -229,14 +307,6 @@
     right: 10px;
 }
 
-[data-platform="instagram"] .et-overflow-menu-item#et-overflow-status {
-    display: flex;
-}
-
-[data-platform="instagram"].et-panel-no-char .et-overflow-menu-item#et-overflow-status,
-[data-platform="instagram"] [data-et-role~="header"]:has(#et-panel-status-trigger:not(.et-panel-status-clickable)) #et-overflow-status {
-    display: none;
-}
 
 /* ── Input bar (MockSocial InstagramSkin footer): camera · field with mic, photo
    and sticker inside · Send once there's text ───────────────
@@ -493,6 +563,53 @@
 
 [data-platform="instagram"] #et-send-btn.et-send-stop::after {
     content: none;
+}
+
+/* ── An empty chat: the other side's profile ───────────────── */
+
+/* At the top, though the list keeps messages to the bottom */
+[data-platform="instagram"] .ig-profile {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    margin-bottom: auto;
+    padding: 28px 16px 12px;
+    color: var(--ig-text);
+    font-family: var(--ig-font);
+    text-align: center;
+}
+
+[data-platform="instagram"] .ig-profile-avatar {
+    position: relative;
+    display: grid;
+    place-items: center;
+    width: 96px;
+    height: 96px;
+    overflow: hidden;
+    border-radius: 50%;
+    color: #ffffff;
+    font-size: 36px;
+    font-weight: 600;
+}
+
+[data-platform="instagram"] .ig-profile-avatar img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+[data-platform="instagram"] .ig-profile-name {
+    margin-top: 12px;
+    font-size: 20px;
+    font-weight: 700;
+}
+
+[data-platform="instagram"] .ig-profile-line {
+    margin-top: 6px;
+    color: var(--ig-muted);
+    font-size: 14px;
 }
 
 /* ── Messages ───────────────────────────────────────────────── */

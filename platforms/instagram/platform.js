@@ -184,9 +184,15 @@
         return `<div class="ig-message ig-message-${side}" data-et-role="message" data-index="${m.index}" data-is-user="${m.isUser ? 1 : 0}"${ctx.groupChat ? ' data-group' : ''}${divider ? ' data-divider' : ''}>${divider}${sender}${rows}${swipe}${seen}</div>`;
     }
 
-    /** An empty chat shows nothing. */
-    function emptyChat() {
-        return '';
+    /**
+     * An empty chat shows the other side's profile, as Instagram opens a new
+     * conversation: the avatar large, the name, "You follow each other on Instagram".
+     */
+    function emptyChat(ctx) {
+        const m = { isUser: false, senderName: ctx.charName };
+        const a = ctx.avatar(m);
+        const img = a.url ? `<img src="${a.url}" alt="" onerror="this.remove()">` : '';
+        return `<div class="ig-profile"><div class="ig-profile-avatar" style="background:${a.color}"><span>${ctx.escapeHtml(a.initial)}</span>${img}</div><div class="ig-profile-name">${ctx.escapeHtml(ctx.charName)}</div><div class="ig-profile-line">You follow each other on Instagram</div></div>`;
     }
 
     /** The character is typing: three dots in a received bubble beside the avatar (fakechat-studio TypingIndicator). */

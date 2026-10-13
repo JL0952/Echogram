@@ -19,6 +19,7 @@
      *                         character's may be one picked in EchoText. A template can give its
      *                         avatar data-et-action="avatar" to open the avatar menu (view / change)
      *   groupChat             a group chat in combine mode (show who sent what)
+     * emptyChat gets ctx too (a character is always chosen by then).
      *
      * No event code: clickable elements carry data-et-action, and the elements
      * core code looks up carry data-et-role (see docs/platform-plan.md).
