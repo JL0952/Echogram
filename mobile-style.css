@@ -37,29 +37,26 @@
     pointer-events: none !important;
 }
 
-/* A message's controls (react, "⋯", and each bubble's own "⋯") stay hidden
-   until one of its bubbles is tapped: the core marks the tapped bubble
+/* A bubble's controls ("⋯", and the tapback button on the character's) stay
+   hidden until the bubble is tapped: the core marks the tapped bubble
    data-et-revealed, and a second tap or a tap elsewhere in the list clears it.
    Hover is overridden: iOS leaves :hover on the last thing tapped, and a hover
    that changed what's visible would also cost a double tap. */
-.et-bubble-actions,
-.et-message:hover .et-bubble-actions,
-.et-bubble:hover .et-bubble-actions,
-.et-part-dots-btn,
-.et-bubble-part:hover .et-part-dots-btn,
-.et-message-grouped .et-bubble-main:hover .et-msg-dots-hover {
+.et-bubble:hover > .et-bubble-tools {
     opacity: 0 !important;
     pointer-events: none !important;
 }
 
-.et-message:has([data-et-revealed]) .et-bubble-actions {
+.et-bubble[data-et-revealed] > .et-bubble-tools {
     opacity: 1 !important;
     pointer-events: auto !important;
 }
 
-.et-bubble[data-et-revealed] > .et-part-dots-btn {
-    opacity: 0.8 !important;
-    pointer-events: auto !important;
+/* Easier to hit with a finger */
+.et-bubble-tool {
+    width: 28px;
+    height: 28px;
+    font-size: 0.85rem;
 }
 
 /* ============================================================
@@ -141,8 +138,6 @@
 .et-header-btn,
 .et-close-btn,
 .et-send-btn,
-.et-react-btn,
-.et-dots-btn,
 .et-lightbox-close,
 .et-lightbox-prompt-toggle {
     min-width:  44px !important;

@@ -6638,26 +6638,18 @@
         const partCount = msg ? getMessageDisplayParts(msg).length : 1;
         const deleteAllLabel = `Delete all (${partCount})`;
 
-        // Build menu items
-        const items = [];
-        if (partIndex !== null) {
-            items.push({ id: 'copy_part', icon: 'fa-copy', label: 'Copy', cls: '' });
-            items.push({ id: 'delete', icon: 'fa-trash', label: 'Delete', cls: 'et-dots-item-delete' });
-        } else if (isUser) {
+        // Build menu items: every bubble's menu copies and deletes that bubble; the
+        // main (last) bubble's also acts on the whole message
+        const items = [{ id: 'copy_part', icon: 'fa-copy', label: 'Copy', cls: '' }];
+        if (partIndex === null) {
             items.push({ id: 'edit', icon: 'fa-pen', label: 'Edit', cls: '' });
-            items.push({ id: 'copy', icon: 'fa-copy', label: 'Copy', cls: '' });
             items.push({ id: 'regen', icon: 'fa-rotate-right', label: 'Regenerate', cls: '' });
-            if (memorySystem && settings.memoryEnabled) {
-                items.push({ id: 'add_memory', icon: 'fa-brain', label: 'Add Memory', cls: '' });
-            }
+            if (!isUser) items.push({ id: 'verbosity', icon: 'fa-align-left', label: 'Verbosity', cls: 'et-dots-item-submenu' });
+            else if (memorySystem && settings.memoryEnabled) items.push({ id: 'add_memory', icon: 'fa-brain', label: 'Add Memory', cls: '' });
             items.push({ id: 'delete', icon: 'fa-trash', label: partCount > 1 ? 'Delete this' : 'Delete', cls: 'et-dots-item-delete' });
             if (partCount > 1) items.push({ id: 'delete_all', icon: 'fa-trash-can', label: deleteAllLabel, cls: 'et-dots-item-delete' });
         } else {
-            items.push({ id: 'edit', icon: 'fa-pen', label: 'Edit', cls: '' });
-            items.push({ id: 'regen', icon: 'fa-rotate-right', label: 'Regenerate', cls: '' });
-            items.push({ id: 'verbosity', icon: 'fa-align-left', label: 'Verbosity', cls: 'et-dots-item-submenu' });
-            items.push({ id: 'delete', icon: 'fa-trash', label: partCount > 1 ? 'Delete this' : 'Delete', cls: 'et-dots-item-delete' });
-            if (partCount > 1) items.push({ id: 'delete_all', icon: 'fa-trash-can', label: deleteAllLabel, cls: 'et-dots-item-delete' });
+            items.push({ id: 'delete', icon: 'fa-trash', label: 'Delete', cls: 'et-dots-item-delete' });
         }
         // The footer menu's "Delete this" removes the main (last) bubble
         const targetPart = partIndex !== null ? partIndex : (partCount > 1 ? partCount - 1 : null);
@@ -6857,14 +6849,10 @@
         const msg = history[msgIndex];
         if (!msg) return;
 
-        if (action === 'copy') {
-            try { navigator.clipboard.writeText(msg.mes); } catch (e) { /* noop */ }
-            closeAllDotMenus();
-            return;
-        }
-
         if (action === 'copy_part') {
-            const part = getMessageDisplayParts(msg)[partIndex];
+            // The main bubble's menu has no part index: it copies the last bubble
+            const parts = getMessageDisplayParts(msg);
+            const part = parts[partIndex ?? parts.length - 1];
             const text = !part ? '' : part.type === 'text' || part.type === 'voice' ? part.text : RichMessages.toPlainText(RichMessages.serializeParts([part]));
             try { navigator.clipboard.writeText(text); } catch (e) { /* noop */ }
             closeAllDotMenus();

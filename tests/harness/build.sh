@@ -30,7 +30,7 @@ EXTRA=bindBubbleTouchSwipe,updateSwipeInPlace node "$H/gen.cjs" "$REPO/index.js"
 CHROME=buildPanelHtml,modeMenuItemInner,toggleAttachMenu,toggleAttachPanel,bindAttachPanel,setComposeMode,isVoiceButtonMode,getChatCurrency,shareType,shareTypeLabel,renderShareTypeChip,toggleShareTypeMenu,getCharAvatarUrl,getCardAvatarUrl,getCustomCharAvatarUrl,openAvatarMenu,changeCharacterAvatar,setCustomCharAvatar,deleteUserImage,readFileAsDataUrl,shrinkImageDataUrl,openAvatarLightbox,AVATAR_SIZE
 EXTRA=$CHROME node "$H/gen.cjs" "$REPO/index.js" chrome "$B/bundle-chrome.js"
 # emotion.html: the panel plus how a reply lands (Auto mode's <mood> line), the model stubbed
-REPLY=generateEchoText,generateEchoTextSwipe,readReply,cleanGeneratedResponse,noteMoodReport,inGroupSession,refreshAutoEmotions,initSwipesOnMessage,syncMsgFromSwipe,pruneSwipesOnPrevLastChar,withMessagesSentSince,getUnreadUserMessageIndices,getEmotionHistory
+REPLY=generateEchoText,generateEchoTextSwipe,readReply,cleanGeneratedResponse,noteMoodReport,inGroupSession,refreshAutoEmotions,initSwipesOnMessage,syncMsgFromSwipe,pruneSwipesOnPrevLastChar,withMessagesSentSince,getUnreadUserMessageIndices,getEmotionHistory,toggleDotsMenu
 EXTRA=$CHROME,$REPLY,getChatHistory,saveChatHistory VALUES=emotionSystem,imageGeneration,memorySystem,gallery,abortController \
 STUBS=updateSendButton,setUserMessageReceiptState,getEmotionReplyTimingModel,buildApiMessagesFromHistory,sleepWithAbort,setTypingIndicatorVisible,requestEchoTextCompletion,markProactiveCharacterActivity,setFabUnreadIndicator,log,setImageGeneratingIndicatorVisible,onGenerationSettled,syncProactiveStateWithHistory \
     node "$H/gen.cjs" "$REPO/index.js" reply "$B/bundle-reply.js"

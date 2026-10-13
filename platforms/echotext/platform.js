@@ -138,12 +138,28 @@
     }
 
     /**
+     * A bubble's own controls, the same on every bubble: "⋯", and beside it on the
+     * character's bubbles the tapback button. They sit outside the bubble, with no
+     * box of their own, and show once the bubble is tapped (style.css). The main
+     * bubble's menu also covers the whole message.
+     */
+    function bubbleTools(m, j, main, ctx) {
+        const menu = main
+            ? `data-et-action="menu" data-index="${m.index}"`
+            : `data-et-action="part-menu" data-index="${m.index}" data-part="${j}"`;
+        const react = !m.isUser && ctx.has('react')
+            ? `<button class="et-bubble-tool" data-et-action="react" data-index="${m.index}" data-part="${j}" title="React"><i class="fa-regular fa-face-smile"></i></button>`
+            : '';
+        return `<div class="et-bubble-tools"><button class="et-bubble-tool" ${menu} data-is-user="${m.isUser ? 1 : 0}" title="More options"><i class="fa-solid fa-ellipsis-vertical"></i></button>${react}</div>`;
+    }
+
+    /**
      * Bubbles shown before a message's main (footer-bearing) bubble — one per part
      * except the last, which goes in the main bubble itself.
      */
     function leadingBubbles(m, sideClass, ctx) {
         return m.parts.slice(0, -1).map((p, j) =>
-            `<div class="et-bubble ${sideClass} et-bubble-part${partBubbleClass(p)}" data-et-role="bubble">${part(p, ctx)}<button class="et-part-dots-btn" data-et-action="part-menu" data-index="${m.index}" data-part="${j}" data-is-user="${m.isUser ? 1 : 0}" title="More options"><i class="fa-solid fa-ellipsis-vertical"></i></button></div>`
+            `<div class="et-bubble ${sideClass} et-bubble-part${partBubbleClass(p)}" data-et-role="bubble">${part(p, ctx)}${bubbleTools(m, j, false, ctx)}</div>`
         ).join('');
     }
 
@@ -211,15 +227,12 @@
                 ${leadingBubbles(m, 'et-bubble-user', ctx)}
                 <div class="et-bubble et-bubble-user et-bubble-main${mainCardClass}" data-et-role="bubble main">
                     ${part(mainPart, ctx)}
-                    ${m.groupedWithNext ? `<button class="et-part-dots-btn et-msg-dots-hover" data-et-action="menu" data-index="${index}" data-is-user="1" title="More options"><i class="fa-solid fa-ellipsis-vertical"></i></button>` : ''}
+                    ${bubbleTools(m, m.parts.length - 1, true, ctx)}
                 </div>
                 <div class="et-message-footer">
                     <span class="et-message-time" title="${fullDateToolip}">${time}</span>
                     <span class="et-user-name">${safeUserName}</span>
                     ${receipt(m.receipt, ctx)}
-                    <div class="et-bubble-actions">
-                        <button class="et-dots-btn" data-et-action="menu" data-index="${index}" data-is-user="1" title="More options"><i class="fa-solid fa-ellipsis-vertical"></i></button>
-                    </div>
                 </div>
                 <div class="et-char-reaction-bar" id="et-char-reaction-${index}" data-et-role="char-reaction">${m.charReaction ? charReaction(m.charReaction, ctx) : ''}</div>
             </div>`;
@@ -245,15 +258,12 @@
                         ${part(mainPart, ctx)}
                         ${imageAttachment(m.imageAttachment)}
                         ${swipeNavHtml}
+                        ${bubbleTools(m, m.parts.length - 1, true, ctx)}
                     </div>
                     <div class="et-message-footer">
                         <span class="et-footer-name" title="${safeCharName}">${safeCharName}</span>
                         <span class="et-message-time" title="${fullDateToolip}">${time}</span>
                         ${verbosityBadge(ctx.verbosity)}
-                        <div class="et-bubble-actions">
-                            ${ctx.has('react') ? `<button class="et-react-btn" data-et-action="react" data-index="${index}" title="React"><i class="fa-regular fa-face-smile"></i></button>` : ''}
-                            <button class="et-dots-btn" data-et-action="menu" data-index="${index}" data-is-user="0" title="More options"><i class="fa-solid fa-ellipsis-vertical"></i></button>
-                        </div>
                     </div>
                     <div class="et-bubble-reactions-bar" id="et-reactions-bar-${index}">
                         <div class="et-active-reactions" id="et-reactions-${index}" data-et-role="reactions">${reactionPills(m.reactions, ctx)}</div>
