@@ -852,7 +852,7 @@
 
         // The input bar: the blue camera ("+") on the left, the round field with the mic in it
         const input = panel.querySelector('#et-input');
-        res.camera = css(panel.querySelector('#et-attach-btn'), 'backgroundColor') === 'rgb(55, 151, 240)' && box('#et-attach-btn').right <= box('#et-input').left
+        res.camera = css(panel.querySelector('#et-attach-btn'), 'backgroundImage').startsWith('linear-gradient') && box('#et-attach-btn').right <= box('#et-input').left
             && css(input, 'borderTopLeftRadius') === '22px';
         res.micInField = !panel.querySelector('#et-voice-btn').hidden && box('#et-voice-btn').left > box('#et-input').left && box('#et-voice-btn').right <= box('#et-input').right;
         // The camera opens the menu (photo; voice goes through the mic)

@@ -13,7 +13,12 @@
     --ig-text: #ffffff;
     --ig-muted: #8e8e93;
     --ig-in: #262626;
-    --ig-out: linear-gradient(135deg, #8b5cf6 0%, #ec4899 100%);
+    /* Your bubbles share one gradient fixed to the screen, pink at the top to purple at
+       the bottom, so each shows its own slice and they shift as the chat scrolls (as
+       Instagram's do); where fixed backgrounds aren't supported (iOS Safari) each
+       bubble shows the whole gradient instead */
+    --ig-out: linear-gradient(to bottom, #ec4899 0%, #a855f7 55%, #7c3aed 100%) fixed;
+    --ig-accent: linear-gradient(135deg, #a855f7 0%, #ec4899 100%);
     --ig-pill: #1c1c1e;
     --ig-pill-border: #2c2c2e;
     --ig-quote: #1a1a1a;
@@ -369,7 +374,7 @@
     margin: 0 0 2px !important;
     border-radius: 50%;
     color: #ffffff;
-    background: #3797f0 !important;
+    background: var(--ig-accent) !important;
 }
 
 [data-platform="instagram"] #et-attach-btn:hover:not(:disabled) {
@@ -516,7 +521,7 @@
     margin: 0;
     padding: 0 16px;
     border-radius: 22px;
-    color: #3797f0;
+    color: #8b5cf6;
     background: none;
     box-shadow: none;
     font: 600 15px var(--ig-font);
@@ -1189,5 +1194,5 @@
 }
 
 [data-platform="instagram"] .ig-edit-btn-primary {
-    color: #3797f0;
+    color: #8b5cf6;
 }
