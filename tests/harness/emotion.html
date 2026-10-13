@@ -716,10 +716,10 @@
         return res;
     };
 
-    // Instagram's look (docs/platform-plan.md 5a) through the real code: a sender's
+    // Instagram's look (docs/platform-plan.md 5a, 5b) through the real code: a sender's
     // messages joining into one run, the avatar by its last bubble, "Seen" only under
     // the last message, reply labels, photo and voice, the bubble controls, tapbacks
-    // as emoji, editing, and a reply arriving bubble by bubble
+    // as emoji, editing, a reply arriving bubble by bubble; the header and input bar
     window.runInstagramTest = async function () {
         const res = {};
         errors.length = 0;
@@ -813,6 +813,37 @@
         res.typingBetween = !!arriving?.querySelector('.ig-row .ig-typing') && arriving.querySelectorAll('.ig-row[style*="display: none"]').length >= 1;
         await sleep(3500);
         res.allArrive = [...arriving.querySelectorAll('.ig-row')].filter(row => row.offsetParent).length === 3 && !arriving.querySelector('.ig-typing');
+
+        // The header (5b): back · avatar · name over "Active now" · call · video · more; the status row tucked away
+        const header = panel.querySelector('[data-et-role~="header"]');
+        const box = sel => panel.querySelector(sel).getBoundingClientRect();
+        res.headerOrder = box('#et-close-btn').right <= box('#et-char-avatar-wrap').left && box('#et-char-avatar-wrap').right <= box('#et-char-name').left
+            && box('#et-char-name').right <= box('#et-overflow-btn').left && Math.abs(box('#et-close-btn').top - box('#et-overflow-btn').top) < 4;
+        res.headerSub = getComputedStyle(panel.querySelector('.et-header-info'), '::after').content === '"Active now"'
+            && css(panel.querySelector('#et-panel-status-trigger'), 'display') === 'none'
+            && css(panel.querySelector('#et-overflow-status'), 'display') === 'flex'
+            && getComputedStyle(header, '::before').content === '""' && getComputedStyle(header, '::after').content === '""';
+
+        // The input bar: the blue camera ("+") on the left, the round field with the mic in it
+        const input = panel.querySelector('#et-input');
+        res.camera = css(panel.querySelector('#et-attach-btn'), 'backgroundColor') === 'rgb(55, 151, 240)' && box('#et-attach-btn').right <= box('#et-input').left
+            && css(input, 'borderTopLeftRadius') === '22px';
+        res.micInField = !panel.querySelector('#et-voice-btn').hidden && box('#et-voice-btn').left > box('#et-input').left && box('#et-voice-btn').right <= box('#et-input').right;
+        // The camera opens the menu (photo; voice goes through the mic)
+        r.toggleAttachMenu(jQuery('#et-attach-btn'));
+        res.cameraMenu = [...document.querySelectorAll('.et-attach-menu .et-dots-item')].map(b => b.dataset.mode).join(',') === 'photo';
+        document.querySelectorAll('.et-attach-menu').forEach(m => m.remove());
+        // The mic: voice mode, the keyboard to switch back
+        r.setComposeMode('voice');
+        res.voiceMode = panel.querySelector('.et-input-wrap').dataset.etCompose === 'voice' && input.placeholder === 'Voice message…'
+            && panel.querySelector('#et-voice-btn').classList.contains('et-voice-btn-active') && css(panel.querySelector('#et-send-btn'), 'display') === 'none';
+        r.setComposeMode(null);
+        // "Send" once there's text, in place of the icons
+        const sendShown = () => css(panel.querySelector('#et-send-btn'), 'display') !== 'none';
+        res.sendHidden = !sendShown();
+        input.value = 'hi there';
+        res.sendShows = sendShown() && css(panel.querySelector('#et-voice-btn'), 'display') === 'none' && getComputedStyle(panel.querySelector('[data-et-role~="input-bar"]'), '::before').display === 'none';
+        input.value = '';
 
         env.settings.defaultPlatform = platformBefore;
         r.renderMessages(chat());

@@ -21,6 +21,16 @@
     /* A bubble's corners: 22px, the ones toward the next or previous bubble of the run tighter */
     --ig-round: 22px;
     --ig-joined: 5px;
+    /* lucide icons (as MockSocial's skin uses), as masks painted in the text colour */
+    --ig-icon-back: url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22none%22 stroke=%22%23000%22 stroke-width=%222%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22%3E%3Cpath d=%22m12 19-7-7 7-7%22/%3E%3Cpath d=%22M19 12H5%22/%3E%3C/svg%3E");
+    --ig-icon-phone: url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22none%22 stroke=%22%23000%22 stroke-width=%221.5%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22%3E%3Cpath d=%22M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z%22/%3E%3C/svg%3E");
+    --ig-icon-video: url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22none%22 stroke=%22%23000%22 stroke-width=%221.5%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22%3E%3Cpath d=%22m22 8-6 4 6 4V8Z%22/%3E%3Crect width=%2214%22 height=%2212%22 x=%222%22 y=%226%22 rx=%222%22 ry=%222%22/%3E%3C/svg%3E");
+    --ig-icon-more: url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22none%22 stroke=%22%23000%22 stroke-width=%222%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22%3E%3Ccircle cx=%2212%22 cy=%2212%22 r=%221%22/%3E%3Ccircle cx=%2219%22 cy=%2212%22 r=%221%22/%3E%3Ccircle cx=%225%22 cy=%2212%22 r=%221%22/%3E%3C/svg%3E");
+    --ig-icon-mic: url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22none%22 stroke=%22%23000%22 stroke-width=%222%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22%3E%3Cpath d=%22M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z%22/%3E%3Cpath d=%22M19 10v2a7 7 0 0 1-14 0v-2%22/%3E%3Cline x1=%2212%22 x2=%2212%22 y1=%2219%22 y2=%2222%22/%3E%3C/svg%3E");
+    --ig-icon-image: url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22none%22 stroke=%22%23000%22 stroke-width=%222%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22%3E%3Crect width=%2218%22 height=%2218%22 x=%223%22 y=%223%22 rx=%222%22 ry=%222%22/%3E%3Ccircle cx=%229%22 cy=%229%22 r=%222%22/%3E%3Cpath d=%22m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21%22/%3E%3C/svg%3E");
+    --ig-icon-smile: url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22none%22 stroke=%22%23000%22 stroke-width=%222%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22%3E%3Ccircle cx=%2212%22 cy=%2212%22 r=%2210%22/%3E%3Cpath d=%22M8 14s1.5 2 4 2 4-2 4-2%22/%3E%3Cline x1=%229%22 x2=%229.01%22 y1=%229%22 y2=%229%22/%3E%3Cline x1=%2215%22 x2=%2215.01%22 y1=%229%22 y2=%229%22/%3E%3C/svg%3E");
+    --ig-icon-camera: url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22none%22 stroke=%22%23000%22 stroke-width=%222%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22%3E%3Cpath d=%22M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z%22/%3E%3Ccircle cx=%2212%22 cy=%2213%22 r=%223%22/%3E%3C/svg%3E");
+    --ig-icon-keyboard: url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22none%22 stroke=%22%23000%22 stroke-width=%222%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22%3E%3Crect width=%2220%22 height=%2216%22 x=%222%22 y=%224%22 rx=%222%22/%3E%3Cpath d=%22M6 8h.01M10 8h.01M14 8h.01M18 8h.01M8 12h.01M12 12h.01M16 12h.01M7 16h10%22/%3E%3C/svg%3E");
 }
 
 [data-platform="instagram"][data-et-scheme="light"] {
@@ -45,10 +55,440 @@
     gap: 0;
 }
 
-[data-platform="instagram"] [data-et-role~="header"],
-[data-platform="instagram"] [data-et-role~="input-bar"] {
+/* ── Header (MockSocial InstagramSkin): back · avatar · name over "Active now" ·
+   call · video · more ─────────────────────────────────────────
+   EchoText's own header elements, laid out as Instagram's: the close button is
+   the back arrow, the character's avatar and name stay (tap the name to switch
+   chats), the overflow button the last icon. The status row steps aside; the
+   overflow menu offers it instead. Call and video are drawn, not buttons. */
+
+[data-platform="instagram"] [data-et-role~="header"] {
+    position: relative;
+    display: grid;
+    grid-template-columns: 26px 32px minmax(0, 1fr) 26px 26px 26px;
+    align-items: center;
+    gap: 12px;
+    height: 56px;
+    padding: 0 14px;
+    box-sizing: border-box;
+    border-bottom: 0.5px solid var(--ig-border);
+    color: var(--ig-text);
     background: var(--ig-bg);
-    border-color: var(--ig-border);
+    font-family: var(--ig-font);
+}
+
+[data-platform="instagram"] .et-header-left,
+[data-platform="instagram"] .et-header-right,
+[data-platform="instagram"] .et-char-name-row {
+    display: contents;
+}
+
+[data-platform="instagram"] .et-panel-echotext-title,
+[data-platform="instagram"] #et-panel-status-trigger {
+    display: none !important;
+}
+
+[data-platform="instagram"] #et-char-avatar-wrap {
+    grid-column: 2;
+    grid-row: 1;
+    width: 32px;
+    height: 32px;
+}
+
+[data-platform="instagram"] #et-char-avatar-wrap:hover {
+    transform: none;
+    box-shadow: none;
+}
+
+/* Name over "Active now" */
+[data-platform="instagram"] .et-header-info {
+    grid-column: 3;
+    grid-row: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    min-width: 0;
+}
+
+[data-platform="instagram"] .et-header-info::after {
+    content: "Active now";
+    color: var(--ig-muted);
+    font-size: 12px;
+    line-height: 1.3;
+}
+
+[data-platform="instagram"].et-panel-no-char .et-header-info::after {
+    content: none;
+}
+
+[data-platform="instagram"] #et-char-name {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    max-width: 100%;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: none;
+    color: var(--ig-text);
+    font-size: 16px;
+    font-weight: 600;
+    line-height: 1.25;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+[data-platform="instagram"] #et-char-name:hover {
+    border: 0;
+    background: none;
+    color: var(--ig-text);
+}
+
+[data-platform="instagram"] .et-char-name-caret {
+    color: var(--ig-muted);
+    font-size: 10px;
+}
+
+/* Back, call, video and more: icons in the text colour */
+[data-platform="instagram"] #et-close-btn,
+[data-platform="instagram"] #et-overflow-btn {
+    grid-row: 1;
+    display: grid;
+    place-items: center;
+    width: 26px;
+    height: 26px;
+    padding: 0;
+    border-radius: 0;
+    background: none;
+    color: var(--ig-text);
+}
+
+[data-platform="instagram"] #et-close-btn {
+    grid-column: 1;
+}
+
+[data-platform="instagram"] #et-overflow-btn {
+    grid-column: 6;
+}
+
+[data-platform="instagram"] #et-close-btn:hover,
+[data-platform="instagram"] #et-overflow-btn:hover {
+    background: none;
+    color: var(--ig-text);
+    opacity: 0.6;
+}
+
+[data-platform="instagram"] #et-close-btn > i,
+[data-platform="instagram"] #et-overflow-btn > i {
+    display: none;
+}
+
+[data-platform="instagram"] #et-close-btn::before,
+[data-platform="instagram"] #et-overflow-btn::before,
+[data-platform="instagram"] [data-et-role~="header"]::before,
+[data-platform="instagram"] [data-et-role~="header"]::after {
+    content: "";
+    display: block;
+    width: 26px;
+    height: 26px;
+    background: currentColor;
+    -webkit-mask: var(--ig-glyph) center / contain no-repeat;
+    mask: var(--ig-glyph) center / contain no-repeat;
+}
+
+[data-platform="instagram"] #et-close-btn::before { --ig-glyph: var(--ig-icon-back); }
+[data-platform="instagram"] #et-overflow-btn::before { --ig-glyph: var(--ig-icon-more); }
+
+[data-platform="instagram"] [data-et-role~="header"]::before {
+    --ig-glyph: var(--ig-icon-phone);
+    grid-column: 4;
+    grid-row: 1;
+}
+
+[data-platform="instagram"] [data-et-role~="header"]::after {
+    --ig-glyph: var(--ig-icon-video);
+    grid-column: 5;
+    grid-row: 1;
+    width: 28px;
+    height: 28px;
+}
+
+[data-platform="instagram"].et-panel-no-char [data-et-role~="header"]::before,
+[data-platform="instagram"].et-panel-no-char [data-et-role~="header"]::after {
+    visibility: hidden;
+}
+
+/* The overflow menu hangs from the header now (its old box is display: contents) */
+[data-platform="instagram"] #et-overflow-menu {
+    top: calc(100% + 4px);
+    right: 10px;
+}
+
+[data-platform="instagram"] .et-overflow-menu-item#et-overflow-status {
+    display: flex;
+}
+
+[data-platform="instagram"].et-panel-no-char .et-overflow-menu-item#et-overflow-status,
+[data-platform="instagram"] [data-et-role~="header"]:has(#et-panel-status-trigger:not(.et-panel-status-clickable)) #et-overflow-status {
+    display: none;
+}
+
+/* ── Input bar (MockSocial InstagramSkin footer): camera · field with mic, photo
+   and sticker inside · Send once there's text ───────────────
+   EchoText's own input elements: the blue camera button is "+" (it opens the
+   photo / voice / transfer menu, and shows the mode's icon while composing), the
+   textarea is the round field, the voice button the mic, the send button
+   "Send" (a stop button while a reply is generated). Photo and sticker are
+   drawn, not buttons. */
+
+[data-platform="instagram"] [data-et-role~="input-bar"] {
+    position: relative;
+    display: grid;
+    grid-template-columns: 40px minmax(0, 1fr);
+    align-items: end;
+    column-gap: 10px;
+    padding: 8px 12px 10px;
+    border-top: 0;
+    color: var(--ig-text);
+    background: var(--ig-bg) !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    box-shadow: none;
+    font-family: var(--ig-font);
+}
+
+[data-platform="instagram"] .et-input-wrap {
+    display: contents;
+}
+
+/* Replying: the quote waits above the field */
+[data-platform="instagram"] .et-reply-draft {
+    grid-column: 1 / -1;
+    grid-row: 1;
+    margin-bottom: 8px;
+    border-left: 0;
+    border-radius: 12px;
+    color: var(--ig-muted);
+    background: var(--ig-in);
+}
+
+[data-platform="instagram"] .et-reply-draft > i {
+    color: var(--ig-muted);
+}
+
+[data-platform="instagram"] #et-attach-btn,
+[data-platform="instagram"] #et-input,
+[data-platform="instagram"] #et-voice-btn,
+[data-platform="instagram"] #et-send-btn,
+[data-platform="instagram"] [data-et-role~="input-bar"]::before,
+[data-platform="instagram"] [data-et-role~="input-bar"]::after {
+    grid-row: 2;
+}
+
+[data-platform="instagram"] #et-attach-btn {
+    grid-column: 1;
+    display: grid;
+    place-items: center;
+    width: 40px;
+    height: 40px;
+    margin: 0 0 2px !important;
+    border-radius: 50%;
+    color: #ffffff;
+    background: #3797f0 !important;
+}
+
+[data-platform="instagram"] #et-attach-btn:hover:not(:disabled) {
+    color: #ffffff;
+    opacity: 0.85;
+}
+
+[data-platform="instagram"] #et-attach-btn > i {
+    display: none;
+}
+
+[data-platform="instagram"] #et-attach-btn::before {
+    content: "";
+    width: 22px;
+    height: 22px;
+    background: currentColor;
+    -webkit-mask: var(--ig-icon-camera) center / contain no-repeat;
+    mask: var(--ig-icon-camera) center / contain no-repeat;
+}
+
+/* Composing a photo, voice message or transfer: the camera shows that mode's icon (tap to cancel) */
+[data-platform="instagram"] #et-attach-btn.et-attach-btn-active::before {
+    display: none;
+}
+
+[data-platform="instagram"] #et-attach-btn.et-attach-btn-active > i {
+    display: block;
+    font-size: 17px;
+}
+
+/* The round field; the icons inside it sit over its right end */
+[data-platform="instagram"] #et-input {
+    grid-column: 2;
+    min-height: 44px;
+    padding: 11px 102px 11px 16px !important;
+    border: 0 !important;
+    border-radius: 22px !important;
+    color: var(--ig-text) !important;
+    background: var(--ig-in) !important;
+    box-shadow: none !important;
+    font-family: inherit !important;
+    font-size: 15px !important;
+    line-height: 22px !important;
+}
+
+[data-platform="instagram"] #et-input::placeholder {
+    color: var(--ig-muted);
+}
+
+[data-platform="instagram"] #et-voice-btn,
+[data-platform="instagram"] [data-et-role~="input-bar"]::before,
+[data-platform="instagram"] [data-et-role~="input-bar"]::after {
+    grid-column: 2;
+    justify-self: end;
+    align-self: end;
+    z-index: 1;
+    width: 24px;
+    height: 24px;
+    margin-bottom: 10px;
+}
+
+[data-platform="instagram"] [data-et-role~="input-bar"]::before,
+[data-platform="instagram"] [data-et-role~="input-bar"]::after,
+[data-platform="instagram"] #et-voice-btn::before {
+    content: "";
+    display: block;
+    background: currentColor;
+    -webkit-mask: var(--ig-glyph) center / contain no-repeat;
+    mask: var(--ig-glyph) center / contain no-repeat;
+    pointer-events: none;
+}
+
+[data-platform="instagram"] #et-voice-btn {
+    display: grid;
+    place-items: center;
+    margin-right: 76px;
+    padding: 0;
+    border: 0;
+    color: var(--ig-text);
+    background: none;
+    cursor: pointer;
+}
+
+[data-platform="instagram"] #et-voice-btn[hidden] {
+    display: none;
+}
+
+[data-platform="instagram"] #et-voice-btn > i {
+    display: none;
+}
+
+[data-platform="instagram"] #et-voice-btn::before {
+    --ig-glyph: var(--ig-icon-mic);
+    width: 24px;
+    height: 24px;
+}
+
+/* In voice mode the mic is a keyboard, to switch back */
+[data-platform="instagram"] #et-voice-btn.et-voice-btn-active::before {
+    --ig-glyph: var(--ig-icon-keyboard);
+}
+
+[data-platform="instagram"] [data-et-role~="input-bar"]::before {
+    --ig-glyph: var(--ig-icon-image);
+    margin-right: 44px;
+}
+
+[data-platform="instagram"] [data-et-role~="input-bar"]::after {
+    --ig-glyph: var(--ig-icon-smile);
+    margin-right: 12px;
+}
+
+/* Composing a photo or transfer: the field takes the whole width, without the
+   icons; in voice mode only the mic stays, as a keyboard to switch back */
+[data-platform="instagram"] [data-et-role~="input-bar"]:has(.et-input-wrap-compose)::before,
+[data-platform="instagram"] [data-et-role~="input-bar"]:has(.et-input-wrap-compose)::after,
+[data-platform="instagram"] [data-et-role~="input-bar"]:has(.et-input-wrap-compose:not([data-et-compose="voice"])) #et-voice-btn {
+    display: none;
+}
+
+[data-platform="instagram"] .et-input-wrap-compose:not([data-et-compose="voice"]) #et-input {
+    padding-right: 16px !important;
+}
+
+[data-platform="instagram"] .et-input-wrap-compose[data-et-compose="voice"] #et-input {
+    padding-right: 44px !important;
+}
+
+[data-platform="instagram"] .et-input-wrap-compose[data-et-compose="voice"] #et-voice-btn {
+    margin-right: 12px;
+}
+
+/* "Send" in place of the icons once there is text; a quiet stop while a reply is generated */
+[data-platform="instagram"] #et-send-btn {
+    display: none;
+    grid-column: 2;
+    justify-self: end;
+    align-self: end;
+    z-index: 1;
+    width: auto;
+    height: 44px;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    margin: 0;
+    padding: 0 16px;
+    border-radius: 22px;
+    color: #3797f0;
+    background: none;
+    box-shadow: none;
+    font: 600 15px var(--ig-font);
+}
+
+[data-platform="instagram"] #et-send-btn:hover,
+[data-platform="instagram"] #et-send-btn:active {
+    transform: none;
+    box-shadow: none;
+    background: none;
+}
+
+[data-platform="instagram"] #et-send-btn > i {
+    display: none;
+}
+
+[data-platform="instagram"] #et-send-btn::after {
+    content: "Send";
+}
+
+[data-platform="instagram"] [data-et-role~="input-bar"]:has(#et-input:not(:placeholder-shown)) #et-send-btn,
+[data-platform="instagram"] #et-send-btn.et-send-stop {
+    display: grid;
+    place-items: center;
+}
+
+[data-platform="instagram"] [data-et-role~="input-bar"]:has(#et-input:not(:placeholder-shown)) #et-voice-btn,
+[data-platform="instagram"] [data-et-role~="input-bar"]:has(#et-input:not(:placeholder-shown))::before,
+[data-platform="instagram"] [data-et-role~="input-bar"]:has(#et-input:not(:placeholder-shown))::after,
+[data-platform="instagram"] [data-et-role~="input-bar"]:has(#et-send-btn.et-send-stop) #et-voice-btn,
+[data-platform="instagram"] [data-et-role~="input-bar"]:has(#et-send-btn.et-send-stop)::before,
+[data-platform="instagram"] [data-et-role~="input-bar"]:has(#et-send-btn.et-send-stop)::after {
+    display: none;
+}
+
+[data-platform="instagram"] #et-send-btn.et-send-stop {
+    color: var(--ig-muted);
+    font-size: 14px;
+}
+
+[data-platform="instagram"] #et-send-btn.et-send-stop > i {
+    display: block;
+}
+
+[data-platform="instagram"] #et-send-btn.et-send-stop::after {
+    content: none;
 }
 
 /* ── Messages ───────────────────────────────────────────────── */

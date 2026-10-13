@@ -25,6 +25,7 @@
 <script src="../../lib/chat-view-model.js"></script>
 <script src="../../platforms/echotext/platform.js"></script>
 <script src="../../platforms/wechat/platform.js"></script>
+<script src="../../platforms/instagram/platform.js"></script>
 <script src="scenarios.js"></script>
 <script src="build/bundle-chrome.js"></script>
 <script>
@@ -53,6 +54,8 @@
         'character typing (title)': p => { p.setAttribute('data-et-typing', ''); },
         'generating (stop instead of +)': p => { const b = p.querySelector('#et-send-btn'); b.classList.add('et-send-stop'); b.innerHTML = '<i class="fa-solid fa-stop"></i>'; },
         'composing a photo': p => { p.querySelector('.et-input-wrap').classList.add('et-input-wrap-compose'); const a = p.querySelector('#et-attach-btn'); a.classList.add('et-attach-btn-active'); a.innerHTML = '<i class="fa-solid fa-image"></i>'; p.querySelector('#et-input').setAttribute('placeholder', "Describe the photo you're sending..."); },
+        'voice mode (platforms with a voice button)': p => { const w = p.querySelector('.et-input-wrap'); w.classList.add('et-input-wrap-compose'); w.setAttribute('data-et-compose', 'voice'); const v = p.querySelector('#et-voice-btn'); v.removeAttribute('hidden'); v.classList.add('et-voice-btn-active'); p.querySelector('#et-input').setAttribute('placeholder', 'Voice message…'); },
+        'replying': p => { const d = p.querySelector('#et-reply-draft'); d.removeAttribute('hidden'); d.innerHTML = '<i class="fa-solid fa-reply"></i><span class="et-reply-draft-name">Mira</span><span class="et-reply-draft-text">what\'s up</span><button class="et-reply-draft-close" type="button">×</button>'; },
         '⋯ menu open': p => { p.querySelector('#et-overflow-menu').classList.add('et-overflow-menu-open'); },
     };
     const out = document.getElementById('out');

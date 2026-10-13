@@ -216,6 +216,8 @@
         name: 'Instagram',
         features: ['photo', 'voice', 'react', 'reply'],
         stylesheet: 'platform.css',
+        // Voice messages are typed from the mic in the input field, as Instagram records them
+        voiceButton: { placeholder: 'Voice message…' },
         templates: {
             message,
             part,

@@ -5433,7 +5433,9 @@
             return;
         }
         closeAllDotMenus();
-        const itemsHtml = Object.entries(Features.getComposerModes(getActiveFeatures())).map(([id, m]) =>
+        // A platform with its own voice button (the mic in Instagram's field) leaves voice out of the menu
+        const itemsHtml = Object.entries(Features.getComposerModes(getActiveFeatures()))
+            .filter(([id]) => !(id === 'voice' && getActivePlatform().voiceButton)).map(([id, m]) =>
             `<button class="et-dots-item" data-mode="${id}"><i class="fa-solid ${m.icon}"></i><span>${m.label}</span></button>`
         ).join('');
         // A platform without photos or transfers has nothing to attach
