@@ -7,7 +7,7 @@ globalThis.window = {};
 for (const file of ['rich-messages.js', 'features.js']) {
     new Function(readFileSync(new URL(`../lib/${file}`, import.meta.url), 'utf8'))();
 }
-const { FEATURE_IDS, buildFeaturePrompts, filterContextText } = window.EchoTextFeatures;
+const { FEATURE_IDS, buildFeaturePrompts, filterContextText, getComposerModes } = window.EchoTextFeatures;
 
 const ALL = FEATURE_IDS;
 const NO_REACT = ['photo', 'transfer'];
@@ -38,7 +38,7 @@ test('format rules list only the enabled features, in a fixed order', () => {
     assert.deepEqual(buildFeaturePrompts(['transfer', 'photo'], ctx).map(p => p.split(':')[0]), ['PHOTOS', 'TRANSFERS']);
     assert.match(buildFeaturePrompts(['react'], ctx)[0], /one of: heart, like\./);
     assert.deepEqual(buildFeaturePrompts(NONE, ctx), []);
-    assert.deepEqual(buildFeaturePrompts(['file', 'transfer', 'voice', 'reply', 'react', 'photo'], ctx).map(p => p.split(':')[0]),
+    assert.deepEqual(buildFeaturePrompts(['link', 'file', 'transfer', 'voice', 'reply', 'react', 'photo'], ctx).map(p => p.split(':')[0]),
         ['PHOTOS', 'VOICE MESSAGES', 'REACTIONS', 'REPLIES', 'TRANSFERS', 'FILES AND LINKS']);
 });
 
@@ -74,8 +74,25 @@ test('a message that was only unsupported content is left out (null)', () => {
     assert.equal(filterContextText('   ', NO_REACT), '   ');
 });
 
+test('files and links: one rule for both where both are on, each its own where only one is', () => {
+    const ctx = { charName: 'Mira', userName: 'Me', reactionIds: REACTIONS };
+    const [files] = buildFeaturePrompts(['file'], ctx);
+    assert.match(files, /^FILES: .*<file>name\.ext/);
+    assert.doesNotMatch(files, /<link>|web page/);
+    const [links] = buildFeaturePrompts(['link'], ctx);
+    assert.match(links, /^LINKS: Mira can share a web page as <link>page title \| address \| one line about it<\/link>/);
+    assert.match(links, /A <link> from Me is something they shared/);
+    assert.doesNotMatch(links, /<file>/);
+    assert.equal(buildFeaturePrompts(['file', 'link'], ctx).length, 1);
+    // The "+" menu: links are a kind of file where files are on, their own entry where not
+    assert.deepEqual(Object.keys(getComposerModes(['photo', 'file', 'link'])), ['photo', 'file']);
+    assert.deepEqual(Object.keys(getComposerModes(['photo', 'link'])), ['photo', 'link']);
+    // A platform with links only keeps links and turns files into notes
+    assert.equal(filterContextText('<link>News | https://a.cn</link>\n<file>a.pdf | notes</file>', ['link']), '<link>News | https://a.cn</link>\n[File: a.pdf | notes]');
+});
+
 test('the file rule names both tags and keeps sharing to what the story calls for', () => {
-    const [rule] = buildFeaturePrompts(['file'], { charName: 'Mira', userName: 'Me', reactionIds: REACTIONS });
+    const [rule] = buildFeaturePrompts(['file', 'link'], { charName: 'Mira', userName: 'Me', reactionIds: REACTIONS });
     assert.match(rule, /<file>name\.ext \| a short summary of what's in it<\/file>/);
     assert.match(rule, /<link>page title \| address \| one line about it<\/link>/);
     assert.match(rule, /only when the story calls for it/);

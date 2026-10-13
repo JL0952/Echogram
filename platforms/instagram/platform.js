@@ -19,6 +19,9 @@
     const EMOJI = { heart: '❤️', haha: '😂', wow: '😮', sad: '😢', fire: '🔥', like: '👍', star: '⭐', bolt: '⚡' };
 
     const PHOTO_GLYPH = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M19 4H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2zm0 14H5l4.5-6 3.5 4.5 2.5-3L19 18zM8.5 10a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3z"/></svg>';
+    // lucide link and external-link, for a shared page's card
+    const LINK_GLYPH = '<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>';
+    const EXTERNAL_GLYPH = '<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>';
     const PLAY_GLYPH = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M8 5.5v13a1 1 0 0 0 1.5.86l10.5-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5z"/></svg>';
 
     const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -79,10 +82,23 @@
         return `<div class="ig-bubble ig-voice" role="button" tabindex="0" aria-expanded="false" title="Tap to read" data-et-action="voice-toggle" data-voice="${p.voiceIndex}"><span class="ig-voice-play">${PLAY_GLYPH}</span><span class="ig-voice-wave" aria-hidden="true">${bars}</span><span class="ig-voice-time">${time}</span>${dot}</div><div class="ig-transcript" data-et-role="transcript">${ctx.formatText(p.text)}</div>`;
     }
 
-    /** One bubble's content: text, a photo or a voice message. */
+    /**
+     * A shared web page, as Instagram's link preview: the page's picture (a
+     * placeholder, there is none), its title, one line about it, and the site with
+     * the external-link mark.
+     */
+    function linkCard(p, ctx) {
+        const title = ctx.escapeHtml(p.title || p.host || 'Link');
+        const desc = p.summary ? `<div class="ig-link-desc">${ctx.escapeHtml(p.summary)}</div>` : '';
+        const site = p.host ? `<div class="ig-link-site"><span>${ctx.escapeHtml(p.host)}</span>${EXTERNAL_GLYPH}</div>` : '';
+        return `<div class="ig-link"><div class="ig-link-image">${LINK_GLYPH}</div><div class="ig-link-body"><div class="ig-link-title">${title}</div>${desc}${site}</div></div>`;
+    }
+
+    /** One bubble's content: text, a photo, a voice message or a link card. */
     function part(p, ctx) {
         if (p.type === 'photo') return photo(p, ctx);
         if (p.type === 'voice') return voice(p, ctx);
+        if (p.type === 'link') return linkCard(p, ctx);
         if (p.type !== 'text') return '';
         return `<div class="ig-bubble"><div class="ig-text" data-et-role="text">${ctx.formatText(p.text)}</div></div>`;
     }
@@ -220,8 +236,11 @@
     window.EchoTextPlatforms.instagram = {
         id: 'instagram',
         name: 'Instagram',
-        features: ['photo', 'voice', 'react', 'reply'],
+        // Links show as a preview card; Instagram has no files or transfers
+        features: ['photo', 'voice', 'react', 'reply', 'link'],
         stylesheet: 'platform.css',
+        // Your bubbles share one gradient across the visible list (index.js updateSharedFill)
+        sharedFill: '.ig-row-me .ig-bubble',
         // Voice messages are typed from the mic in the input field, as Instagram records them
         voiceButton: { placeholder: 'Voice message…' },
         templates: {

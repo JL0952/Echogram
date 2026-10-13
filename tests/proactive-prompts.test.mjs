@@ -6,8 +6,8 @@ import { readFileSync } from 'node:fs';
 globalThis.window = {};
 new Function(readFileSync(new URL('../lib/proactive-messaging.js', import.meta.url), 'utf8'))();
 
-const WECHAT = ['photo', 'voice', 'transfer', 'file'];
-const ECHOTEXT = ['photo', 'voice', 'react', 'transfer', 'file'];
+const WECHAT = ['photo', 'voice', 'transfer', 'file', 'link'];
+const ECHOTEXT = ['photo', 'voice', 'react', 'transfer', 'file', 'link'];
 
 function proactive(features) {
     return window.EchoTextProactiveMessaging.createProactiveMessaging({

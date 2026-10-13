@@ -24,7 +24,7 @@ const body = (iife.expression.callee || iife.expression.expression.callee).body.
 const WANT = [
     // data / view model
     'RichMessages', 'Features', 'ChatViewModel', 'Platform', 'Platforms', 'PLATFORM_IDS', 'activePlatformMemo', 'getActivePlatform',
-    'syncPlatformChrome', 'populatePlatformSelects', 'bindPlatformSelects', 'onPlatformChoiceChanged', 'getColorScheme', 'getReactionIds', 'startInlineEdit', 'getActiveFeatures', 'platformHas',
+    'syncPlatformChrome', 'sharedFillFrame', 'updateSharedFill', 'queueSharedFill', 'watchSharedFill', 'populatePlatformSelects', 'bindPlatformSelects', 'onPlatformChoiceChanged', 'getColorScheme', 'getReactionIds', 'startInlineEdit', 'getActiveFeatures', 'platformHas',
     'getMessageDisplayParts', 'getMessageReactions', 'staggeredMessageKeys', 'shouldStaggerReveal', 'staggerRevealParts',
     // html
     'escapeHtml', 'convertEmoticonsToEmojis', 'formatMessageText', 'buildAvatarHtml', 'applyMemoryHighlights', '_highlightTextNode',

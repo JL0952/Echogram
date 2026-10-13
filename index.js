@@ -127,7 +127,7 @@
     let fabDragging = false;
     let loadedFontFamily = null;
     let showTypingIndicator = false;
-    // When set ('photo' | 'voice' | 'transfer' | 'file'), the next message the user sends
+    // When set ('photo' | 'voice' | 'transfer' | 'file' | 'link'), the next message the user sends
     // is that kind of content and the typed text is its description / words / amount
     let composeMode = null;
     // Replying (feature 'reply'): { charKey, name, text } of the bubble picked, until the next send
@@ -5143,6 +5143,9 @@
         } else if (mode === 'file') {
             // "title | description", as the kind picked on the chip
             mes = RichMessages.shareTag(text, shareType);
+        } else if (mode === 'link') {
+            // A platform with links but no files (Instagram): "title | address | description"
+            mes = RichMessages.shareTag(text, 'link');
         } else if (mode === 'transfer') {
             const amount = RichMessages.parseAmount(text);
             if (!amount) {
@@ -5379,8 +5382,14 @@
         return getActivePlatform().composerPanel?.file?.typeLabels?.[type.id] || type.label;
     }
 
+    /** The kinds of file the platform can share: a web page only where it has links. */
+    function shareTypes() {
+        return RichMessages.SHARE_TYPES.filter(type => type.id !== 'link' || platformHas('link'));
+    }
+
     function renderShareTypeChip() {
-        const type = RichMessages.SHARE_TYPES.find(t => t.id === shareType) || RichMessages.SHARE_TYPES[0];
+        const type = shareTypes().find(t => t.id === shareType) || shareTypes()[0];
+        shareType = type.id;
         jQuery('#et-share-type').html(`<span>${escapeHtml(shareTypeLabel(type))}</span><i class="fa-solid fa-chevron-down"></i>`);
     }
 
@@ -5391,7 +5400,7 @@
             return;
         }
         closeAllDotMenus();
-        const items = RichMessages.SHARE_TYPES.map(type =>
+        const items = shareTypes().map(type =>
             `<button class="et-dots-item${type.id === shareType ? ' et-dots-item-current' : ''}" data-share-type="${type.id}"><i class="fa-solid ${type.icon}"></i><span>${escapeHtml(shareTypeLabel(type))}</span></button>`
         ).join('');
         const menu = jQuery(`<div class="et-dots-menu et-attach-menu et-share-type-menu">${items}</div>`);
@@ -6348,8 +6357,50 @@
      * scoped under it), its stylesheet loaded only while in use, the "+" button
      * only when it has something to attach, and the pickers in settings.
      */
+    // ── One gradient across the visible list (Instagram's sent bubbles) ──────
+    // A platform naming elements in `sharedFill` gets on each how far its top sits
+    // below the top of the visible list (--et-fill-y), and the list's height on the
+    // list (--et-fill-h), so its CSS can size one gradient to the list and show each
+    // element its own slice, shifting as the list scrolls. A fixed background would
+    // do it, but SillyTavern's transform on <html> turns those off.
+    let sharedFillFrame = 0;
+
+    function updateSharedFill() {
+        sharedFillFrame = 0;
+        const list = document.getElementById('et-messages');
+        const selector = getActivePlatform().sharedFill;
+        if (!list || !selector) return;
+        const box = list.getBoundingClientRect();
+        list.style.setProperty('--et-fill-h', `${Math.round(box.height)}px`);
+        for (const el of list.querySelectorAll(selector)) {
+            el.style.setProperty('--et-fill-y', `${Math.round(el.getBoundingClientRect().top - box.top)}px`);
+        }
+    }
+
+    function queueSharedFill() {
+        if (!sharedFillFrame) sharedFillFrame = requestAnimationFrame(updateSharedFill);
+    }
+
+    /**
+     * Keeps the shared fill current on the list now in the panel: scrolling, messages
+     * and bubbles coming and going or opening, the panel resized. (Style changes
+     * aren't watched: updating sets them.)
+     */
+    function watchSharedFill() {
+        const list = document.getElementById('et-messages');
+        if (!list || list.etSharedFill) return;
+        list.etSharedFill = true;
+        list.addEventListener('scroll', queueSharedFill, { passive: true });
+        list.addEventListener('animationend', queueSharedFill);
+        new MutationObserver(queueSharedFill).observe(list, { childList: true, subtree: true, attributes: true,
+            attributeFilter: ['class', 'hidden', 'aria-expanded', 'data-et-arrive', 'data-platform'] });
+        if (window.ResizeObserver) new ResizeObserver(queueSharedFill).observe(list);
+    }
+
     function syncPlatformChrome() {
         const platform = getActivePlatform();
+        watchSharedFill();
+        queueSharedFill();
         jQuery('#et-panel').attr({
             'data-platform': platform.id,
             'data-et-scheme': getColorScheme(),

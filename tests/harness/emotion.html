@@ -857,7 +857,7 @@
         res.micInField = !panel.querySelector('#et-voice-btn').hidden && box('#et-voice-btn').left > box('#et-input').left && box('#et-voice-btn').right <= box('#et-input').right;
         // The camera opens the menu (photo; voice goes through the mic)
         r.toggleAttachMenu(jQuery('#et-attach-btn'));
-        res.cameraMenu = [...document.querySelectorAll('.et-attach-menu .et-dots-item')].map(b => b.dataset.mode).join(',') === 'photo';
+        res.cameraMenu = [...document.querySelectorAll('.et-attach-menu .et-dots-item')].map(b => b.dataset.mode).join(',') === 'photo,link';
         document.querySelectorAll('.et-attach-menu').forEach(m => m.remove());
         // The mic: voice mode, the keyboard to switch back
         r.setComposeMode('voice');
@@ -870,6 +870,40 @@
         input.value = 'hi there';
         res.sendShows = sendShown() && css(panel.querySelector('#et-voice-btn'), 'display') === 'none' && getComputedStyle(panel.querySelector('[data-et-role~="input-bar"]'), '::before').display === 'none';
         input.value = '';
+
+        // Links (5e): shared from the camera's Link, shown as a preview card; no files
+        r.setComposeMode('link');
+        input.value = 'Ramen guide | https://eater.com/ramen | the best bowls in town';
+        r.handleSend();
+        const sent = chat()[chat().length - 1];
+        res.linkSent = sent.mes === '<link>Ramen guide | https://eater.com/ramen | the best bowls in town</link>';
+        chat().push({ is_user: false, mes: '<file>menu.pdf | dinner menu</file>\n<link>Ramen Bar | https://ramen.bar | open late</link>', send_date: Date.now() });
+        r.renderMessages(chat());
+        await sleep(200);
+        const cards = [...panel.querySelectorAll('.ig-link')];
+        res.linkCards = cards.length === 2 && cards[1].querySelector('.ig-link-title').textContent === 'Ramen Bar'
+            && cards[1].querySelector('.ig-link-site span').textContent === 'ramen.bar' && cards[1].querySelector('.ig-link-desc').textContent === 'open late'
+            && !!cards[1].querySelector('.ig-link-image svg');
+        res.fileIsNote = msg(chat().length - 1).textContent.includes('[File: menu.pdf | dinner menu]');
+
+        // Your bubbles share one gradient over the visible list, even where a transform on
+        // <html> (SillyTavern's) turns fixed backgrounds off: each its own slice, moving on scroll
+        document.documentElement.style.transform = 'translateZ(0)';
+        for (let i = 0; i < 8; i++) chat().push({ is_user: true, mes: `line ${i}`, send_date: Date.now() + i });
+        r.renderMessages(chat());
+        await sleep(300);
+        const list = document.getElementById('et-messages');
+        const mine = [...panel.querySelectorAll('.ig-row-me .ig-bubble')].slice(-2);
+        const fillY = el => el.style.getPropertyValue('--et-fill-y');
+        const offset = el => `${Math.round(el.getBoundingClientRect().top - list.getBoundingClientRect().top)}px`;
+        res.sharedFill = list.style.getPropertyValue('--et-fill-h') === `${Math.round(list.getBoundingClientRect().height)}px`
+            && mine.every(el => fillY(el) === offset(el)) && fillY(mine[0]) !== fillY(mine[1])
+            && css(mine[0], 'backgroundSize') === `100% ${list.style.getPropertyValue('--et-fill-h')}`;
+        list.style.scrollBehavior = 'auto';
+        list.scrollTop -= 80;
+        await sleep(100);
+        res.sharedFillScrolls = mine.every(el => fillY(el) === offset(el));
+        document.documentElement.style.transform = '';
 
         env.settings.defaultPlatform = platformBefore;
         r.renderMessages(chat());

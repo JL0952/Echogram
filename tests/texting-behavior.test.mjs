@@ -7,8 +7,8 @@ globalThis.window = {};
 new Function(readFileSync(new URL('../lib/texting-behavior.js', import.meta.url), 'utf8'))();
 const Behavior = window.EchoTextTextingBehavior;
 
-const NATIVE = ['photo', 'voice', 'react', 'transfer', 'file'];
-const WECHAT = ['photo', 'voice', 'transfer', 'file'];
+const NATIVE = ['photo', 'voice', 'react', 'transfer', 'file', 'link'];
+const WECHAT = ['photo', 'voice', 'transfer', 'file', 'link'];
 const build = (opts = {}) => Behavior.buildBehavior({ features: NATIVE, verbosity: 'medium', charName: 'Mira', userName: 'Qi', ...opts });
 
 const KEEPS_GOING = 'Mira is more likely than usual to keep the conversation going: follow-up questions, new topics.';

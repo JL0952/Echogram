@@ -343,7 +343,7 @@
         id: 'echotext',
         name: 'Echogram',
         // Rich-message features this look supports (lib/features.js)
-        features: ['photo', 'voice', 'react', 'reply', 'transfer', 'file'],
+        features: ['photo', 'voice', 'react', 'reply', 'transfer', 'file', 'link'],
         templates: {
             message,
             part,

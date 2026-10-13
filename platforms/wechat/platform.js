@@ -220,7 +220,7 @@
     window.EchoTextPlatforms.wechat = {
         id: 'wechat',
         name: 'WeChat',
-        features: ['photo', 'voice', 'reply', 'transfer', 'file'],
+        features: ['photo', 'voice', 'reply', 'transfer', 'file', 'link'],
         stylesheet: 'platform.css',
         // Voice messages are typed from the input bar's voice button, as WeChat records them
         voiceButton: { placeholder: '输入要说的话，作为语音发出' },

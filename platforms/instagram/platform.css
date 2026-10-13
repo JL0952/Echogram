@@ -13,11 +13,11 @@
     --ig-text: #ffffff;
     --ig-muted: #8e8e93;
     --ig-in: #262626;
-    /* Your bubbles share one gradient fixed to the screen, pink at the top to purple at
-       the bottom, so each shows its own slice and they shift as the chat scrolls (as
-       Instagram's do); where fixed backgrounds aren't supported (iOS Safari) each
-       bubble shows the whole gradient instead */
-    --ig-out: linear-gradient(to bottom, #ec4899 0%, #a855f7 55%, #7c3aed 100%) fixed;
+    /* Your bubbles share one gradient over the visible list, pink at the top to purple
+       at the bottom: each shows its own slice, and they shift as the chat scrolls (as
+       Instagram's do; sized and placed from --et-fill-h / --et-fill-y, which index.js
+       keeps up to date; without them each bubble shows the whole gradient) */
+    --ig-out: linear-gradient(to bottom, #ec4899 0%, #a855f7 55%, #7c3aed 100%);
     --ig-accent: linear-gradient(135deg, #a855f7 0%, #ec4899 100%);
     --ig-pill: #1c1c1e;
     --ig-pill-border: #2c2c2e;
@@ -759,12 +759,14 @@
 /* ── Bubbles ────────────────────────────────────────────────── */
 
 [data-platform="instagram"] .ig-bubble,
-[data-platform="instagram"] .ig-photo {
+[data-platform="instagram"] .ig-photo,
+[data-platform="instagram"] .ig-link {
     border-radius: var(--ig-top) var(--ig-round) var(--ig-round) var(--ig-bottom);
 }
 
 [data-platform="instagram"] .ig-row-me .ig-bubble,
-[data-platform="instagram"] .ig-row-me .ig-photo {
+[data-platform="instagram"] .ig-row-me .ig-photo,
+[data-platform="instagram"] .ig-row-me .ig-link {
     border-radius: var(--ig-round) var(--ig-top) var(--ig-bottom) var(--ig-round);
 }
 
@@ -779,7 +781,9 @@
 
 [data-platform="instagram"] .ig-row-me .ig-bubble {
     color: #ffffff;
-    background: var(--ig-out);
+    background: var(--ig-out) no-repeat #a855f7;
+    background-size: 100% var(--et-fill-h, 100%);
+    background-position: 0 calc(-1 * var(--et-fill-y, 0px));
 }
 
 [data-platform="instagram"] .ig-text {
@@ -856,6 +860,78 @@
 
 [data-platform="instagram"] .ig-photo[aria-expanded="true"] .ig-photo-caption {
     display: flex;
+}
+
+/* ── A shared page: Instagram's link preview, the same on both sides ── */
+
+[data-platform="instagram"] .ig-link {
+    width: 240px;
+    max-width: 100%;
+    overflow: hidden;
+    box-sizing: border-box;
+    border: 1px solid var(--ig-border);
+    color: var(--ig-text);
+    background: var(--ig-in);
+}
+
+[data-platform="instagram"] .ig-link-image {
+    display: grid;
+    place-items: center;
+    aspect-ratio: 1.91 / 1;
+    color: var(--ig-muted);
+    background: color-mix(in srgb, var(--ig-text) 7%, var(--ig-in));
+}
+
+[data-platform="instagram"] .ig-link-image svg {
+    width: 34px;
+    height: 34px;
+}
+
+[data-platform="instagram"] .ig-link-body {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    padding: 10px 14px 12px;
+}
+
+[data-platform="instagram"] .ig-link-title {
+    font-size: 15px;
+    font-weight: 600;
+    line-height: 1.3;
+    overflow-wrap: anywhere;
+}
+
+[data-platform="instagram"] .ig-link-desc {
+    color: var(--ig-muted);
+    font-size: 13px;
+    line-height: 1.35;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+[data-platform="instagram"] .ig-link-site {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-top: 2px;
+    color: var(--ig-muted);
+    font-size: 13px;
+}
+
+[data-platform="instagram"] .ig-link-site span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+[data-platform="instagram"] .ig-link-site svg {
+    flex: 0 0 15px;
+    width: 15px;
+    height: 15px;
 }
 
 /* ── Voice: play, waveform, length; tapped, the words underneath ── */
