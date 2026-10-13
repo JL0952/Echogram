@@ -153,13 +153,21 @@
         return `<div class="et-bubble-tools"><button class="et-bubble-tool" ${menu} data-is-user="${m.isUser ? 1 : 0}" title="More options"><i class="fa-solid fa-ellipsis-vertical"></i></button>${react}</div>`;
     }
 
+    /** The message a bubble answers (<reply>), above it: a faded one-line quote, as iMessage shows a reply's original. */
+    function replyQuote(p, ctx) {
+        if (!p.replyTo) return '';
+        const { name, text } = p.replyTo;
+        const who = name ? `<span class="et-reply-quote-name">${ctx.escapeHtml(name)}</span>` : '';
+        return `<div class="et-reply-quote"><i class="fa-solid fa-reply"></i>${who}<span class="et-reply-quote-text">${ctx.escapeHtml(text)}</span></div>`;
+    }
+
     /**
      * Bubbles shown before a message's main (footer-bearing) bubble — one per part
      * except the last, which goes in the main bubble itself.
      */
     function leadingBubbles(m, sideClass, ctx) {
         return m.parts.slice(0, -1).map((p, j) =>
-            `<div class="et-bubble ${sideClass} et-bubble-part${partBubbleClass(p)}" data-et-role="bubble">${part(p, ctx)}${bubbleTools(m, j, false, ctx)}</div>`
+            `${replyQuote(p, ctx)}<div class="et-bubble ${sideClass} et-bubble-part${partBubbleClass(p)}" data-et-role="bubble">${part(p, ctx)}${bubbleTools(m, j, false, ctx)}</div>`
         ).join('');
     }
 
@@ -225,6 +233,7 @@
             return `
             <div class="et-message et-message-user${m.groupedWithNext ? ' et-message-grouped' : ''}" data-et-role="message" data-index="${index}">
                 ${leadingBubbles(m, 'et-bubble-user', ctx)}
+                ${replyQuote(mainPart, ctx)}
                 <div class="et-bubble et-bubble-user et-bubble-main${mainCardClass}" data-et-role="bubble main">
                     ${part(mainPart, ctx)}
                     ${bubbleTools(m, m.parts.length - 1, true, ctx)}
@@ -254,6 +263,7 @@
             <div class="et-message et-message-char" data-et-role="message" data-index="${index}">
                 <div class="et-message-body">
                     ${leadingBubbles(m, 'et-bubble-char', ctx)}
+                    ${replyQuote(mainPart, ctx)}
                     <div class="et-bubble et-bubble-char et-bubble-main${mainCardClass}" data-et-role="bubble main">
                         ${part(mainPart, ctx)}
                         ${imageAttachment(m.imageAttachment)}
@@ -325,7 +335,7 @@
         id: 'echotext',
         name: 'Echogram',
         // Rich-message features this look supports (lib/features.js)
-        features: ['photo', 'voice', 'react', 'transfer', 'file'],
+        features: ['photo', 'voice', 'react', 'reply', 'transfer', 'file'],
         templates: {
             message,
             part,

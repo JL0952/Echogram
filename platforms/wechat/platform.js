@@ -135,6 +135,13 @@
         return `<div class="wx-link" data-side="${side}"><span class="wx-card-tail"></span><div class="wx-link-title">${title}</div><div class="wx-link-row"><p class="wx-link-desc">${ctx.escapeHtml(p.summary)}</p><span class="wx-link-thumb">${IMAGE_GLYPH}</span></div>${site}</div>`;
     }
 
+    /** The message a row answers (<reply>): WeChat's grey box under the bubble, "名字：内容". */
+    function replyQuote(p, ctx) {
+        if (!p.replyTo) return '';
+        const { name, text } = p.replyTo;
+        return `<div class="wx-quote"><span>${name ? `${ctx.escapeHtml(name)}：` : ''}${ctx.escapeHtml(text)}</span></div>`;
+    }
+
     /** Inner content of one row: a text bubble, a photo, a voice message, a file or link card, or a transfer card. */
     function part(p, ctx, m) {
         const side = m.isUser ? 'right' : 'left';
@@ -173,7 +180,7 @@
             const menu = j === last
                 ? `data-et-action="menu" data-index="${m.index}"`
                 : `data-et-action="part-menu" data-index="${m.index}" data-part="${j}"`;
-            return `<div class="wx-row wx-row-${side}" data-et-role="bubble${j === last ? ' main' : ''}" title="${tip}">${avatarHtml}<div class="wx-bubble-wrap">${senderHtml}${part(p, ctx, m)}${j === last ? imageAttachment(m.imageAttachment) : ''}</div><button class="wx-more" ${menu} data-is-user="${m.isUser ? 1 : 0}" title="更多">⋯</button></div>`;
+            return `<div class="wx-row wx-row-${side}" data-et-role="bubble${j === last ? ' main' : ''}" title="${tip}">${avatarHtml}<div class="wx-bubble-wrap">${senderHtml}${part(p, ctx, m)}${replyQuote(p, ctx)}${j === last ? imageAttachment(m.imageAttachment) : ''}</div><button class="wx-more" ${menu} data-is-user="${m.isUser ? 1 : 0}" title="更多">⋯</button></div>`;
         }).join('');
 
         const swipe = m.swipe
@@ -213,7 +220,7 @@
     window.EchoTextPlatforms.wechat = {
         id: 'wechat',
         name: 'WeChat',
-        features: ['photo', 'voice', 'transfer', 'file'],
+        features: ['photo', 'voice', 'reply', 'transfer', 'file'],
         stylesheet: 'platform.css',
         // Voice messages are typed from the input bar's voice button, as WeChat records them
         voiceButton: { placeholder: '输入要说的话，作为语音发出' },

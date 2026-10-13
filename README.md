@@ -11,6 +11,7 @@ A personal fork of [SillyTavern-EchoText](https://github.com/mattjaybe/SillyTave
 - Added voice messages, tapback reactions, and file and link sharing.
 - Added an emotion and personality popup: Rapport, Romance, Desire and moods, Big Five traits, Morality, locks and a texting style, which shape how the character texts.
 - Proactive messages can include photos and voice messages.
+- Added quoted replies, from any message's menu or by the character.
 
 ## Credits
 

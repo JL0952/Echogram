@@ -19,6 +19,7 @@
     --wx-bubble-out: #26bd69;
     --wx-input-border: #292929;
     --wx-card-thumb: #1e1e1e;
+    --wx-quote-bg: #1e1e1e;
     /* soloshow ChatGlyphs, as masks painted in the text colour */
     --wx-icon-back: url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 12 24%22%3E%3Cpath d=%22M9.5 3.5 1.5 12l8 8.5%22 fill=%22none%22 stroke=%22%23000%22 stroke-width=%221.35%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22/%3E%3C/svg%3E");
     --wx-icon-more: url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22%3E%3Cpath d=%22M6.75 12c0 .966-.784 1.75-1.75 1.75S3.25 12.966 3.25 12 4.034 10.25 5 10.25 6.75 11.034 6.75 12Zm5.25-1.75c.966 0 1.75.784 1.75 1.75s-.784 1.75-1.75 1.75-1.75-.784-1.75-1.75.784-1.75 1.75-1.75Zm7 0c.966 0 1.75.784 1.75 1.75s-.784 1.75-1.75 1.75-1.75-.784-1.75-1.75.784-1.75 1.75-1.75Z%22/%3E%3C/svg%3E");
@@ -40,6 +41,7 @@
     --wx-bubble-out: #95ec69;
     --wx-input-border: #dddddd;
     --wx-card-thumb: #f0f0f0;
+    --wx-quote-bg: #e2e2e2;
 }
 
 /* ── Panel surfaces ─────────────────────────────────────────── */
@@ -682,6 +684,66 @@
 
 [data-platform="wechat"] .wx-voice[aria-expanded="false"] + .wx-transcript {
     display: none;
+}
+
+/* A quoted message (<reply>): the grey box under the bubble, "名字：内容", two
+   lines at most */
+[data-platform="wechat"] .wx-quote {
+    width: fit-content;
+    max-width: 100%;
+    box-sizing: border-box;
+    margin-top: 5px;
+    padding: 7px 10px;
+    border-radius: 4px;
+    color: var(--wx-muted);
+    background: var(--wx-quote-bg);
+    font-size: var(--et-font-size, 15px);
+    line-height: calc(var(--et-font-size, 15px) + 6px);
+    word-break: break-word;
+}
+
+/* Clamped inside the padding, so no third line peeks out under it */
+[data-platform="wechat"] .wx-quote > span {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    overflow: hidden;
+}
+
+/* Replying: the quote waits under the input field, as in WeChat */
+[data-platform="wechat"] .et-reply-draft {
+    grid-column: 2;
+    grid-row: 2;
+    gap: 0;
+    margin-top: -1px;
+    padding: 6px 4px 6px 10px;
+    border-left: 0;
+    border-radius: 4px;
+    color: var(--wx-muted);
+    background: color-mix(in srgb, var(--wx-muted) 12%, var(--wx-input-surface));
+    font-size: 14px;
+    line-height: 20px;
+}
+
+[data-platform="wechat"] .et-reply-draft > i {
+    display: none;
+}
+
+[data-platform="wechat"] .et-reply-draft-name {
+    font-weight: 400;
+}
+
+[data-platform="wechat"] .et-reply-draft-name::after {
+    content: "：";
+}
+
+[data-platform="wechat"] .et-reply-draft-close {
+    margin-left: 6px;
+    width: 20px;
+    height: 20px;
+    color: var(--wx-input-surface);
+    background: var(--wx-muted);
+    font-size: 11px;
 }
 
 /* A shared file (soloshow FileCard) or web page (its link card): the incoming

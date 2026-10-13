@@ -38,8 +38,8 @@ test('format rules list only the enabled features, in a fixed order', () => {
     assert.deepEqual(buildFeaturePrompts(['transfer', 'photo'], ctx).map(p => p.split(':')[0]), ['PHOTOS', 'TRANSFERS']);
     assert.match(buildFeaturePrompts(['react'], ctx)[0], /one of: heart, like\./);
     assert.deepEqual(buildFeaturePrompts(NONE, ctx), []);
-    assert.deepEqual(buildFeaturePrompts(['file', 'transfer', 'voice', 'react', 'photo'], ctx).map(p => p.split(':')[0]),
-        ['PHOTOS', 'VOICE MESSAGES', 'REACTIONS', 'TRANSFERS', 'FILES AND LINKS']);
+    assert.deepEqual(buildFeaturePrompts(['file', 'transfer', 'voice', 'reply', 'react', 'photo'], ctx).map(p => p.split(':')[0]),
+        ['PHOTOS', 'VOICE MESSAGES', 'REACTIONS', 'REPLIES', 'TRANSFERS', 'FILES AND LINKS']);
 });
 
 test('the voice rule names the tag, when to use it, and how a character\'s temperament changes that', () => {
@@ -105,4 +105,42 @@ test('only the disabled features are touched', () => {
     const text = '<photo>x</photo>\n<transfer>5.00</transfer>\n<react>heart</react>';
     assert.equal(filterContextText(text, ['photo', 'transfer']), '<photo>x</photo>\n<transfer>5.00</transfer>');
     assert.equal(filterContextText(text, ['react']), '[Photo: x]\n[Transfer: ¥5.00]\n<react>heart</react>');
+});
+
+// ── Quoted replies (docs/platform-plan.md 9b) ──────────────────────────────
+
+const Rich = window.EchoTextRichMessages;
+
+test('a <reply> quotes for the bubble after it, read leniently and written back canonically', () => {
+    assert.deepEqual(Rich.parseMessageParts('<reply>Qi: are you free?</reply>\nyeah\nwhat time', { splitLines: true }), [
+        { type: 'text', text: 'yeah', replyTo: { name: 'Qi', text: 'are you free?' } },
+        { type: 'text', text: 'what time' },
+    ]);
+    // Other tag names, "replying to", a full-width colon, the reply on the same line
+    assert.deepEqual(Rich.parseMessageParts('<quote>replying to Qi：你在干嘛</quote> 刚醒'),
+        [{ type: 'text', text: '刚醒', replyTo: { name: 'Qi', text: '你在干嘛' } }]);
+    assert.equal(Rich.normalizeMessageTags('<回复>回复 齐宁：吃了吗</回复>\n吃了'), '<reply>齐宁: 吃了吗</reply>\n吃了');
+    // Nothing after it: the bubble before it; no name: only words
+    assert.deepEqual(Rich.parseMessageParts('ok\n<reply>Mira: hi</reply>', { splitLines: true }),
+        [{ type: 'text', text: 'ok', replyTo: { name: 'Mira', text: 'hi' } }]);
+    assert.deepEqual(Rich.parseMessageParts('<reply>just words</reply>\n<photo>a cat</photo>'),
+        [{ type: 'photo', desc: 'a cat', replyTo: { name: '', text: 'just words' } }]);
+    // Written back as it came (deleting another bubble keeps the quote)
+    const text = '<reply>Qi: are you free?</reply>\nyeah\n<reply>Mira: hm</reply>\n<photo>a ticket</photo>';
+    assert.equal(Rich.serializeParts(Rich.parseMessageParts(text, { splitLines: true })), text);
+    assert.equal(Rich.toPlainText('<reply>Qi: hey</reply>\nok'), '[Replying to Qi: hey]\nok');
+});
+
+test('the model sees replies as they are; without them, as a plain note', () => {
+    const text = '<reply>Mira: [Photo: a ticket]</reply>\nfor us?';
+    assert.equal(filterContextText(text, ALL), text);
+    assert.equal(filterContextText(text, ['photo']), '[Replying to Mira: [Photo: a ticket]]\nfor us?');
+});
+
+test('the reply rule names the tag, who the name is, and that most replies need none', () => {
+    const [rule] = buildFeaturePrompts(['reply'], { charName: 'Mira', userName: 'Me', reactionIds: REACTIONS });
+    assert.match(rule, /^REPLIES: /);
+    assert.match(rule, /<reply>name: the quoted words<\/reply>/);
+    assert.match(rule, /whoever sent it \(Me or Mira\)/);
+    assert.match(rule, /most replies need none/);
 });

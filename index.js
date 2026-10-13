@@ -127,6 +127,8 @@
     // When set ('photo' | 'voice' | 'transfer' | 'file'), the next message the user sends
     // is that kind of content and the typed text is its description / words / amount
     let composeMode = null;
+    // Replying (feature 'reply'): { charKey, name, text } of the bubble picked, until the next send
+    let replyDraft = null;
     // The kind of file the user shares (RichMessages.SHARE_TYPES), kept between shares
     let shareType = 'pdf';
     // Reply scheduling: the user can send several texts in a row and the character
@@ -4567,6 +4569,7 @@
             </div>
 
             <div class="et-input-bar" data-et-role="input-bar">
+                <div class="et-reply-draft" id="et-reply-draft" data-et-role="reply-draft" hidden></div>
                 <div class="et-input-wrap">
                     <button class="et-voice-btn" id="et-voice-btn" type="button" title="Voice message" hidden${hasChar ? '' : ' disabled'}><i class="fa-solid fa-microphone"></i></button>
                     <button class="et-attach-btn" id="et-attach-btn" type="button" title="Attach"${hasChar ? '' : ' disabled'}><i class="fa-solid fa-plus"></i></button>
@@ -4828,7 +4831,14 @@
         jQuery('#et-send-btn').on('click', handleSend);
 
         composeMode = null;
+        replyDraft = null;
         bindAttachPanel();
+
+        jQuery('#et-reply-draft').on('click', '[data-et-role="reply-cancel"]', function (e) {
+            e.stopPropagation();
+            clearReplyDraft();
+            jQuery('#et-input').trigger('focus');
+        });
 
         jQuery('#et-share-type').on('click', function (e) {
             e.stopPropagation();
@@ -4857,6 +4867,9 @@
             if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
                 handleSend();
+            } else if (e.key === 'Escape' && replyDraft) {
+                e.preventDefault();
+                clearReplyDraft();
             }
         }).on('input', function () {
             this.style.height = 'auto';
@@ -5126,6 +5139,12 @@
             return;
         }
 
+        // Replying: the quote goes in front, as the <reply> it is
+        if (replyDraft) {
+            mes = `<reply>${RichMessages.replyContent(replyDraft)}</reply>\n${mes}`;
+            clearReplyDraft();
+        }
+
         input.val('').css('height', 'auto');
         // A photo or transfer is one message; voice from the voice button stays on until switched back, as in WeChat
         if (mode && !isVoiceButtonMode()) setComposeMode(null);
@@ -5140,6 +5159,47 @@
             } catch (e) { /* ignore detection errors */ }
         }
         postUserMessage(userMsg);
+    }
+
+    /**
+     * The quote for one bubble (the last when `partIndex` is null): its sender and
+     * its words on one line — a card as its plain-text note — cut to about 80
+     * characters, with nothing that could read as a tag.
+     */
+    function quoteForBubble(msg, partIndex) {
+        const parts = getMessageDisplayParts(msg);
+        const { replyTo, ...part } = parts[partIndex ?? parts.length - 1] || { type: 'text', text: '' };
+        const words = part.type === 'text' ? part.text : RichMessages.toPlainText(RichMessages.serializeParts([part]));
+        const chars = Array.from(words.replace(/<[^>]*>/g, '').replace(/[<>]/g, '').replace(/\s+/g, ' ').trim());
+        const text = chars.length > 80 ? `${chars.slice(0, 80).join('').trimEnd()}…` : chars.join('');
+        const name = msg.is_user ? getUserName() : (msg.charName || getCharacterName());
+        return { name, text };
+    }
+
+    /** Reply (bubble menu): the bubble's quote waits above the input bar for the next message sent. */
+    function startReply(msgIndex, partIndex) {
+        const msg = getChatHistory()[msgIndex];
+        if (!msg) return;
+        replyDraft = { charKey: getCharacterKey(), ...quoteForBubble(msg, partIndex) };
+        renderReplyDraft();
+        jQuery('#et-input').trigger('focus');
+    }
+
+    function clearReplyDraft() {
+        replyDraft = null;
+        renderReplyDraft();
+    }
+
+    function renderReplyDraft() {
+        const el = jQuery('#et-reply-draft');
+        if (!replyDraft) {
+            el.attr('hidden', '').empty();
+            return;
+        }
+        const name = replyDraft.name ? `<span class="et-reply-draft-name">${escapeHtml(replyDraft.name)}</span>` : '';
+        el.html(`<i class="fa-solid fa-reply"></i>${name}<span class="et-reply-draft-text">${escapeHtml(replyDraft.text)}</span>`
+            + '<button type="button" class="et-reply-draft-close" data-et-role="reply-cancel" title="Cancel reply"><i class="fa-solid fa-xmark"></i></button>')
+            .removeAttr('hidden');
     }
 
     function createUserMessage(mes) {
@@ -6535,6 +6595,7 @@
         const savedScrollTop = (preserveScroll && messagesEl) ? messagesEl.scrollTop : null;
 
         syncPlatformChrome();
+        if (replyDraft && replyDraft.charKey !== getCharacterKey()) clearReplyDraft();
 
         if (!history || history.length === 0) {
             inner.empty();
@@ -6638,9 +6699,10 @@
         const partCount = msg ? getMessageDisplayParts(msg).length : 1;
         const deleteAllLabel = `Delete all (${partCount})`;
 
-        // Build menu items: every bubble's menu copies and deletes that bubble; the
-        // main (last) bubble's also acts on the whole message
+        // Build menu items: every bubble's menu replies to, copies and deletes that
+        // bubble; the main (last) bubble's also acts on the whole message
         const items = [{ id: 'copy_part', icon: 'fa-copy', label: 'Copy', cls: '' }];
+        if (platformHas('reply')) items.unshift({ id: 'reply', icon: 'fa-reply', label: 'Reply', cls: '' });
         if (partIndex === null) {
             items.push({ id: 'edit', icon: 'fa-pen', label: 'Edit', cls: '' });
             items.push({ id: 'regen', icon: 'fa-rotate-right', label: 'Regenerate', cls: '' });
@@ -6848,6 +6910,12 @@
         const history = getChatHistory();
         const msg = history[msgIndex];
         if (!msg) return;
+
+        if (action === 'reply') {
+            closeAllDotMenus();
+            startReply(msgIndex, partIndex);
+            return;
+        }
 
         if (action === 'copy_part') {
             // The main bubble's menu has no part index: it copies the last bubble

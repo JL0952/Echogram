@@ -343,3 +343,12 @@ test('a web page shared without an address has a title and summary and no site',
     const [m] = build([user('<link>西湖攻略 | 一天走完</link>', 0)]);
     assert.deepEqual([m.parts[0].title, m.parts[0].url, m.parts[0].summary, m.parts[0].host], ['西湖攻略', '', '一天走完', '']);
 });
+
+test('a quoted reply keeps its quote on the bubble; a platform without replies shows the plain note instead', () => {
+    const history = [user('<reply>Mira: hi</reply>\nhello', 0), char('<reply>Me: hello</reply>\nyes\nno', 1)];
+    const [u, c] = build(history, { features: ['reply'] });
+    assert.deepEqual(u.parts, [{ type: 'text', text: 'hello', replyTo: { name: 'Mira', text: 'hi' } }]);
+    assert.deepEqual(c.parts, [{ type: 'text', text: 'yes', replyTo: { name: 'Me', text: 'hello' } }, { type: 'text', text: 'no' }]);
+    const [u2] = build(history, { features: [] });
+    assert.deepEqual(u2.parts, [{ type: 'text', text: '[Replying to Mira: hi]' }, { type: 'text', text: 'hello' }]);
+});

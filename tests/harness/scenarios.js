@@ -61,6 +61,17 @@
         { is_user: false, mes: '<react>haha</react>\nlol', send_date: m(6), charName: 'Amy', charKey: 'amy.png' },
     ];
 
+    // Quoted replies (<reply>): the user quoting the character, the character quoting
+    // the user and a photo, a quote on a leading bubble, a long quote, one without a name
+    const replies = () => [
+        { is_user: true, mes: 'are you free tonight?', send_date: m(0) },
+        { is_user: false, mes: 'maybe\n<photo>a ticket to the late show</photo>\nlook what I got', send_date: m(1) },
+        { is_user: true, mes: '<reply>Mira: [Photo: a ticket to the late show]</reply>\nno way, for us?', send_date: m(2) },
+        { is_user: false, mes: '<reply>我: are you free tonight?</reply>\nyes I am\n<reply>Mira: maybe</reply>\nscratch the maybe', send_date: m(3) },
+        { is_user: true, mes: '<reply>Mira: a very long line that keeps going and going well past what a quote should ever show in one row of the chat</reply>\nok', send_date: m(4) },
+        { is_user: false, mes: '<quote>just words</quote> fine', send_date: m(5) },
+    ];
+
     const baseSettings = {
         showAvatar: true, swipedMessages: true, memoryEnabled: true, memoryAutoExtract: true,
         memoryHighlightStyle: 'underline', autoScroll: true, verbosityByCharacter: { 'mira.png': 'short' },
@@ -82,6 +93,7 @@
         { name: 'grouped + legacy', history: groupedAndLegacy(), settings: { ...baseSettings, verbosityByCharacter: null } },
         { name: 'combine mode', history: combine(), groupManager, typing: true, settings: { ...baseSettings } },
         { name: 'combine off (not combine)', history: combine(), groupManager: { ...groupManager, isCombineMode: () => false }, settings: { ...baseSettings } },
+        { name: 'replies', history: replies(), settings: { ...baseSettings } },
         { name: 'empty', history: [], settings: { ...baseSettings } },
         { name: 'empty, no character', history: [], noChar: true, settings: { ...baseSettings } },
     ];

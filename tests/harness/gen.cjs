@@ -40,7 +40,7 @@ const WANT = [
     'buildTransferCardHtml', 'buildPartContentHtml', 'partBubbleClass', 'buildLeadingPartBubblesHtml', 'buildImageAttachmentHtml',
     'buildReceiptHtml', 'RECEIPT_STATES', 'buildReactionPillsHtml', 'renderStoredReactions', 'renderCharacterReaction', 'buildMessageHtml',
 ];
-const VALUE_STUBS = ['settings', 'groupManager', 'FA_REACTIONS', 'showTypingIndicator', 'isGenerating', 'BASE_URL', 'VERSION_QUERY', 'composeMode', 'panelOpen'];
+const VALUE_STUBS = ['settings', 'groupManager', 'FA_REACTIONS', 'showTypingIndicator', 'isGenerating', 'BASE_URL', 'VERSION_QUERY', 'composeMode', 'replyDraft', 'panelOpen'];
 const FUNC_STUBS = [
     'getCurrentCharacter', 'showNoCharacterMessage', 'getCharacterName', 'isTetheredMode', 'getUserName',
     'getCharacterKey', 'getCharAvatarUrl', '_pickerAvatarBg', '_fingerprintAvatarImg', 'isMobileDevice',

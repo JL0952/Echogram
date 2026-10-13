@@ -31,18 +31,19 @@
 // The emotion popup and status chip (lib/emotion-system.js) on the real panel, and
 // how a reply lands in Auto mode (index.js's generateEchoText / generateEchoTextSwipe,
 // with the model stubbed).
-//   ?platform=echotext|wechat  ?scheme=dark|light  ?width=320  ?desire
+//   ?platform=echotext|wechat  ?scheme=dark|light  ?width=320  ?desire  ?scenario=N (tests/harness/scenarios.js; default 0)
 //   ?tab=emotions|personality  the popup as a screenshot shows it (filled-in example values; Desire and Morality with ?desire;
 //                              &auto: in Auto mode, the last reply's changes beside the values for a few seconds)
 //   ?auto                      a reply in Auto mode arriving with the popup closed: the chips under the header
-//   ?report                    runs runEmotionTest() and runAutoTest() and posts their results to the server
+//   ?report                    runs runEmotionTest(), runAutoTest() and runReplyTest() and posts their results to the server
+//   ?draft=N                   Reply picked on message N: the quote waiting above the input bar
 (async function () {
     const sleep = ms => new Promise(r => setTimeout(r, ms));
     const params = new URLSearchParams(location.search);
     const platform = params.get('platform') || 'echotext';
     const scheme = params.get('scheme') || 'dark';
     if (params.get('width')) document.documentElement.style.setProperty('--w', params.get('width') + 'px');
-    const sc = window.EchoTextScenarios[0];
+    const sc = window.EchoTextScenarios[Number(params.get('scenario')) || 0];
     const history = JSON.parse(JSON.stringify(sc.history));
 
     // The extension's settings, as the old emotion system left them
@@ -353,6 +354,77 @@
         return res;
     };
 
+    // Quoted replies (docs/platform-plan.md 9b): Reply from a bubble's menu, the draft
+    // above the input, sending, and the character quoting back
+    window.runReplyTest = async function () {
+        const res = {};
+        errors.length = 0;
+        const chat = () => env.settings.chatHistory['mira.png'];
+        env.settings.chatHistory['mira.png'] = [
+            { is_user: true, mes: 'are you free tonight?', send_date: Date.now() - 120000 },
+            { is_user: false, mes: 'maybe\n<photo>a ticket</photo>\nlook', send_date: Date.now() - 60000 },
+        ];
+        r.renderMessages(chat());
+        const draft = () => document.getElementById('et-reply-draft');
+        const menuItems = (sel, msgIndex, isUser, part) => {
+            document.querySelectorAll('.et-dots-menu').forEach(m => m.remove());
+            r.toggleDotsMenu(jQuery(document.querySelector(sel)), msgIndex, isUser, part);
+            return [...document.querySelectorAll('.et-dots-menu .et-dots-item')];
+        };
+
+        // Every bubble's menu starts with Reply; a card is quoted as its note
+        const items = menuItems('[data-et-action="part-menu"][data-index="1"][data-part="1"]', 1, false, 1);
+        res.replyFirst = items.map(i => i.dataset.action).join(',') === 'reply,copy_part,delete';
+        res.mainReplyFirst = menuItems('[data-et-action="menu"][data-index="0"]', 0, true, null)[0]?.dataset.action === 'reply';
+        menuItems('[data-et-action="part-menu"][data-index="1"][data-part="1"]', 1, false, 1)[0].click();
+        res.draftShown = !draft().hidden && draft().querySelector('.et-reply-draft-name')?.textContent === 'Mira'
+            && draft().querySelector('.et-reply-draft-text')?.textContent === '[Photo: a ticket]';
+
+        // An empty send keeps it; sending puts the quote in front and clears it
+        env.scheduleCharacterReply = () => {};
+        env.startCharacterReply = () => {};
+        document.getElementById('et-input').value = '';
+        r.handleSend();
+        res.emptySendKeeps = !draft().hidden && chat().length === 2;
+        document.getElementById('et-input').value = 'for us?';
+        r.handleSend();
+        const sent = chat()[chat().length - 1];
+        res.sentWithQuote = sent.is_user && sent.mes === '<reply>Mira: [Photo: a ticket]</reply>\nfor us?';
+        res.draftCleared = draft().hidden && !draft().textContent;
+        const userQuote = panel.querySelector('[data-et-role="message"][data-index="2"] .et-reply-quote');
+        res.userQuoteShown = !!userQuote && userQuote.textContent.includes('[Photo: a ticket]')
+            && userQuote.nextElementSibling?.matches('[data-et-role~="bubble"]') && userQuote.nextElementSibling.textContent.includes('for us?');
+
+        // The character quotes the user: the quote sits on the bubble after it
+        env.buildApiMessagesFromHistory = async () => ({ apiMessages: [], rawPrompt: '', systemPrompt: '' });
+        env.requestEchoTextCompletion = async () => 'hmm\n<reply>我: are you free tonight?</reply>\nyes, obviously';
+        await r.generateEchoText(chat());
+        const charMsg = panel.querySelector('[data-et-role="message"][data-index="3"]');
+        const quotes = charMsg ? [...charMsg.querySelectorAll('.et-reply-quote')] : [];
+        res.charQuote = quotes.length === 1 && quotes[0].textContent.includes('are you free tonight?')
+            && quotes[0].nextElementSibling?.textContent.includes('yes, obviously');
+        res.noRawTag = !panel.textContent.includes('<reply>') && !panel.textContent.includes('reply>');
+
+        // A long quote is cut; another character's chat drops the draft
+        chat().push({ is_user: false, mes: 'x'.repeat(200), send_date: Date.now() });
+        r.renderMessages(chat());
+        r.startReply(chat().length - 1, null);
+        const cut = draft().querySelector('.et-reply-draft-text')?.textContent || '';
+        res.longQuoteCut = cut.length === 81 && cut.endsWith('…');
+        const key = env.getCharacterKey;
+        env.getCharacterKey = () => 'other.png';
+        r.renderMessages(chat());
+        res.otherChatDrops = draft().hidden;
+        env.getCharacterKey = key;
+        r.startReply(0, null);
+        r.clearReplyDraft();
+        res.clears = draft().hidden;
+
+        res.errors = errors.slice();
+        res.ok = Object.values(res).filter(v => typeof v === 'boolean').every(Boolean) && !errors.length;
+        return res;
+    };
+
     // A screenshot: example values, a lock, Desire with ?nsfw
     const tab = params.get('tab');
     if (tab || params.has('auto')) {
@@ -374,8 +446,11 @@
     } else if (params.has('report')) {
         const result = await window.runEmotionTest();
         const auto = await window.runAutoTest();
-        fetch('/__log', { method: 'POST', body: JSON.stringify({ runEmotionTest: result, runAutoTest: auto }) }).catch(() => {});
+        const reply = await window.runReplyTest();
+        fetch('/__log', { method: 'POST', body: JSON.stringify({ runEmotionTest: result, runAutoTest: auto, runReplyTest: reply }) }).catch(() => {});
     }
+    // ?draft=N: Reply picked on message N (its last bubble), the quote waiting above the input
+    if (params.has('draft')) r.startReply(Number(params.get('draft')) || 0, null);
     window.__done = true;
 })().catch(e => { window.__error = String(e && e.stack || e); console.error(e);
     fetch('/__log', { method: 'POST', body: JSON.stringify({ error: window.__error }) }).catch(() => {}); });
