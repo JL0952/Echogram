@@ -259,7 +259,7 @@
         // Combine mode: each character message carries its own name
         const safeCharName = ctx.sanitize(m.senderName);
 
-        // Swipe navigation — only on the last character message
+        // Swipe navigation — only on the last character message, under its bubble
         const swipe = m.swipe;
         const swipeNavHtml = swipe ? `
                         <div class="et-swipe-nav">
@@ -276,10 +276,10 @@
                     <div class="et-bubble et-bubble-char et-bubble-main${mainCardClass}" data-et-role="bubble main">
                         ${part(mainPart, ctx)}
                         ${imageAttachment(m.imageAttachment)}
-                        ${swipeNavHtml}
                         ${mainTapback}
                         ${bubbleTools(m, last, true, ctx)}
                     </div>
+                    ${swipeNavHtml}
                     <div class="et-message-footer">
                         <span class="et-footer-name" title="${safeCharName}">${safeCharName}</span>
                         <span class="et-message-time" title="${fullDateToolip}">${time}</span>
