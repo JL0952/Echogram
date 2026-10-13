@@ -174,15 +174,13 @@ test('senders: combine mode keeps each message\'s own character', () => {
     assert.deepEqual(single.map(m => [m.senderName, m.charKey]), [['Me', null], ['Mira', null], ['Mira', null]]);
 });
 
-test('memory highlights and image attachments pass through', () => {
-    const highlights = [{ text: 'pizza', category: 'preference', label: 'Likes' }];
+test('image attachments pass through; old memory highlights are dropped', () => {
     const attachment = { type: 'image', status: 'ready', url: 'x.png' };
-    const history = [user('pizza', 0, { memoryHighlights: highlights }), char('look', 1, { imageAttachment: attachment })];
-    const on = build(history, { memoryHighlights: true });
-    assert.deepEqual(on[0].memoryHighlights, highlights);
-    assert.deepEqual(on[1].imageAttachment, attachment);
-    assert.deepEqual(build(history)[0].memoryHighlights, []);
-    assert.equal(on[0].imageAttachment, null);
+    const history = [user('pizza', 0, { memoryHighlights: [{ text: 'pizza' }] }), char('look', 1, { imageAttachment: attachment })];
+    const view = build(history);
+    assert.deepEqual(view[1].imageAttachment, attachment);
+    assert.equal(view[0].imageAttachment, null);
+    assert.ok(!('memoryHighlights' in view[0]));
 });
 
 test('messages without a send_date have no timestamp and do not break grouping', () => {
@@ -198,7 +196,7 @@ test('the history is not modified', () => {
         char('Mira: <transfer_accept/>\n<react>heart</react>', 1, { reactions: { heart: { count: '1', mine: true }, sad: { count: 0 } }, swipes: [{ mes: 'x' }], swipeIndex: 3 }),
     ];
     const before = JSON.stringify(history);
-    build(history, { swipes: true, combineMode: true, memoryHighlights: true });
+    build(history, { swipes: true, combineMode: true });
     assert.equal(JSON.stringify(history), before);
 });
 

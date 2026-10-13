@@ -8193,21 +8193,15 @@ html.et-bg-light {
     color: #94a3b8;
 }
 
-/* ── Auto-extracted badge ────────────────────────────────── */
+/* ── In the last reply's prompt ──────────────────────────── */
 
-.et-mem-badge-auto {
-    display: inline-flex;
-    align-items: center;
-    padding: 1px 6px;
-    border-radius: 4px;
-    font-size: 0.60rem;
-    font-weight: 700;
-    letter-spacing: 0.05em;
-    text-transform: uppercase;
-    background: rgba(74, 222, 128, 0.09);
-    border: 1px solid rgba(74, 222, 128, 0.22);
-    color: #4ade80;
-    opacity: 0.8;
+.et-mem-recalled-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--et-theme-color, #4da6ff);
+    box-shadow: 0 0 6px color-mix(in srgb, var(--et-theme-color, #4da6ff) 70%, transparent);
+    flex-shrink: 0;
 }
 
 /* ── Card action buttons (pin, edit, delete) ─────────────── */
@@ -8280,6 +8274,32 @@ html.et-bg-light {
     line-height: 1.5;
     white-space: pre-wrap;
     word-break: break-word;
+}
+
+/* ── Keywords ────────────────────────────────────────────── */
+
+.et-mem-card-keys {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    padding: 0 10px 9px;
+    margin-top: -3px;
+}
+
+.et-mem-key {
+    padding: 1px 7px;
+    border-radius: 999px;
+    font-size: 0.70rem;
+    color: var(--et-text-muted);
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.09);
+}
+
+.et-mem-form-keys,
+.et-mem-save-keys {
+    margin-bottom: 0;
+    padding: 8px 12px;
+    font-size: 0.84rem;
 }
 
 /* ── Inline edit form (inside the card) ─────────────────── */
@@ -9999,100 +10019,7 @@ details.et-te-advanced[open] .et-te-advanced-toggle::before { transform: rotate(
 }
 
 
-/* ================================================================
-   MEMORY HIGHLIGHT SYSTEM
-   Inline mark tags inside user bubbles that invite the user to
-   save a snippet as a memory with one click.
-   ================================================================ */
-
-/* ── Base mark styles ────────────────────────────────────────── */
-
-.et-mem-highlight {
-    cursor: pointer;
-    border-radius: 3px;
-    transition: opacity 0.18s ease, background 0.18s ease, box-shadow 0.18s ease;
-    /* Reset browser <mark> defaults */
-    background-color: transparent;
-    color: inherit;
-    padding: 0 1px;
-}
-
-.et-mem-highlight:hover {
-    opacity: 0.72;
-}
-
-/* Saved state: stays fully visible, gains a ✓ superscript */
-.et-mem-highlight-saved {
-    cursor: pointer !important;
-}
-
-.et-mem-highlight-saved::after {
-    content: '\2713'; /* checkmark */
-    font-size: 0.58em;
-    font-weight: 800;
-    color: #4ade80;
-    vertical-align: super;
-    margin-left: 2px;
-    line-height: 0;
-}
-
-/* ── Style 1: Dotted Underline (default) ────────────────────── */
-
-.et-mem-hl-underline {
-    text-decoration: underline dotted;
-    text-decoration-color: var(--et-theme-color, #4da6ff);
-    text-underline-offset: 3px;
-    text-decoration-thickness: 1.5px;
-}
-
-/* ── Style 2: Soft Glow ─────────────────────────────────────── */
-
-.et-mem-hl-glow {
-    background: color-mix(in srgb, var(--et-theme-color, #4da6ff) 14%, transparent);
-    border-radius: 4px;
-    padding: 0 3px;
-    text-shadow: 0 0 9px color-mix(in srgb, var(--et-theme-color, #4da6ff) 55%, transparent);
-    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--et-theme-color, #4da6ff) 18%, transparent);
-}
-
-/* ── Style 3: Shimmer ───────────────────────────────────────── */
-
-.et-mem-hl-shimmer {
-    background: linear-gradient(
-        90deg,
-        transparent 0%,
-        color-mix(in srgb, var(--et-theme-color, #4da6ff) 28%, transparent) 40%,
-        color-mix(in srgb, var(--et-theme-color, #4da6ff) 22%, transparent) 60%,
-        transparent 100%
-    );
-    background-size: 220% 100%;
-    background-position: 100% 0;
-    border-radius: 4px;
-    padding: 0 3px;
-    animation: et-mem-shimmer 2.8s ease-in-out infinite;
-}
-
-@keyframes et-mem-shimmer {
-    0%   { background-position: 150% 0; }
-    50%  { background-position: -30% 0; }
-    100% { background-position: 150% 0; }
-}
-
-/* ── Style 4: Accent Bar (bottom border only) ───────────────── */
-
-.et-mem-hl-border {
-    border-bottom: 2px solid var(--et-theme-color, #4da6ff);
-    padding-bottom: 1px;
-    border-radius: 0;
-}
-
-/* ──  Reduce motion overrides ────────────────────────────────── */
-@media (prefers-reduced-motion: reduce) {
-    .et-mem-hl-shimmer { animation: none; }
-}
-
-
-/* ── Save-as-Memory modal ────────────────────────────────────── */
+/* ── Add Memory modal (bubble menu) ──────────────────────────── */
 
 .et-mem-save-modal-overlay {
     position: absolute;
@@ -10250,29 +10177,6 @@ textarea.et-mem-save-snippet-edit::placeholder {
     color: rgba(255,255,255,0.75);
 }
 
-/* Remove-memory variant */
-.et-mem-save-btn-remove {
-    background: rgba(239, 68, 68, 0.12);
-    color: rgba(239, 68, 68, 0.90);
-    border: 1px solid rgba(239, 68, 68, 0.22);
-    flex: 1;
-}
-
-.et-mem-save-btn-remove:hover {
-    background: rgba(239, 68, 68, 0.22);
-    color: #f87171;
-    transform: translateY(-1px);
-    box-shadow: 0 3px 10px rgba(239, 68, 68, 0.25);
-}
-
-/* Remove modal hint text */
-.et-mem-remove-hint {
-    font-size: 0.78rem;
-    color: rgba(255,255,255,0.50);
-    line-height: 1.5;
-}
-
-
 /* ── Scope pill toggle (inside save modal) ─────────────────── */
 
 .et-mem-scope-pill-wrap {
@@ -10317,106 +10221,6 @@ textarea.et-mem-save-snippet-edit::placeholder {
 .et-mem-scope-seg-active:hover {
     background: color-mix(in srgb, var(--et-theme-color, #4da6ff) 68%, rgba(18, 22, 42, 0.9));
     color: #fff;
-}
-
-
-/* ── Settings: highlight style picker ───────────────────────── */
-
-/* Visually nested under the Auto-Highlight toggle —
-   indented with a left accent bar to show hierarchy */
-.et-mem-hl-picker-wrap {
-    margin-top: 10px;
-    margin-left: 24px;
-    padding: 8px 0 2px 12px;
-    border-left: 2px solid color-mix(in srgb, var(--et-theme-color, #4da6ff) 28%, rgba(255,255,255,0.08));
-    border-top: none;
-}
-
-.et-label-text-sub {
-    font-size: 0.80rem;
-    font-weight: 600;
-    color: var(--et-text-muted, rgba(255,255,255,0.50));
-    letter-spacing: 0.2px;
-}
-
-.et-mem-hl-style-btns {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 7px;
-}
-
-.et-mem-hl-btn {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    background: rgba(255,255,255,0.04);
-    border: 1px solid rgba(255,255,255,0.09);
-    border-radius: 9px;
-    padding: 7px 10px;
-    cursor: pointer;
-    font-size: 0.78rem;
-    font-weight: 500;
-    color: rgba(255,255,255,0.60);
-    font-family: inherit;
-    transition: all 0.15s ease;
-    text-align: left;
-}
-
-.et-mem-hl-btn:hover {
-    background: rgba(255,255,255,0.08);
-    border-color: rgba(255,255,255,0.15);
-    color: rgba(255,255,255,0.85);
-}
-
-.et-mem-hl-btn-active {
-    background: color-mix(in srgb, var(--et-theme-color, #4da6ff) 15%, rgba(255,255,255,0.04));
-    border-color: color-mix(in srgb, var(--et-theme-color, #4da6ff) 60%, transparent);
-    color: var(--et-text-primary, #e8e8f0);
-    box-shadow: 0 0 0 1px color-mix(in srgb, var(--et-theme-color, #4da6ff) 25%, transparent);
-}
-
-/* Preview swatch — small "Aa" sample in each highlight style */
-.et-mem-hl-preview {
-    font-size: 0.82rem;
-    font-weight: 700;
-    display: inline-block;
-    padding: 0 2px;
-    min-width: 22px;
-    text-align: center;
-    flex-shrink: 0;
-    background-color: transparent;
-    color: inherit;
-}
-
-/* Apply the actual highlight styles to the preview swatches */
-.et-mem-hl-preview.et-mem-hl-underline {
-    text-decoration: underline dotted;
-    text-decoration-color: var(--et-theme-color, #4da6ff);
-    text-underline-offset: 3px;
-    text-decoration-thickness: 1.5px;
-}
-
-.et-mem-hl-preview.et-mem-hl-glow {
-    background: color-mix(in srgb, var(--et-theme-color, #4da6ff) 16%, transparent);
-    border-radius: 3px;
-    padding: 0 4px;
-    text-shadow: 0 0 7px color-mix(in srgb, var(--et-theme-color, #4da6ff) 60%, transparent);
-}
-
-.et-mem-hl-preview.et-mem-hl-shimmer {
-    background: linear-gradient(
-        90deg,
-        transparent 0%,
-        color-mix(in srgb, var(--et-theme-color, #4da6ff) 30%, transparent) 50%,
-        transparent 100%
-    );
-    border-radius: 3px;
-    padding: 0 4px;
-}
-
-.et-mem-hl-preview.et-mem-hl-border {
-    border-bottom: 2px solid var(--et-theme-color, #4da6ff);
-    padding-bottom: 1px;
 }
 
 

@@ -1,7 +1,8 @@
 (async () => {
 // Builds the system prompt with index.js at REF (default HEAD) and with the
 // working index.js, for a few mock characters and settings, and reports any
-// difference. Memories, emotions and world info are stubbed with fixed text,
+// difference. Memories (buildInsideJokesContext before 10a, buildMemoryContext
+// after), emotions and world info are stubbed with fixed text,
 // so only how the prompt is put together is compared. Stubs a ref doesn't call
 // (buildTextingStyleContext before step E2, buildBehaviorContext before E3,
 // buildMoodRules before E4) just go unused. Every case is in Manual mode, where
@@ -33,6 +34,7 @@ const STUBS = `
     const isCombinedGroupMode = () => false; const groupManager = null; const stripThinkingTags = t => t;
     const expandTimeDateMacros = t => t; const getActiveWorldInfoEntries = async () => 'WORLD INFO STUB';
     const buildInsideJokesContext = () => '\\n\\n<memories>MEMORY STUB</memories>';
+    const buildMemoryContext = buildInsideJokesContext; const getChatHistory = () => [];
     const buildEmotionContext = () => '\\n\\n<emotional_state>EMOTION STUB</emotional_state>';
     const buildTextingStyleContext = () => '\\n\\n<texting_style>STYLE STUB</texting_style>';
     const buildBehaviorContext = (char, verbosity) => ({ nsfw: '\\n\\nNSFW STUB', text: '\\n\\n<texting_behavior>BEHAVIOR STUB</texting_behavior>', verbosity });

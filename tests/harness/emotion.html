@@ -27,6 +27,9 @@
 <script src="../../lib/emotion-icons.js"></script>
 <script src="../../lib/texting-behavior.js"></script>
 <script src="../../lib/emotion-system.js"></script>
+<script src="../../lib/memory-recall.js"></script>
+<script src="../../lib/memory-system.js"></script>
+<script src="../../lib/settings-modal.js"></script>
 <script>
 // The emotion popup and status chip (lib/emotion-system.js) on the real panel, and
 // how a reply lands in Auto mode (index.js's generateEchoText / generateEchoTextSwipe,
@@ -35,8 +38,9 @@
 //   ?tab=emotions|personality  the popup as a screenshot shows it (filled-in example values; Desire and Morality with ?desire;
 //                              &auto: in Auto mode, the last reply's changes beside the values for a few seconds)
 //   ?auto                      a reply in Auto mode arriving with the popup closed: the chips under the header
-//   ?report                    runs runEmotionTest(), runAutoTest(), runReplyTest() and runTapbackTest() and posts their results
+//   ?report                    runs runEmotionTest(), runAutoTest(), runReplyTest(), runTapbackTest() and runMemoryTest() and posts their results
 //   ?draft=N                   Reply picked on message N: the quote waiting above the input bar
+//   ?memory                    Add Memory open on a bubble, and the settings panel's memory list beside the panel
 (async function () {
     const sleep = ms => new Promise(r => setTimeout(r, ms));
     const params = new URLSearchParams(location.search);
@@ -72,6 +76,7 @@
         // A reply: no delays, the model stubbed (runAutoTest sets what it answers)
         getEmotionReplyTimingModel: () => ({ deliveredDelayMs: 0, readDelayMs: 0, ghostDelayMs: 0, typingLeadMs: 0, replyDelayMs: 0 }),
         sleepWithAbort: async () => {}, error: (...a) => errors.push(a.join(' ')) };
+    env.memorySystem = window.EchoTextMemorySystem.createMemorySystem({ getSettings: () => env.settings, saveSettings: () => {}, getCharacterKey: () => 'mira.png' });
     r = window.EchoTextHarness.reply(env);
     document.getElementById('host').innerHTML = r.buildPanelHtml();
     r.renderMessages(history);
@@ -374,7 +379,7 @@
 
         // Every bubble's menu starts with Reply; a card is quoted as its note
         const items = menuItems('[data-et-action="part-menu"][data-index="1"][data-part="1"]', 1, false, 1);
-        res.replyFirst = items.map(i => i.dataset.action).join(',') === 'reply,copy_part,delete';
+        res.replyFirst = items.map(i => i.dataset.action).join(',') === 'reply,copy_part,add_memory,delete';
         res.mainReplyFirst = menuItems('[data-et-action="menu"][data-index="0"]', 0, true, null)[0]?.dataset.action === 'reply';
         menuItems('[data-et-action="part-menu"][data-index="1"][data-part="1"]', 1, false, 1)[0].click();
         res.draftShown = !draft().hidden && draft().querySelector('.et-reply-draft-name')?.textContent === 'Mira'
@@ -507,6 +512,107 @@
         return res;
     };
 
+    // Memories (docs/platform-plan.md 10a): Add Memory on every bubble with keywords, the
+    // settings panel (settings.html as shipped) adding and editing them, and its list
+    // marking what the last prompt carried
+    const memoryChat = () => [
+        { is_user: true, mes: '我知道你是谁', send_date: Date.now() - 120000, memoryHighlights: [{ text: '你是谁', category: 'custom', label: 'x' }] },
+        { is_user: false, mes: '哈？\n我在便利店上夜班\nlook', send_date: Date.now() - 60000 },
+    ];
+    const bubbleMenu = (sel, msgIndex, isUser, part) => {
+        document.querySelectorAll('.et-dots-menu').forEach(m => m.remove());
+        r.toggleDotsMenu(jQuery(document.querySelector(sel)), msgIndex, isUser, part);
+        return [...document.querySelectorAll('.et-dots-menu .et-dots-item')];
+    };
+    async function mountSettingsPanel() {
+        const host = document.createElement('div');
+        host.id = 'settings-host';
+        host.innerHTML = await (await fetch('../../settings.html')).text();
+        document.body.appendChild(host);
+        window._etGetCharacterKey = () => 'mira.png';
+        window._etGetCharacterName = () => 'Mira';
+        window._etGetRecalledMemoryIds = () => env.memorySystem.getRecalledIds();
+        const sm = window.EchoTextSettingsModal.createSettingsModal({ getSettings: () => env.settings, saveSettings: () => {} });
+        const render = () => sm.renderMemoryListInto('#et_memory_list_panel', '#et_memory_empty_panel', '#et_memory_list_label_panel');
+        render();
+        return { host, render };
+    }
+
+    window.runMemoryTest = async function () {
+        const res = {};
+        errors.length = 0;
+        const mems = () => env.settings.characterMemories?.['mira.png'] || [];
+        env.settings.characterMemories = {};
+        env.settings.chatHistory['mira.png'] = memoryChat();
+        r.renderMessages(env.settings.chatHistory['mira.png']);
+
+        // Every bubble's menu has Add Memory, after Copy; old highlight marks are gone
+        const part = '[data-et-action="part-menu"][data-index="1"][data-part="1"]';
+        res.partMenu = bubbleMenu(part, 1, false, 1).map(i => i.dataset.action).join(',') === 'reply,copy_part,add_memory,delete';
+        res.userMenu = bubbleMenu('[data-et-action="menu"][data-index="0"]', 0, true, null).some(i => i.dataset.action === 'add_memory');
+        res.noMarks = !panel.querySelector('mark');
+
+        // It saves that bubble's words, with the keywords typed
+        bubbleMenu(part, 1, false, 1).find(i => i.dataset.action === 'add_memory').click();
+        res.modalText = jQuery('#et-mem-save-content-edit').val() === '我在便利店上夜班';
+        jQuery('#et-mem-save-modal .et-mem-save-keys').val('夜班， 便利店');
+        jQuery('#et-mem-save-confirm').trigger('click');
+        res.saved = mems().length === 1 && mems()[0].content === '我在便利店上夜班' && JSON.stringify(mems()[0].keys) === '["夜班","便利店"]';
+        await sleep(300);
+        // The main menu saves the last bubble
+        bubbleMenu('[data-et-action="menu"][data-index="1"]', 1, false, null).find(i => i.dataset.action === 'add_memory').click();
+        res.mainSavesLast = jQuery('#et-mem-save-content-edit').val() === 'look';
+        jQuery('#et-mem-save-dismiss').trigger('click');
+        await sleep(300);
+
+        // The settings panel: no highlight controls; adding with keywords
+        const { host, render } = await mountSettingsPanel();
+        res.noHighlightControls = !host.querySelector('#et_memory_auto_extract_panel, .et-mem-hl-btn');
+        jQuery('#et_memory_form_content_panel').val('齐宁怕黑');
+        jQuery('#et_memory_form_keys_panel').val('黑, 夜路');
+        jQuery('#et_memory_form_save_panel').trigger('click');
+        res.panelAdd = mems().length === 2 && mems()[0].content === '齐宁怕黑' && JSON.stringify(mems()[0].keys) === '["黑","夜路"]'
+            && !jQuery('#et_memory_form_keys_panel').val();
+        const card = content => [...host.querySelectorAll('#et_memory_list_panel .et-mem-card')].find(c => c.querySelector('.et-mem-card-content').textContent === content);
+
+        // What the last prompt carried is marked: small talk brings nothing, a keyword the shift
+        env.memorySystem.buildMemoryContext(['在干嘛', '你在哪上班']);
+        render();
+        res.noneMarked = !host.querySelector('.et-mem-recalled-dot');
+        const block = env.memorySystem.buildMemoryContext(['夜班累吗']);
+        render();
+        res.prompt = block.includes('<shared_memories>') && block.includes('- 我在便利店上夜班') && !block.includes('齐宁怕黑');
+        res.marked = !!card('我在便利店上夜班').querySelector('.et-mem-recalled-dot') && !card('齐宁怕黑').querySelector('.et-mem-recalled-dot');
+        res.keyChips = [...card('我在便利店上夜班').querySelectorAll('.et-mem-key')].map(k => k.textContent).join(',') === '夜班,便利店';
+        // A prompt built for an empty chat (the server plugin's snapshot) leaves the marks
+        env.memorySystem.buildMemoryContext([]);
+        render();
+        res.emptyKeepsMarks = !!card('我在便利店上夜班').querySelector('.et-mem-recalled-dot');
+
+        // Editing the keywords on the card
+        card('我在便利店上夜班').querySelector('[data-mem-action="edit"]').click();
+        res.editShowsKeys = jQuery(card('我在便利店上夜班')).find('.et-mem-edit-keys').val() === '夜班, 便利店';
+        jQuery(card('我在便利店上夜班')).find('.et-mem-edit-keys').val('夜班');
+        card('我在便利店上夜班').querySelector('.et-mem-edit-save').click();
+        res.edited = JSON.stringify(mems().find(m => m.content === '我在便利店上夜班').keys) === '["夜班"]'
+            && card('我在便利店上夜班').querySelectorAll('.et-mem-key').length === 1;
+
+        // Pinned: in every prompt, whatever is said
+        card('齐宁怕黑').querySelector('[data-mem-action="pin"]').click();
+        res.pinned = env.memorySystem.buildMemoryContext(['hi']).includes('- 齐宁怕黑');
+        // Off: nothing in the prompt, no Add Memory
+        env.settings.memoryEnabled = false;
+        res.off = env.memorySystem.buildMemoryContext(['夜班']) === '';
+        res.offHidesMenu = !bubbleMenu(part, 1, false, 1).some(i => i.dataset.action === 'add_memory');
+        env.settings.memoryEnabled = true;
+        document.querySelectorAll('.et-dots-menu').forEach(m => m.remove());
+        host.remove();
+
+        res.errors = errors.slice();
+        res.ok = Object.values(res).filter(v => typeof v === 'boolean').every(Boolean) && !errors.length;
+        return res;
+    };
+
     // A screenshot: example values, a lock, Desire with ?nsfw
     const tab = params.get('tab');
     if (tab || params.has('auto')) {
@@ -530,7 +636,27 @@
         const auto = await window.runAutoTest();
         const reply = await window.runReplyTest();
         const tapback = await window.runTapbackTest();
-        fetch('/__log', { method: 'POST', body: JSON.stringify({ runEmotionTest: result, runAutoTest: auto, runReplyTest: reply, runTapbackTest: tapback }) }).catch(() => {});
+        const memory = await window.runMemoryTest();
+        fetch('/__log', { method: 'POST', body: JSON.stringify({ runEmotionTest: result, runAutoTest: auto, runReplyTest: reply, runTapbackTest: tapback, runMemoryTest: memory }) }).catch(() => {});
+    } else if (params.has('memory')) {
+        // Two memories, one pinned, the other in the last prompt; Add Memory open on a bubble
+        env.settings.characterMemories = { 'mira.png': [
+            { id: 'm1', category: 'custom', label: 'Night shift', content: '我在便利店上夜班', keys: ['夜班', '便利店'], pinned: false },
+            { id: 'm2', category: 'person', label: 'Qi', content: '齐宁怕黑，晚上不敢一个人走夜路', keys: [], pinned: true },
+        ] };
+        env.settings.chatHistory['mira.png'] = memoryChat();
+        r.renderMessages(env.settings.chatHistory['mira.png']);
+        env.memorySystem.buildMemoryContext(['夜班累吗']);
+        const { host, render } = await mountSettingsPanel();
+        host.style.cssText = 'position:fixed;left:416px;top:10px;width:360px;height:640px;overflow:auto';
+        const section = host.querySelector('[data-section="memory"]');
+        section.classList.add('open');
+        host.querySelectorAll('.et-accordion-section').forEach(sec => { if (sec !== section) sec.style.display = 'none'; });
+        jQuery('#et_memory_add_form_panel').show();
+        render();
+        bubbleMenu('[data-et-action="part-menu"][data-index="1"][data-part="1"]', 1, false, 1).find(i => i.dataset.action === 'add_memory').click();
+        // The harness's closeAllDotMenus is a stub
+        document.querySelectorAll('.et-dots-menu').forEach(m => m.remove());
     }
     // ?draft=N: Reply picked on message N (its last bubble), the quote waiting above the input
     if (params.has('draft')) r.startReply(Number(params.get('draft')) || 0, null);

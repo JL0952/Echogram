@@ -67,6 +67,7 @@
     loadEchoTextModule('lib/emotion-system.js', 'EchoTextEmotionSystem');
     loadEchoTextModule('lib/proactive-messaging.js', 'EchoTextProactiveMessaging');
     loadEchoTextModule('lib/settings-modal.js', 'EchoTextSettingsModal');
+    loadEchoTextModule('lib/memory-recall.js', 'EchoTextMemoryRecall');
     loadEchoTextModule('lib/memory-system.js', 'EchoTextMemorySystem');
     loadEchoTextModule('lib/saveload-modal.js', 'EchoTextSaveLoadModal');
     loadEchoTextModule('lib/group.js', 'EchoTextGroupManager');
@@ -653,9 +654,8 @@
         if (typeof settingsModal !== 'undefined' && settingsModal && typeof settingsModal.renderMemoryListInto === 'function') {
             settingsModal.renderMemoryListInto('#et_memory_list_panel', '#et_memory_empty_panel', '#et_memory_list_label_panel');
         }
-        // Memory panel toggles
+        // Memory panel toggle
         jQuery('#et_memory_enabled_panel').prop('checked', settings.memoryEnabled !== false);
-        jQuery('#et_memory_auto_extract_panel').prop('checked', settings.memoryAutoExtract !== false);
         // Memory scope pills
         const _memScope = settings.memoryScope || 'per-character';
         jQuery('#et_memory_scope_pills_panel .et-mem-scope-btn').removeClass('et-mem-scope-btn-active');
@@ -1880,7 +1880,8 @@
             : (cfg.promptVerbosityMedium || 'VERBOSITY: Keep your reply to 2-4 sentences, natural text-message length.');
     }
 
-    async function buildSystemPrompt(targetCharOverride = null) {
+    /** @param {Array} [history] - the chat the reply follows (the stored one when left out), for the memories */
+    async function buildSystemPrompt(targetCharOverride = null, history = null) {
         if (isCombinedGroupMode()) {
             const groupId = groupManager ? groupManager.getCurrentGroupId() : null;
             const combinedHistory = groupId ? groupManager.getCombineHistory(groupId) : [];
@@ -1917,7 +1918,7 @@
         //                  plus the story opening and recent ST roleplay (narrative
         //                  background kept far from the end so its prose style
         //                  doesn't leak into replies)
-        //  3. MEMORY     — inside jokes (semi-static contextual colour)
+        //  3. MEMORY     — pinned memories and the ones the recent messages bring up
         //  4. LOCK       — fiction frame + persona-lock reminder (recency anchor for
         //                  behaviour — last thing read before the model replies)
         //  4b. PERSONALITY AND FEELINGS — NSFW permission, texting style, behavior block
@@ -2007,8 +2008,8 @@
 
 
         // ── 3. MEMORY ────────────────────────────────────────────────────────────
-        // Shared memories (inside jokes, people, hobbies, etc.).
-        prompt += buildInsideJokesContext();
+        // Pinned memories and the ones the recent messages bring up (lib/memory-recall.js).
+        prompt += buildMemoryContext(history || getChatHistory());
 
         // ── 4. BEHAVIOUR LOCK ────────────────────────────────────────────────────
         // Fiction frame + persona-lock reminder land last so they act as the final
@@ -2767,7 +2768,7 @@
     }
 
     async function buildApiMessagesFromHistory(history, extraSystemMessages = [], targetCharOverride = null) {
-        const systemPrompt = await buildSystemPrompt(targetCharOverride);
+        const systemPrompt = await buildSystemPrompt(targetCharOverride, history);
         const apiMessages = [{ role: 'system', content: systemPrompt }];
 
         for (const msg of extraSystemMessages) {
@@ -2829,7 +2830,7 @@
         }
 
         // ── Solo / individual group-member mode ───────────────────────────────
-        const systemPrompt = await buildSystemPrompt(char);
+        const systemPrompt = await buildSystemPrompt(char, history);
         const apiMessages = [{ role: 'system', content: systemPrompt }];
 
         for (const msg of extraSystemMessages) {
@@ -2989,7 +2990,6 @@
                 pruneSwipesOnPrevLastChar(newHistory);
                 saveChatHistory(newHistory);
                 markProactiveCharacterActivity(getCharacterKey(), false, 'reply');
-                try { if (memorySystem) memorySystem.incrementTurn(); } catch (e) { /* ignore */ }
                 renderMessages(newHistory);
                 setFabUnreadIndicator(panelOpen ? false : true);
                 if (charReply.mood) noteMoodReport();
@@ -3257,7 +3257,6 @@
 
                 saveChatHistory(workingHistory);
                 markProactiveCharacterActivity(getCharacterKey(), false, 'reply');
-                try { if (memorySystem) memorySystem.incrementTurn(); } catch (e) { /* ignore */ }
                 renderMessages(workingHistory);
                 setFabUnreadIndicator(panelOpen ? false : true);
                 if (newSwipe.mood) noteMoodReport();
@@ -5166,15 +5165,7 @@
         if (mode && !isVoiceButtonMode()) setComposeMode(null);
         if (isGenerating) updateSendButton(true);
 
-        const userMsg = createUserMessage(mes);
-        // Detect memory-worthy spans in the user's message for manual highlighting
-        if (!mode && memorySystem && settings.memoryEnabled && settings.memoryAutoExtract) {
-            try {
-                const candidates = memorySystem.detectHighlightableText(text);
-                if (candidates && candidates.length > 0) userMsg.memoryHighlights = candidates;
-            } catch (e) { /* ignore detection errors */ }
-        }
-        postUserMessage(userMsg);
+        postUserMessage(createUserMessage(mes));
     }
 
     /**
@@ -6253,11 +6244,6 @@
         'avatar': ({ el }) => openAvatarMenu(el),
         'transfer-respond': ({ el }) => openTransferResponseMenu(jQuery(el)),
         'image-open': ({ msgIndex }) => openImageAttachment(msgIndex),
-        // A remembered phrase opens the save modal, or the remove modal once saved
-        'memory-highlight': ({ el }) => {
-            if (el.classList.contains('et-mem-highlight-saved')) showMemoryRemoveModal(el);
-            else showMemorySaveModal(el);
-        },
     };
 
     /**
@@ -6458,7 +6444,6 @@
             features: getActiveFeatures(),
             combineMode: !!(groupManager && groupManager.isGroupSession() && groupManager.isCombineMode()),
             swipes: !!settings.swipedMessages,
-            memoryHighlights: !!(settings.memoryEnabled && settings.memoryAutoExtract),
         };
     }
 
@@ -6492,14 +6477,10 @@
         return jQuery(`#et-messages-inner [data-et-role~="message"][data-index="${msgIndex}"]`);
     }
 
-    /** What a message's markup doesn't carry: its arrival sequence and memory marks. */
+    /** What a message's markup doesn't carry: its arrival sequence. */
     function decorateMessage(msgEl, m) {
         if (shouldStaggerReveal(m)) {
             staggerRevealParts(msgEl);
-        }
-
-        if (m.memoryHighlights.length) {
-            try { applyMemoryHighlights(msgEl, m); } catch (e) { /* ignore */ }
         }
     }
 
@@ -6576,7 +6557,7 @@
 
     function getRenderFrame(platform, ctx) {
         return JSON.stringify([platform.id, platform.features, getCharacterKey(), ctx.charName, ctx.verbosity, ctx.groupChat,
-            getUserAvatarUrl(), getCharAvatarUrl(), settings.memoryHighlightStyle]);
+            getUserAvatarUrl(), getCharAvatarUrl()]);
     }
 
     /**
@@ -6758,15 +6739,15 @@
         const partCount = msg ? getMessageDisplayParts(msg).length : 1;
         const deleteAllLabel = `Delete all (${partCount})`;
 
-        // Build menu items: every bubble's menu replies to, copies and deletes that
-        // bubble; the main (last) bubble's also acts on the whole message
+        // Build menu items: every bubble's menu replies to, copies, remembers and
+        // deletes that bubble; the main (last) bubble's also acts on the whole message
         const items = [{ id: 'copy_part', icon: 'fa-copy', label: 'Copy', cls: '' }];
         if (platformHas('reply')) items.unshift({ id: 'reply', icon: 'fa-reply', label: 'Reply', cls: '' });
+        if (memorySystem && settings.memoryEnabled) items.push({ id: 'add_memory', icon: 'fa-brain', label: 'Add Memory', cls: '' });
         if (partIndex === null) {
             items.push({ id: 'edit', icon: 'fa-pen', label: 'Edit', cls: '' });
             items.push({ id: 'regen', icon: 'fa-rotate-right', label: 'Regenerate', cls: '' });
             if (!isUser) items.push({ id: 'verbosity', icon: 'fa-align-left', label: 'Verbosity', cls: 'et-dots-item-submenu' });
-            else if (memorySystem && settings.memoryEnabled) items.push({ id: 'add_memory', icon: 'fa-brain', label: 'Add Memory', cls: '' });
             items.push({ id: 'delete', icon: 'fa-trash', label: partCount > 1 ? 'Delete this' : 'Delete', cls: 'et-dots-item-delete' });
             if (partCount > 1) items.push({ id: 'delete_all', icon: 'fa-trash-can', label: deleteAllLabel, cls: 'et-dots-item-delete' });
         } else {
@@ -6969,6 +6950,13 @@
         });
     }
 
+    /** One bubble's words (the last bubble's when `partIndex` is null); a card as its plain-text note. */
+    function bubbleText(msg, partIndex) {
+        const parts = getMessageDisplayParts(msg);
+        const part = parts[partIndex ?? parts.length - 1];
+        return !part ? '' : part.type === 'text' || part.type === 'voice' ? part.text : RichMessages.toPlainText(RichMessages.serializeParts([part]));
+    }
+
     /**
      * @param {number|null} partIndex - the bubble a part-level action targets (Copy /
      *   Delete on one bubble of a multi-bubble message); null for the whole message
@@ -6985,11 +6973,7 @@
         }
 
         if (action === 'copy_part') {
-            // The main bubble's menu has no part index: it copies the last bubble
-            const parts = getMessageDisplayParts(msg);
-            const part = parts[partIndex ?? parts.length - 1];
-            const text = !part ? '' : part.type === 'text' || part.type === 'voice' ? part.text : RichMessages.toPlainText(RichMessages.serializeParts([part]));
-            try { navigator.clipboard.writeText(text); } catch (e) { /* noop */ }
+            try { navigator.clipboard.writeText(bubbleText(msg, partIndex)); } catch (e) { /* noop */ }
             closeAllDotMenus();
             return;
         }
@@ -7099,7 +7083,7 @@
 
         if (action === 'add_memory') {
             closeAllDotMenus();
-            showManualMemorySaveModal(msg.mes);
+            showManualMemorySaveModal(bubbleText(msg, partIndex));
             return;
         }
 
@@ -7469,65 +7453,14 @@
     // MEMORY SYSTEM — THIN WRAPPERS
     // ============================================================
 
-    function buildInsideJokesContext() {
+    /** The memories block for the prompt, picked against `history`'s messages as plain text. */
+    function buildMemoryContext(history) {
         if (!memorySystem) return '';
-        return memorySystem.buildInsideJokesContext();
-    }
-
-    /**
-     * Walk all text nodes inside `element`, find the first occurrence of
-     * `searchStr`, and wrap it with a styled <mark> tag for memory highlighting.
-     */
-    function _highlightTextNode(element, searchStr, category, label, style) {
-        const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT, null, false);
-        let node;
-        while ((node = walker.nextNode())) {
-            const idx = node.nodeValue.indexOf(searchStr);
-            if (idx === -1) continue;
-            const before = node.nodeValue.substring(0, idx);
-            const after  = node.nodeValue.substring(idx + searchStr.length);
-            const mark   = document.createElement('mark');
-            mark.className = `et-mem-highlight et-mem-hl-${style}`;
-            mark.dataset.etAction = 'memory-highlight';
-            mark.dataset.memCategory = category;
-            mark.dataset.memLabel    = label;
-            mark.dataset.memContent  = searchStr;
-            mark.textContent = searchStr;
-            const parent = node.parentNode;
-            if (before) parent.insertBefore(document.createTextNode(before), node);
-            parent.insertBefore(mark, node);
-            if (after)  parent.insertBefore(document.createTextNode(after),  node);
-            parent.removeChild(node);
-            return true; // first occurrence only
-        }
-        return false;
-    }
-
-    /**
-     * Apply memory highlight marks to the first text (data-et-role="text") in `bubbleEl`
-     * for the given message's highlight candidates.
-     */
-    function applyMemoryHighlights(bubbleEl, msg) {
-        if (!bubbleEl || !msg.memoryHighlights || !msg.memoryHighlights.length) return;
-        const style      = (settings.memoryHighlightStyle || 'underline');
-        const bubbleText = bubbleEl.find('[data-et-role~="text"]')[0];
-        if (!bubbleText) return;
-        msg.memoryHighlights.forEach(function (hl) {
-            try { _highlightTextNode(bubbleText, hl.text, hl.category, hl.label, style); } catch (e) { /* ignore */ }
+        const texts = (history || []).flatMap(msg => {
+            const text = resolveHistoryMessageText(msg);
+            return text === null ? [] : [RichMessages.toPlainText(text)];
         });
-    }
-
-    /**
-     * Update the highlight style class on existing marks live (called when the
-     * user changes their preferred highlight style in settings).
-     */
-    function updateMemoryHighlightStyleInPanel(newStyle) {
-        const allStyles = ['et-mem-hl-underline', 'et-mem-hl-glow', 'et-mem-hl-shimmer', 'et-mem-hl-border'];
-        jQuery('#et-messages-inner .et-mem-highlight').each(function () {
-            const el = jQuery(this);
-            el.removeClass(allStyles.join(' '));
-            el.addClass('et-mem-hl-' + newStyle);
-        });
+        return memorySystem.buildMemoryContext(texts);
     }
 
     const _MEM_CATEGORY_LABELS = {
@@ -7540,184 +7473,9 @@
     };
 
     /**
-     * Show the "Save as Memory?" glassmorphism modal when a user clicks a
-     * highlighted memory span.
-     */
-    function showMemorySaveModal(el) {
-        const $el     = jQuery(el);
-        const category = $el.data('mem-category') || 'custom';
-        const label    = $el.data('mem-label')    || '';
-        const content  = $el.data('mem-content')  || $el.text();
-
-        jQuery('#et-mem-save-modal').remove();
-        jQuery('#et-mem-save-modal-overlay').remove();
-
-        const { DOMPurify } = SillyTavern.libs;
-        const safeContent   = DOMPurify.sanitize(content, { ALLOWED_TAGS: [] });
-        const safeLabelHint = DOMPurify.sanitize(label,   { ALLOWED_TAGS: [] }); // used as placeholder only
-
-        // Pill scope toggle — always defaults to per-character
-        const charNameFn = window._etGetCharacterName;
-        const charName   = typeof charNameFn === 'function' ? charNameFn() : null;
-        const safeCharName = DOMPurify.sanitize(charName || 'Character', { ALLOWED_TAGS: [] });
-
-        const scopePillHtml = `
-            <div class="et-mem-scope-pill-wrap">
-                <button class="et-mem-scope-seg et-mem-scope-seg-active" data-scope="per-character" type="button">
-                    <i class="fa-solid fa-user"></i> ${safeCharName}
-                </button>
-                <button class="et-mem-scope-seg" data-scope="global" type="button">
-                    <i class="fa-solid fa-globe"></i> Global
-                </button>
-            </div>`;
-
-        const catOptions = Object.entries(_MEM_CATEGORY_LABELS).map(([k, v]) =>
-            `<option value="${k}"${k === category ? ' selected' : ''}>${v}</option>`
-        ).join('');
-
-        const html = `
-        <div id="et-mem-save-modal-overlay" class="et-mem-save-modal-overlay"></div>
-        <div id="et-mem-save-modal" class="et-mem-save-modal">
-            <div class="et-mem-save-header">
-                <i class="fa-solid fa-brain"></i>
-                <span>Save as Memory?</span>
-            </div>
-            <div class="et-mem-save-snippet">${safeContent}</div>
-            ${scopePillHtml}
-            <div class="et-mem-save-fields">
-                <div class="et-select-wrapper">
-                    <select class="et-select et-mem-save-category">${catOptions}</select>
-                    <i class="fa-solid fa-chevron-down et-select-arrow"></i>
-                </div>
-                <input type="text" class="et-input-text et-mem-save-label" value="" placeholder="${safeLabelHint || 'Give it a name (optional)'}">
-            </div>
-            <label class="et-mem-form-pin-row" style="margin:10px 0 4px;">
-                <input type="checkbox" class="checkbox et-mem-save-pin">
-                <span><i class="fa-solid fa-thumbtack"></i> Pin — always inject this memory</span>
-            </label>
-            <div class="et-mem-save-actions">
-                <button class="et-mem-save-btn et-mem-save-btn-save" id="et-mem-save-confirm" type="button">
-                    <i class="fa-solid fa-check"></i> Save Memory
-                </button>
-                <button class="et-mem-save-btn et-mem-save-btn-dismiss" id="et-mem-save-dismiss" type="button">
-                    Dismiss
-                </button>
-            </div>
-        </div>`;
-
-        const panel = jQuery('#et-panel');
-        panel.append(html);
-        requestAnimationFrame(() => jQuery('#et-mem-save-modal').addClass('et-mem-save-modal-open'));
-
-        // Pill scope toggle
-        jQuery('#et-mem-save-modal').on('click', '.et-mem-scope-seg', function () {
-            jQuery('#et-mem-save-modal .et-mem-scope-seg').removeClass('et-mem-scope-seg-active');
-            jQuery(this).addClass('et-mem-scope-seg-active');
-        });
-
-        function closeModal() {
-            const modal   = jQuery('#et-mem-save-modal');
-            const overlay = jQuery('#et-mem-save-modal-overlay');
-            modal.removeClass('et-mem-save-modal-open');
-            setTimeout(() => { modal.remove(); overlay.remove(); }, 220);
-        }
-
-        jQuery('#et-mem-save-confirm').on('click', function () {
-            const cat         = jQuery('#et-mem-save-modal .et-mem-save-category').val();
-            const lbl         = jQuery('#et-mem-save-modal .et-mem-save-label').val().trim();
-            const pin         = jQuery('#et-mem-save-modal .et-mem-save-pin').is(':checked');
-            const chosenScope = jQuery('#et-mem-save-modal .et-mem-scope-seg-active').data('scope') || 'per-character';
-            if (memorySystem) {
-                const saved = memorySystem.addMemory({ category: cat, label: lbl, content: content, pinned: pin, scope: chosenScope });
-                if (saved) {
-                    $el.attr('data-mem-id', saved.id).attr('data-mem-scope', chosenScope);
-                }
-            }
-            $el.addClass('et-mem-highlight-saved');
-            // Refresh open memory lists
-            if (settingsModal && typeof settingsModal.renderMemoryListInto === 'function') {
-                settingsModal.renderMemoryListInto('#et_memory_list',       '#et_memory_empty',       '#et_memory_list_label');
-                settingsModal.renderMemoryListInto('#et_memory_list_panel', '#et_memory_empty_panel', '#et_memory_list_label_panel');
-            }
-            toastr.success('Memory saved!');
-            closeModal();
-        });
-
-        jQuery('#et-mem-save-dismiss').on('click', closeModal);
-        jQuery('#et-mem-save-modal-overlay').on('click', closeModal);
-
-        // Escape key
-        const onKey = (e) => { if (e.key === 'Escape') { document.removeEventListener('keydown', onKey); closeModal(); } };
-        document.addEventListener('keydown', onKey);
-    }
-
-    /**
-     * Show a small "Remove Memory?" modal when the user re-clicks a saved highlight.
-     */
-    function showMemoryRemoveModal(el) {
-        const $el     = jQuery(el);
-        const memId   = $el.attr('data-mem-id') || null;
-        const content = $el.data('mem-content') || $el.text();
-
-        jQuery('#et-mem-save-modal').remove();
-        jQuery('#et-mem-save-modal-overlay').remove();
-
-        const { DOMPurify } = SillyTavern.libs;
-        const safeContent = DOMPurify.sanitize(content, { ALLOWED_TAGS: [] });
-
-        const html = `
-        <div id="et-mem-save-modal-overlay" class="et-mem-save-modal-overlay"></div>
-        <div id="et-mem-save-modal" class="et-mem-save-modal">
-            <div class="et-mem-save-header">
-                <i class="fa-solid fa-circle-check" style="color:#4ade80;"></i>
-                <span>Memory Saved</span>
-            </div>
-            <div class="et-mem-save-snippet">${safeContent}</div>
-            <div class="et-mem-remove-hint">This phrase is already saved as a memory. Would you like to remove it?</div>
-            <div class="et-mem-save-actions">
-                <button class="et-mem-save-btn et-mem-save-btn-remove" id="et-mem-remove-confirm" type="button">
-                    <i class="fa-solid fa-trash-can"></i> Remove Memory
-                </button>
-                <button class="et-mem-save-btn et-mem-save-btn-dismiss" id="et-mem-save-dismiss" type="button">
-                    Keep It
-                </button>
-            </div>
-        </div>`;
-
-        jQuery('#et-panel').append(html);
-        requestAnimationFrame(() => jQuery('#et-mem-save-modal').addClass('et-mem-save-modal-open'));
-
-        function closeModal() {
-            const modal   = jQuery('#et-mem-save-modal');
-            const overlay = jQuery('#et-mem-save-modal-overlay');
-            modal.removeClass('et-mem-save-modal-open');
-            setTimeout(() => { modal.remove(); overlay.remove(); }, 220);
-        }
-
-        jQuery('#et-mem-remove-confirm').on('click', function () {
-            if (memorySystem && memId) {
-                memorySystem.deleteMemory(memId);
-            }
-            $el.removeClass('et-mem-highlight-saved').removeAttr('data-mem-id').removeAttr('data-mem-scope');
-            if (settingsModal && typeof settingsModal.renderMemoryListInto === 'function') {
-                settingsModal.renderMemoryListInto('#et_memory_list',       '#et_memory_empty',       '#et_memory_list_label');
-                settingsModal.renderMemoryListInto('#et_memory_list_panel', '#et_memory_empty_panel', '#et_memory_list_label_panel');
-            }
-            toastr.success('Memory removed.');
-            closeModal();
-        });
-
-        jQuery('#et-mem-save-dismiss').on('click', closeModal);
-        jQuery('#et-mem-save-modal-overlay').on('click', closeModal);
-        const onKey = (e) => { if (e.key === 'Escape') { document.removeEventListener('keydown', onKey); closeModal(); } };
-        document.addEventListener('keydown', onKey);
-    }
-
-    /**
-     * Opens the memory save modal triggered manually from the message dot-menu.
-     * Unlike showMemorySaveModal (which operates on a highlight element), this
-     * takes the raw message text and lets the user categorise and save it freely.
-     * @param {string} messageText - raw user message text
+     * Add Memory (bubble menu): the bubble's words, editable, saved with a
+     * category, an optional name and keywords, pinned or not.
+     * @param {string} messageText - the bubble's text
      */
     function showManualMemorySaveModal(messageText) {
         if (!messageText || !messageText.trim()) return;
@@ -7764,6 +7522,7 @@
                 </div>
                 <input type="text" class="et-input-text et-mem-save-label" value="" placeholder="Give it a name (optional)">
             </div>
+            <input type="text" class="et-input-text et-mem-save-keys" value="" placeholder="Keywords, comma-separated">
             <label class="et-mem-form-pin-row" style="margin:10px 0 4px;">
                 <input type="checkbox" class="checkbox et-mem-save-pin">
                 <span><i class="fa-solid fa-thumbtack"></i> Pin — always inject this memory</span>
@@ -7801,10 +7560,11 @@
             if (!saveContent) { toastr.warning('Memory content cannot be empty.'); return; }
             const cat         = jQuery('#et-mem-save-modal .et-mem-save-category').val();
             const lbl         = jQuery('#et-mem-save-modal .et-mem-save-label').val().trim();
+            const keys        = jQuery('#et-mem-save-modal .et-mem-save-keys').val();
             const pin         = jQuery('#et-mem-save-modal .et-mem-save-pin').is(':checked');
             const chosenScope = jQuery('#et-mem-save-modal .et-mem-scope-seg-active').data('scope') || 'per-character';
             if (memorySystem) {
-                memorySystem.addMemory({ category: cat, label: lbl, content: saveContent, pinned: pin, scope: chosenScope });
+                memorySystem.addMemory({ category: cat, label: lbl, content: saveContent, keys, pinned: pin, scope: chosenScope });
             }
             if (settingsModal && typeof settingsModal.renderMemoryListInto === 'function') {
                 settingsModal.renderMemoryListInto('#et_memory_list',       '#et_memory_empty',       '#et_memory_list_label');
@@ -7960,8 +7720,8 @@
         // Expose character accessor helpers for the settings-modal memory UI
         window._etGetCharacterKey  = getCharacterKey;
         window._etGetCharacterName = getCharacterName;
-        // Expose live highlight style updater for settings-modal delegation
-        window._etUpdateMemoryHlStyle = updateMemoryHighlightStyleInPanel;
+        // The memories the last prompt carried, marked in the memory list
+        window._etGetRecalledMemoryIds = () => memorySystem.getRecalledIds();
 
         saveLoadModal = window.EchoTextSaveLoadModal.createSaveLoadModal({
             getSettings: () => settings,

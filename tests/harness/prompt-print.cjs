@@ -24,7 +24,7 @@ if (!who) { console.error('usage: node tests/harness/prompt-print.cjs <character
 
 global.window = {};
 for (const f of ['lib/config.js', 'lib/rich-messages.js', 'lib/features.js', 'lib/chat-view-model.js', 'platforms/echotext/platform.js', 'platforms/wechat/platform.js',
-    'lib/emotion-model.js', 'lib/emotion-icons.js', 'lib/texting-behavior.js', 'lib/emotion-system.js', 'lib/memory-system.js']) new Function(fs.readFileSync(`${REPO}/${f}`, 'utf8'))();
+    'lib/emotion-model.js', 'lib/emotion-icons.js', 'lib/texting-behavior.js', 'lib/emotion-system.js', 'lib/memory-recall.js', 'lib/memory-system.js']) new Function(fs.readFileSync(`${REPO}/${f}`, 'utf8'))();
 
 // ── SillyTavern's data ──────────────────────────────────────────────────────
 
@@ -93,14 +93,14 @@ if (opt('big5') || opt('morality')) {
 const NAMES = ['buildSystemPrompt', 'getVerbosityPrompt', 'getEchoTextFirstMessage', 'getSTStoryContext', 'findSTOpeningIndex',
     'isCharInCurrentSTChat', 'cleanSTMessageText', 'ST_STORY_MAX_MESSAGES', 'ST_STORY_MAX_CHARS', 'replaceMacros', 'buildMessageFormatPrompt',
     'RichMessages', 'Features', 'Platforms', 'activePlatformMemo', 'getActivePlatform', 'getActiveFeatures', 'platformHas', 'getReactionIds',
-    'getActiveWorldInfoEntries', 'buildInsideJokesContext', 'buildTextingStyleContext', 'buildBehaviorContext', 'buildMoodRules', 'inGroupSession',
+    'getActiveWorldInfoEntries', 'buildMemoryContext', 'resolveHistoryMessageText', 'getContextMessageText', 'buildTextingStyleContext', 'buildBehaviorContext', 'buildMoodRules', 'inGroupSession',
     'stripThinkingTags', 'getStripTagsRegex', 'STRIP_TAGS_DEFAULTS', 'SPECIAL_PATTERNS', '_stripTagsRegex', '_stripTagsListHash'];
 const STUBS = `
     const FA_REACTIONS = window.EchoTextFeatures.REACTIONS; const settings = env.settings; const SillyTavern = env.SillyTavern; const emotionSystem = env.emotionSystem; const memorySystem = env.memorySystem;
     const getCurrentCharacter = () => env.char; const getCharacterKey = () => env.char.avatar;
     const getCharacterName = () => env.char.name; const getUserName = () => env.userName;
     const isCombinedGroupMode = () => false; const groupManager = null;
-    const expandTimeDateMacros = t => t;`;
+    const expandTimeDateMacros = t => t; const getChatHistory = () => settings.chatHistory?.[env.char.avatar] || [];`;
 const code = fs.readFileSync(`${REPO}/index.js`, 'utf8');
 const body = acorn.parse(code, { ecmaVersion: 'latest' }).body.find(n => n.type === 'ExpressionStatement').expression.callee.body.body;
 const parts = body.filter(node => {

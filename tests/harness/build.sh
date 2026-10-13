@@ -18,6 +18,8 @@ cp "$ST_ROOT/public/css/fontawesome.min.css" "$ST_ROOT/public/css/solid.min.css"
 cp "$ST_ROOT/public/webfonts/fa-solid-900.woff2" "$ST_ROOT/public/webfonts/fa-solid-900.ttf" "$B/vendor/webfonts/"
 
 git -C "$REPO" show "$REF:index.js" > "$B/index.old.js"
+# Before step 10a messages carried memory highlights, which the view model no longer has
+sed -i '' 's/if (m\.memoryHighlights\.length)/if (m.memoryHighlights?.length)/' "$B/index.old.js"
 git -C "$REPO" show "$REF:platforms/echotext/platform.js" | sed 's/window\.EchoTextPlatforms/window.EchoTextPlatformsOld/g' > "$B/platform.old.js"
 # Before step 9c the template read the view's message-level m.reactions, which the view model no longer has
 sed -i '' 's/reactionPills(m\.reactions, ctx)/reactionPills(m.reactions || [], ctx)/' "$B/platform.old.js"
@@ -32,9 +34,9 @@ EXTRA=bindBubbleTouchSwipe,updateSwipeInPlace node "$H/gen.cjs" "$REPO/index.js"
 CHROME=buildPanelHtml,modeMenuItemInner,toggleAttachMenu,toggleAttachPanel,bindAttachPanel,setComposeMode,isVoiceButtonMode,getChatCurrency,shareType,shareTypeLabel,renderShareTypeChip,toggleShareTypeMenu,getCharAvatarUrl,getCardAvatarUrl,getCustomCharAvatarUrl,openAvatarMenu,changeCharacterAvatar,setCustomCharAvatar,deleteUserImage,readFileAsDataUrl,shrinkImageDataUrl,openAvatarLightbox,AVATAR_SIZE
 EXTRA=$CHROME node "$H/gen.cjs" "$REPO/index.js" chrome "$B/bundle-chrome.js"
 # emotion.html: the panel plus how a reply lands (Auto mode's <mood> line), the model stubbed,
-# quoted replies (Reply in a bubble's menu, the draft, sending) and per-bubble tapbacks
-REPLY=generateEchoText,generateEchoTextSwipe,readReply,cleanGeneratedResponse,noteMoodReport,inGroupSession,refreshAutoEmotions,initSwipesOnMessage,syncMsgFromSwipe,pruneSwipesOnPrevLastChar,withMessagesSentSince,getUnreadUserMessageIndices,getEmotionHistory,toggleDotsMenu,handleDotsAction,quoteForBubble,startReply,clearReplyDraft,renderReplyDraft,handleSend,createUserMessage,postUserMessage,toggleReactOverlay,closeAllReactOverlays,addReaction,MAX_TAPBACKS,setBubbleReactions,buildUserReactionText,deleteMessagePart
-EXTRA=$CHROME,$REPLY,getChatHistory,saveChatHistory VALUES=emotionSystem,imageGeneration,memorySystem,gallery,abortController,replyInProgress,activeCompletionRequests,shareType,replyTimer \
+# quoted replies (Reply in a bubble's menu, the draft, sending), per-bubble tapbacks and Add Memory
+REPLY=generateEchoText,generateEchoTextSwipe,readReply,cleanGeneratedResponse,noteMoodReport,inGroupSession,refreshAutoEmotions,initSwipesOnMessage,syncMsgFromSwipe,pruneSwipesOnPrevLastChar,withMessagesSentSince,getUnreadUserMessageIndices,getEmotionHistory,toggleDotsMenu,handleDotsAction,quoteForBubble,startReply,clearReplyDraft,renderReplyDraft,handleSend,createUserMessage,postUserMessage,toggleReactOverlay,closeAllReactOverlays,addReaction,MAX_TAPBACKS,setBubbleReactions,buildUserReactionText,deleteMessagePart,bubbleText,showManualMemorySaveModal,_MEM_CATEGORY_LABELS
+EXTRA=$CHROME,$REPLY,getChatHistory,saveChatHistory VALUES=emotionSystem,imageGeneration,memorySystem,settingsModal,gallery,abortController,replyInProgress,activeCompletionRequests,shareType,replyTimer \
 STUBS=updateSendButton,setUserMessageReceiptState,getEmotionReplyTimingModel,buildApiMessagesFromHistory,sleepWithAbort,setTypingIndicatorVisible,requestEchoTextCompletion,markProactiveCharacterActivity,setFabUnreadIndicator,log,setImageGeneratingIndicatorVisible,onGenerationSettled,syncProactiveStateWithHistory,getChatCurrency,startCharacterReply,isVoiceButtonMode,markProactiveUserActivity,scheduleCharacterReply \
     node "$H/gen.cjs" "$REPO/index.js" reply "$B/bundle-reply.js"
 # mobile.html?old: the panel from REF's index.js (functions REF lacks are skipped)

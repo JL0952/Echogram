@@ -613,7 +613,7 @@
                     <div class="et-accordion-content">
 
                         <div class="et-hint" style="margin-bottom:14px;">
-                            Characters can recall shared memories — inside jokes, people you've mentioned, hobbies, favorites, and more. Memories are woven naturally into replies.
+                            Pinned memories are always in the prompt; the others when the recent messages mention them or one of their keywords.
                         </div>
 
                         <div class="et-field">
@@ -622,23 +622,6 @@
                                 <span class="et-label-text"><i class="fa-solid fa-brain"></i> Enable Memory System</span>
                             </label>
                             <div class="et-hint">Inject relevant shared memories into the system prompt during generation.</div>
-                        </div>
-
-                        <div class="et-field">
-                            <label class="et-toggle-row" for="et_memory_auto_extract_panel">
-                                <input type="checkbox" id="et_memory_auto_extract_panel" class="checkbox">
-                                <span class="et-label-text"><i class="fa-solid fa-highlighter"></i> Auto-Highlight Memories</span>
-                            </label>
-                            <div class="et-hint">Scan your messages for memorable content — hobbies, people, favorites, shared moments — and highlight it. Click any highlight to save it as a memory.</div>
-                            <div class="et-mem-hl-picker-wrap" id="et_memory_hl_picker_panel_wrap">
-                                <div class="et-label-text-sub"><i class="fa-solid fa-palette"></i> Highlight Style</div>
-                                <div class="et-mem-hl-style-btns" id="et_memory_hl_picker_panel">
-                                    <button class="et-mem-hl-btn" data-hl="underline" type="button"><span class="et-mem-hl-preview et-mem-hl-underline">Aa</span><span>Dotted Underline</span></button>
-                                    <button class="et-mem-hl-btn" data-hl="glow" type="button"><span class="et-mem-hl-preview et-mem-hl-glow">Aa</span><span>Soft Glow</span></button>
-                                    <button class="et-mem-hl-btn" data-hl="shimmer" type="button"><span class="et-mem-hl-preview et-mem-hl-shimmer">Aa</span><span>Shimmer</span></button>
-                                    <button class="et-mem-hl-btn" data-hl="border" type="button"><span class="et-mem-hl-preview et-mem-hl-border">Aa</span><span>Accent Bar</span></button>
-                                </div>
-                            </div>
                         </div>
 
                         <div class="et-field">
@@ -676,6 +659,7 @@
                                     <input type="text" class="et-input-text et-mem-form-label" id="et_memory_form_label_panel" placeholder="Label (e.g. &ldquo;Our song&rdquo;)">
                                 </div>
                                 <textarea class="et-mem-form-content" id="et_memory_form_content_panel" rows="3" placeholder="Describe the memory…"></textarea>
+                                <input type="text" class="et-input-text et-mem-form-keys" id="et_memory_form_keys_panel" placeholder="Keywords, comma-separated">
                                 <div class="et-mem-form-actions">
                                     <label class="et-mem-form-pin-row">
                                         <input type="checkbox" id="et_memory_form_pin_panel" class="checkbox">
@@ -691,7 +675,7 @@
                                 <!-- Populated by JS -->
                             </div>
                             <div class="et-mem-empty" id="et_memory_empty_panel" style="display:none;">
-                                <i class="fa-solid fa-box-open"></i><br>No memories yet.<br>Start chatting or add one manually.
+                                <i class="fa-solid fa-box-open"></i><br>No memories yet.<br>Add one here or from a bubble's menu.
                             </div>
                         </div>
 
