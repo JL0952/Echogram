@@ -14,6 +14,9 @@ const build = (opts = {}) => Behavior.buildBehavior({ features: NATIVE, verbosit
 const KEEPS_GOING = 'Mira is more likely than usual to keep the conversation going: follow-up questions, new topics.';
 const REACTS_MORE = 'Mira is quicker than usual to react to Qi\'s messages with a tapback.';
 const GONE_GUARDED = 'Mira won\'t admit it, but it leaks out in what Mira does, and it may slip out.';
+const QUICK_TO_FEEL = 'Mira is quick to feel: small things hit hard, and moods swing fast and far.';
+const BLUNT = 'Mira tends to put things bluntly.';
+const TACTFUL = 'Mira tends to put things tactfully.';
 // What the old version made up: relationship labels and plot
 const SCRIPTED = /friends|lovers|flirt|fight|spat|make up|cold war|aren't close|jealous|who Qi is texting/i;
 
@@ -57,10 +60,11 @@ test('Rapport −40 with Romance 80: the attraction persists; anger is only its 
     assert.deepEqual(angry.lines, [
         `${relation} ${GONE_GUARDED}`,
         'Mira is irritated: short and cool.',
+        BLUNT,
         'Mira is unlikely to use tapback reactions.',
     ]);
     const calm = build({ bigFive: { A: 'low' }, values: { rapport: -40, romance: 80 } });
-    assert.deepEqual(calm.lines, [`${relation} ${GONE_GUARDED}`]);
+    assert.deepEqual(calm.lines, [`${relation} ${GONE_GUARDED}`, BLUNT]);
     for (const r of [angry, calm]) assert.doesNotMatch(r.text, SCRIPTED);
     // Openly hostile, and an outgoing character lets it show
     assert.equal(build({ bigFive: { E: 'high' }, values: { rapport: -70, romance: 50 } }).lines[0],
@@ -162,6 +166,42 @@ test('Big Five alone: knobs and trait pairs, no feelings note', () => {
     assert.equal(build({ bigFive: { E: 'low' }, values: null }).verbosity, 'short');
 });
 
+test('Neuroticism on its own: how hard things hit, ahead of the trait pairs', () => {
+    assert.deepEqual(build({ bigFive: { N: 'high' } }).lines, [QUICK_TO_FEEL]);
+    assert.deepEqual(build({ bigFive: { N: 'low' } }).lines, ['Mira is even-keeled: it takes a lot to shake Mira, and moods pass quickly.']);
+    // With a pair that has it too, both
+    assert.deepEqual(build({ bigFive: { N: 'high', E: 'low' } }).lines.slice(0, 2), [
+        QUICK_TO_FEEL,
+        'Mira is slow to reply and overthinks; may send something, then take it back.',
+    ]);
+    // Feelings still come first
+    assert.match(build({ bigFive: { N: 'high' }, values: { shock: 70 } }).lines[0], /^Mira is (caught off guard|stunned)/);
+});
+
+test('Agreeableness on its own: one line on how things are put', () => {
+    assert.deepEqual(build({ bigFive: { A: 'high' } }).lines, [TACTFUL, REACTS_MORE]);
+    assert.deepEqual(build({ bigFive: { A: 'low' } }).lines, [BLUNT, 'Mira is unlikely to use tapback reactions.']);
+    // The single traits don't take the pairs' places: two pairs at most, besides them
+    const crowded = build({ bigFive: { N: 'high', E: 'low', A: 'high' } }).lines;
+    for (const line of [QUICK_TO_FEEL, TACTFUL, 'Mira is slow to reply and overthinks; may send something, then take it back.', 'Mira apologizes a lot, anxious not to upset Qi.']) {
+        assert.ok(crowded.includes(line), line);
+    }
+    const pairs = build({ bigFive: { E: 'high', C: 'low', A: 'low', O: 'high' } }).lines;
+    assert.ok(pairs.includes(BLUNT) && pairs.includes('Mira likes to roast and needle Qi.') && !pairs.includes('Mira jumps from topic to topic.'));
+});
+
+test('warm and outgoing (Agreeableness and Extraversion high): more tapbacks, more sharing', () => {
+    const SHARES_ALL = 'Mira is readier than usual to send a photo, a voice message or a link when something fits.';
+    const both = build({ bigFive: { A: 'high', E: 'high' } }).lines;
+    assert.ok(both.includes(REACTS_MORE) && both.includes(SHARES_ALL) && both.includes(TACTFUL));
+    // Each alone shares less: Extraversion only voice messages, Agreeableness nothing
+    assert.ok(!build({ bigFive: { A: 'high' } }).lines.some(l => l.includes('readier than usual')));
+    assert.ok(build({ bigFive: { E: 'high' } }).lines.includes('Mira is readier than usual to send a voice message when something fits.'));
+    // The pair holds the tapbacks against some anger; Agreeableness alone doesn't
+    assert.ok(build({ bigFive: { A: 'high', E: 'high' }, values: { anger: 50 } }).lines.includes(REACTS_MORE));
+    assert.ok(!build({ bigFive: { A: 'high' }, values: { anger: 50 } }).lines.includes(REACTS_MORE));
+});
+
 test('at most six lines: feelings first, then knobs and trait pairs by weight', () => {
     const result = build({ nsfw: true, bigFive: { E: 'high', C: 'low', O: 'high' },
         values: { rapport: 40, romance: 60, desire: 90, joy: 80, eagerness: 70, anticipation: 50 } });
@@ -195,7 +235,7 @@ test('Romance shows guarded or direct by Extraversion, then Agreeableness', () =
 test('Auto mode: the <mood> rule lists the feelings, marks fixed ones and gives the steps', () => {
     const values = { rapport: -20, romance: 100, joy: 35, anticipation: 0, eagerness: 0, shock: 0, sadness: 0, anxiety: 0, anger: 0, disgust: 0 };
     const rules = Behavior.moodRules({ values, fixed: ['romance'], steps: { relation: 10, mood: 25 }, charName: 'Mira', userName: 'Qi' });
-    assert.equal(rules, `MOOD: How Mira feels shifts with what happens (news, a tease, a quarrel, a long silence), as much as it fairly would. Weigh Qi's latest messages against the values below; when they move any of them, end the reply with one more line, Use the format <mood>feeling_1 value, feeling_2 value</mood>, with multiple entries separated by commas, indicating the new values of just the feelings that changed. If nothing changed, leave it out. A reserved Mira may hide it in the texts, but the values still move.
+    assert.equal(rules, `MOOD: How Mira feels shifts with what happens (news, a tease, a quarrel, a long silence), as much as it fairly would. Weigh Qi's latest messages against the values below; when they move any of them, end the reply with one more line: use the format <mood>feeling_1 value, feeling_2 value</mood>, with multiple entries separated by commas, indicating the new values of just the feelings that changed. If nothing changed, leave it out. A reserved Mira may hide it in the texts, but the values still move.
 How Mira feels now, 0 (not at all) to 100 (overwhelming): rapport -20 (how they get along, from -100 hostile to 100 deep trust), romance 100 (romantic attraction, fixed), joy 35, anticipation 0, eagerness 0, shock 0, sadness 0, anxiety 0, anger 0, disgust 0.
 Fixed feelings never change. A feeling moves at most 25 per reply, rapport and romance at most 10.`);
     // The chat's first report can set what's still at 0 straight away

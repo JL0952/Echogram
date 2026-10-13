@@ -272,7 +272,7 @@
         click('[data-emo-mode="auto"]');
         res.autoShown = $p('.et-emo-seg-on').text() === 'Auto';
         res.sameLayoutAsManual = layout() === manualLayout;
-        res.firstRule = rules().includes('<mood>joy 60, anger 15</mood>') && rules().includes('In this first report');
+        res.firstRule = rules().includes('<mood>feeling_1 value, feeling_2 value</mood>') && rules().includes('In this first report');
 
         // The model, stubbed: what each reply says, and the chats it was given
         const sent = [];
