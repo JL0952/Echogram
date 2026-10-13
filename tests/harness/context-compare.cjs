@@ -14,9 +14,14 @@ const H = __dirname;
 global.window = {};
 for (const f of ['lib/rich-messages.js', 'lib/features.js', 'lib/chat-view-model.js', 'platforms/echotext/platform.js', 'platforms/wechat/platform.js']) new Function(fs.readFileSync(`${REPO}/${f}`, 'utf8'))();
 new Function(fs.readFileSync(`${H}/scenarios.js`, 'utf8'))();
+// index.js before step 9c read the user's tapbacks (whole-message, msg.reactions) with
+// getStoredReactions, which the view model no longer has
+window.EchoTextChatViewModel.getStoredReactions = (msg, ids) => (!msg || msg.is_user ? [] : Object.entries(window.EchoTextChatViewModel.normalizeReactionStore(msg.reactions))
+    .filter(([id]) => ids.includes(id)).map(([id, data]) => ({ id, ...data })));
 
 const NAMES = ['RichMessages', 'Features', 'ChatViewModel', 'Platform', 'Platforms', 'activePlatformMemo', 'getActivePlatform', 'getReactionIds', 'getActiveFeatures', 'platformHas',
-    'getContextMessageText', 'buildCombinedReactionTurns', 'getUserReactionIds', 'buildUserReactionText', 'resolveHistoryMessageText', 'buildMessageFormatPrompt'];
+    'getContextMessageText', 'buildCombinedReactionTurns', 'getUserReactionIds', 'buildUserReactionText', 'resolveHistoryMessageText', 'buildMessageFormatPrompt',
+    'getMessageDisplayParts', 'quoteForBubble'];
 function load(code) {
     const ast = acorn.parse(code, { ecmaVersion: 'latest' });
     const body = ast.body.find(n => n.type === 'ExpressionStatement').expression.callee.body.body;

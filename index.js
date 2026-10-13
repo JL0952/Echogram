@@ -2710,21 +2710,32 @@
             : [];
     }
 
-    /** Ids of the user's tapbacks on a character message (none on user messages). */
+    /** Ids of the user's tapbacks on a character message, any bubble (none on user messages). */
     function getUserReactionIds(msg) {
         if (!platformHas('react')) return [];
-        return ChatViewModel.getStoredReactions(msg, getReactionIds())
-            .filter(reaction => reaction.mine)
-            .map(reaction => reaction.id);
+        return ChatViewModel.getUserTapbackIds(msg, getReactionIds());
     }
 
     /**
      * The user's tapbacks on a character message as the model sees them: a user
      * turn right after that message, using the same <react> tag the character
-     * reacts with. '' when the user hasn't reacted.
+     * reacts with. Those on the last bubble come first, as they are; one on an
+     * earlier bubble follows the <reply> that quotes it, so it's clear which.
+     * '' when the user hasn't reacted.
      */
     function buildUserReactionText(msg) {
-        return getUserReactionIds(msg).map(id => `<react>${id}</react>`).join('\n');
+        if (!platformHas('react') || !msg || msg.is_user) return '';
+        const partCount = getMessageDisplayParts(msg).length;
+        const tapbacks = ChatViewModel.getUserTapbacks(msg, partCount, getReactionIds());
+        const tags = ids => ids.map(id => `<react>${id}</react>`);
+        const earlier = Object.keys(tapbacks).map(Number).filter(j => j !== partCount - 1).sort((a, b) => a - b);
+        return [
+            ...tags(tapbacks[partCount - 1] || []),
+            ...earlier.flatMap(j => {
+                const quote = `<reply>${RichMessages.replyContent(quoteForBubble(msg, j))}</reply>`;
+                return [platformHas('reply') ? quote : RichMessages.toPlainText(quote), ...tags(tapbacks[j])];
+            }),
+        ].join('\n');
     }
 
     /**
@@ -3049,13 +3060,15 @@
             send_date: msg.send_date || Date.now(),
             imageAttachment: msg.imageAttachment ?? null,
             ...(msg.mood ? { mood: msg.mood } : {}),
+            ...(msg.bubbleReactions ? { bubbleReactions: { ...msg.bubbleReactions } } : {}),
         }];
         msg.swipeIndex = 0;
     }
 
     /**
-     * Syncs the parent message's top-level fields (mes, send_date, reactions,
-     * imageAttachment, Auto mode's mood) from the swipe slot at `msg.swipeIndex`.
+     * Syncs the parent message's top-level fields (mes, send_date, imageAttachment,
+     * Auto mode's mood, the user's per-bubble tapbacks) from the swipe slot at
+     * `msg.swipeIndex`. The former whole-message reactions stay with the message.
      */
     function syncMsgFromSwipe(msg) {
         if (!msg.swipes || msg.swipes.length === 0) return;
@@ -3073,6 +3086,9 @@
         // Each version's report goes with it, so a swipe moves the feelings back and forth
         if (swipe.mood) msg.mood = swipe.mood;
         else delete msg.mood;
+        // The user's tapbacks are on this version's bubbles
+        if (swipe.bubbleReactions) msg.bubbleReactions = swipe.bubbleReactions;
+        else delete msg.bubbleReactions;
     }
 
     /**
@@ -6207,11 +6223,11 @@
      * data-is-user / data-part at or around the clicked element.
      */
     const MESSAGE_ACTIONS = {
-        'react': ({ el, msgIndex }) => {
+        // A bubble's tapback button, or the tapbacks already on it
+        'react': ({ el, msgIndex, partIndex }) => {
             closeAllDotMenus();
-            toggleReactOverlay(jQuery(el), msgIndex);
+            toggleReactOverlay(jQuery(el), msgIndex, partIndex);
         },
-        'reaction-toggle': ({ el, msgIndex }) => addReaction(msgIndex, el.dataset.reaction),
         // The footer menu acts on the whole message, a bubble's menu on that bubble
         'menu': ({ el, msgIndex, isUser }) => {
             closeAllReactOverlays();
@@ -6415,6 +6431,24 @@
     // The view of each message on screen, by index, so refreshMessages() replaces only what changed
     let renderedViews = new Map();
 
+    /**
+     * What renderedViews keeps of a message as drawn: its view, and which of its
+     * bubbles carry a tapback (with its time, to tell it from another message that
+     * took its index when one before it was deleted).
+     */
+    function renderedEntry(m, signature = JSON.stringify(m)) {
+        return { signature, timestamp: m.timestamp, tapbacks: tapbackMarks(m) };
+    }
+
+    /**
+     * For each bubble, whether a tapback sits on its corner: the user's on a
+     * character bubble, the character's on the user's last bubble.
+     */
+    function tapbackMarks(m) {
+        const last = m.parts.length - 1;
+        return m.parts.map((p, j) => !!(p.tapbacks?.length || (m.isUser && j === last && m.charReaction)));
+    }
+
     /** View-model options for the chat on screen. */
     function getChatViewOptions() {
         return {
@@ -6435,7 +6469,8 @@
         return {
             verbosity: charKey && settings.verbosityByCharacter ? settings.verbosityByCharacter[charKey] : null,
             charName: getCharacterName(),
-            animateReaction: true,
+            // Bubbles whose tapback is new: they make room for it and it pops in (replaceMessageElement)
+            arrivingTapbacks: [],
             has: platformHas,
             escapeHtml,
             sanitize: text => DOMPurify.sanitize(text, { ALLOWED_TAGS: [] }),
@@ -6493,22 +6528,46 @@
             if (settings.swipedMessages && isMobileDevice() && m.index === view.lastCharIndex) {
                 bindBubbleTouchSwipe(inner, m.index);
             }
-            renderedViews.set(m.index, { signature, charReaction: m.charReaction });
+            renderedViews.set(m.index, renderedEntry(m, signature));
         }
     }
 
-    /** Swaps a rendered message for its new view: no entrance animation, open photos stay open. */
+    /**
+     * Swaps a rendered message for its new view: no entrance animation, open photos
+     * stay open. A bubble that just got a tapback makes room for it above, and the
+     * list scrolls along so the bubble stays put and what's above slides up.
+     */
     function replaceMessageElement(oldEl, m, prev, ctx) {
         const expanded = oldEl.find('[aria-expanded]').map((i, el) => el.getAttribute('aria-expanded')).get();
-        // The character's reaction pops in only when it's new
-        const html = getActivePlatform().templates.message(m, { ...ctx, animateReaction: m.charReaction !== prev?.charReaction });
+        const was = prev && prev.timestamp === m.timestamp ? prev.tapbacks || [] : null;
+        const arriving = was ? tapbackMarks(m).flatMap((on, j) => (on && !was[j] ? [j] : [])) : [];
+        const anchor = arriving.length ? oldEl.find('[data-et-role~="bubble"]')[arriving[0]] : null;
+        const anchorTop = anchor ? anchor.getBoundingClientRect().top : null;
+        const html = getActivePlatform().templates.message(m, { ...ctx, arrivingTapbacks: arriving });
         const msgEl = jQuery(html.trim()).attr('data-et-refreshed', '');
         msgEl.find('[aria-expanded]').each((i, el) => {
             if (expanded[i]) el.setAttribute('aria-expanded', expanded[i]);
         });
         oldEl.replaceWith(msgEl);
         decorateMessage(msgEl, m);
+        if (anchorTop !== null) keepInPlace(msgEl.find('[data-et-role~="bubble"]')[arriving[0]], anchorTop);
         return msgEl;
+    }
+
+    /** For a moment, scrolls the list so `el` stays at `top` (on screen) while things above it grow. */
+    function keepInPlace(el, top, ms = 360) {
+        const list = document.getElementById('et-messages');
+        if (!el || !list) return;
+        const behavior = list.style.scrollBehavior;
+        list.style.scrollBehavior = 'auto';
+        const end = performance.now() + ms;
+        const step = () => {
+            const drift = el.getBoundingClientRect().top - top;
+            if (drift) list.scrollTop += drift;
+            if (performance.now() < end) requestAnimationFrame(step);
+            else list.style.scrollBehavior = behavior;
+        };
+        step();
     }
 
     // What the rendered list was drawn with besides each message's view; when it
@@ -6558,7 +6617,7 @@
                 // Re-scroll when a new message's images load
                 msgEl.find('img').on('load', scrollMessagesToEnd);
             }
-            renderedViews.set(m.index, { signature, charReaction: m.charReaction });
+            renderedViews.set(m.index, renderedEntry(m, signature));
             prevEl = msgEl;
         }
         for (const [index, el] of existing) {
@@ -6626,7 +6685,7 @@
         view.messages.forEach((m) => {
             inner.append(platform.templates.message(m, ctx));
             decorateMessage(inner.children().last(), m);
-            renderedViews.set(m.index, { signature: JSON.stringify(m), charReaction: m.charReaction });
+            renderedViews.set(m.index, renderedEntry(m));
         });
 
         if (showTypingIndicator) {
@@ -6778,7 +6837,15 @@
      */
     function deleteMessagePart(history, msgIndex, partIndex) {
         const msg = history[msgIndex];
-        const remaining = getMessageDisplayParts(msg).filter((part, j) => j !== partIndex
+        const parts = getMessageDisplayParts(msg);
+        // The user's tapbacks stay on their bubbles: those after this one move up
+        const tapbacks = ChatViewModel.getUserTapbacks(msg, parts.length, getReactionIds());
+        if (Object.keys(tapbacks).length) {
+            setBubbleReactions(msg, Object.fromEntries(Object.entries(tapbacks)
+                .filter(([j]) => Number(j) !== partIndex)
+                .map(([j, ids]) => [Number(j) > partIndex ? Number(j) - 1 : Number(j), ids])));
+        }
+        const remaining = parts.filter((part, j) => j !== partIndex
             && part.type !== 'reaction_note' && (part.type !== 'text' || part.text));
         // <react> tags aren't bubbles, so they survive deleting one
         const reactions = RichMessages.parseMessageParts(msg.mes).filter(part => part.type === 'react');
@@ -6809,7 +6876,7 @@
         const view = ChatViewModel.buildChatViewModel(history, getChatViewOptions()).messages.find(m => m.index === msgIndex);
         if (!view) return;
         const html = getActivePlatform().templates.message({ ...view, parts: [{ type: 'text', text: '' }] },
-            { ...getMessageRenderContext(), animateReaction: false });
+            { ...getMessageRenderContext(), arrivingTapbacks: [] });
         const msgEl = jQuery(html.trim()).attr('data-et-refreshed', '');
         oldEl.replaceWith(msgEl);
         // Not the message's real view any more, so the next refresh restores it
@@ -7094,9 +7161,18 @@
         }
     }
 
-    function toggleReactOverlay(reactBtn, msgIndex) {
-        // If overlay already open for this message, close it
-        const existing = jQuery(`.et-react-overlay[data-for="${msgIndex}"]`);
+    /**
+     * The tapback picker for one bubble of a character message (the last when
+     * `partIndex` is null), above its button; the tapbacks already on that bubble
+     * are marked, and picking one adds or takes it off.
+     */
+    function toggleReactOverlay(reactBtn, msgIndex, partIndex = null) {
+        const msg = getChatHistory()[msgIndex];
+        if (!msg) return;
+        const partCount = getMessageDisplayParts(msg).length;
+        const part = partIndex ?? partCount - 1;
+        // If the picker is already open for this bubble, close it
+        const existing = jQuery(`.et-react-overlay[data-for="${msgIndex}"][data-part="${part}"]`);
         if (existing.length) {
             closeAllReactOverlays();
             return;
@@ -7104,15 +7180,16 @@
 
         closeAllReactOverlays();
 
+        const chosen = ChatViewModel.getUserTapbacks(msg, partCount, getReactionIds())[part] || [];
         const emojiHtml = FA_REACTIONS.map(r =>
-            `<button class="et-overlay-emoji" data-emoji="${r.id}" data-index="${msgIndex}" title="${r.label}" style="--react-color:${r.color}">
+            `<button class="et-overlay-emoji${chosen.includes(r.id) ? ' et-overlay-emoji-on' : ''}" data-emoji="${r.id}" data-index="${msgIndex}" title="${r.label}" style="--react-color:${r.color}">
                 <i class="${r.icon}"></i>
                 <span class="et-overlay-emoji-label">${r.label}</span>
             </button>`
         ).join('');
 
         const overlay = jQuery(`
-            <div class="et-react-overlay" data-for="${msgIndex}">
+            <div class="et-react-overlay" data-for="${msgIndex}" data-part="${part}">
                 <div class="et-react-overlay-inner">
                     ${emojiHtml}
                 </div>
@@ -7145,61 +7222,58 @@
         overlay.find('.et-overlay-emoji').on('click', function (e) {
             e.stopPropagation();
             const emoji = jQuery(this).data('emoji');
-            addReaction(msgIndex, emoji);
+            addReaction(msgIndex, emoji, part);
             closeAllReactOverlays();
         });
     }
 
-    function addReaction(msgIndex, reactionId) {
-        // Look up the reaction definition
-        const reactDef = FA_REACTIONS.find(r => r.id === reactionId);
-        if (!reactDef) return;
+    // At most this many of the user's tapbacks on one bubble
+    const MAX_TAPBACKS = 3;
+
+    /**
+     * Adds the user's tapback to one bubble of a character message (the last when
+     * `partIndex` is null), or takes it off when it's already there. Kept per
+     * bubble in msg.bubbleReactions, and on the current swipe, since another
+     * version has other bubbles; the former whole-message ones move onto the last
+     * bubble the first time.
+     */
+    function addReaction(msgIndex, reactionId, partIndex = null) {
+        if (!FA_REACTIONS.some(r => r.id === reactionId)) return;
 
         const history = getChatHistory();
-        if (!Array.isArray(history) || !history[msgIndex]) return;
-
-        const msg = history[msgIndex];
+        const msg = Array.isArray(history) ? history[msgIndex] : null;
         if (!msg || msg.is_user) return;
 
-        msg.reactions = ChatViewModel.normalizeReactionStore(msg.reactions);
-        const current = msg.reactions[reactionId] || { count: 0, mine: false };
-
-        if (current.mine) {
-            current.mine = false;
-            current.count = Math.max(0, (parseInt(current.count, 10) || 1) - 1);
+        const partCount = getMessageDisplayParts(msg).length;
+        const part = partIndex ?? partCount - 1;
+        const store = ChatViewModel.getUserTapbacks(msg, partCount, getReactionIds());
+        const ids = store[part] || [];
+        if (ids.includes(reactionId)) {
+            store[part] = ids.filter(id => id !== reactionId);
+        } else if (ids.length >= MAX_TAPBACKS) {
+            toastr.info(`You can only have ${MAX_TAPBACKS} reactions per message.`);
+            return;
         } else {
-            // Check the 3-reaction limit
-            const activeMineCount = Object.values(msg.reactions).filter(r => r.mine === true).length;
-            if (activeMineCount >= 3) {
-                toastr.info('You can only have 3 active reactions per message.');
-                return;
-            }
-            current.mine = true;
-            current.count = Math.max(0, parseInt(current.count, 10) || 0) + 1;
+            store[part] = [...ids, reactionId];
         }
-
-        if (current.count <= 0) {
-            delete msg.reactions[reactionId];
-        } else {
-            msg.reactions[reactionId] = current;
-        }
-
-        if (Object.keys(msg.reactions).length === 0) {
-            delete msg.reactions;
-        }
+        if (!store[part].length) delete store[part];
+        setBubbleReactions(msg, store);
 
         saveChatHistory(history);
-
-        // Re-render just this message
         refreshMessages(history);
+    }
 
-        // Smoothly scroll the reaction bar into view
-        setTimeout(() => {
-            const reactionBar = findMessageElement(msgIndex).find('[data-et-role~="reactions"]')[0];
-            if (reactionBar) {
-                reactionBar.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-            }
-        }, 50);
+    /** Writes a message's per-bubble tapbacks (and its current swipe's); the former whole-message ones go. */
+    function setBubbleReactions(msg, store) {
+        delete msg.reactions;
+        const swipe = Array.isArray(msg.swipes) ? msg.swipes[msg.swipeIndex ?? 0] : null;
+        if (Object.keys(store).length) {
+            msg.bubbleReactions = store;
+            if (swipe) swipe.bubbleReactions = { ...store };
+        } else {
+            delete msg.bubbleReactions;
+            if (swipe) delete swipe.bubbleReactions;
+        }
     }
 
     // ============================================================

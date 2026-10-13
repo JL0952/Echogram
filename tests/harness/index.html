@@ -65,6 +65,8 @@
         .replace(/<div class="et-message et-message-char et-message-typing" id="et-typing-indicator-msg"[\s\S]*$/, '')
         .replace(/ data-et-arrive=""/g, '')
         .replace(/ et-reaction-new/g, '')
+        // 9c: a new tapback's room opening and pop (only when it arrives, not in a full render)
+        .replace(/ et-tapback-(arriving|new)/g, '')
         .replace(/ data-et-role="[^"]*"/g, '')
         .replace(/ data-et-refreshed=""/g, '')
         .replace(/>\s+</g, '><')
@@ -108,12 +110,12 @@
             'updateSwipeInPlace', 'generateEchoTextSwipe', 'openTransferResponseMenu', 'openGeneratedImageLightbox',
             'showMemorySaveModal', 'showMemoryRemoveModal']) env[fn] = rec(fn);
         env.syncMsgFromSwipe = msg => log.push(JSON.stringify(['syncMsgFromSwipe', msg.swipeIndex]));
-        // Mirrors addReaction: ignores bad targets, and its re-render detaches the clicked pills
-        env.addReaction = (idx, id) => {
+        // Mirrors addReaction: ignores bad targets, and its re-render detaches the message's tapbacks
+        env.addReaction = (idx, id, part) => {
             const msg = history[idx];
             if (!FA_REACTIONS.some(r => r.id === id) || !msg || msg.is_user) return;
-            log.push(JSON.stringify(['addReaction', idx, id]));
-            jQuery(`#et-reactions-${idx}`).empty();
+            log.push(JSON.stringify(['addReaction', idx, id, part]));
+            jQuery(`[data-et-role~="message"][data-index="${idx}"] [data-et-role~="tapback"]`).remove();
         };
 
         jQuery('#et-messages-inner').off('click.et-actions');
@@ -287,7 +289,9 @@
         await refreshTest('grouping changes when a user message is edited into a char reply', 3,
             h => { h[2].is_user = false; }, ['1', '2']);
         await refreshTest('combine mode reaction', 4,
-            h => { h[1].reactions = { star: { count: 2, mine: false } }; }, currentPlatform === 'wechat' ? [] : ['1']);
+            h => { h[1].bubbleReactions = { 0: ['star'] }; }, currentPlatform === 'wechat' ? [] : ['1']);
+        await refreshTest('user taps a reaction on one bubble of a multi-bubble message', 0,
+            h => { h[1].bubbleReactions = { 0: ['haha'] }; }, currentPlatform === 'wechat' ? [] : ['1']);
         // An open photo stays open when its message is re-rendered (not checked against a full render)
         refreshResults.push(await (async () => {
             const sc = window.EchoTextScenarios[0];
@@ -342,7 +346,7 @@
                 replacedFirst: !first.isConnected && afterFirst.closest('[data-et-role~="message"]').hasAttribute('data-et-refreshed'),
                 replacedSecond: !second.isConnected,
                 stylesCleared: styleLeft(afterSecond) === '',
-                reactionMoved: currentPlatform !== 'echotext' || !!inner.querySelector('[data-index="15"] .et-char-reaction-pill'),
+                reactionMoved: currentPlatform !== 'echotext' || !!inner.querySelector('[data-index="15"] [data-et-role~="tapback"]'),
                 counter: inner.querySelector('[data-index="16"] .et-swipe-counter, [data-index="16"] .wx-swipe span')?.textContent,
             };
             res.ok = JSON.stringify(synced) === '[2,1]' && res.replacedFirst && res.replacedSecond && res.stylesCleared && res.reactionMoved && res.counter === '2 / 3';
@@ -474,7 +478,6 @@
                     bubbles: msgEl.querySelectorAll('[data-et-role~="bubble"]').length,
                     rawText: editable[0]?.textContent === history[idx].mes,
                     toolbarAfterMain: !!msgEl.querySelector('[data-et-role~="main"]')?.nextElementSibling?.querySelector('[data-et-role="edit-save"]'),
-                    pillsKept: idx !== 4 || currentPlatform !== 'echotext' || msgEl.querySelectorAll('.et-reaction-pill').length === 1,
                 };
                 // Entering again while editing does nothing
                 r.startInlineEdit(history, idx);
@@ -482,7 +485,7 @@
                 msgEl.querySelector('[data-et-role="edit-cancel"]').click();
                 await sleep(600);
                 res.restored = normalize(inner.innerHTML) === before;
-                res.ok = editable.length === 1 && res.bubbles === 1 && res.rawText && res.toolbarAfterMain && res.pillsKept && res.single && res.restored;
+                res.ok = editable.length === 1 && res.bubbles === 1 && res.rawText && res.toolbarAfterMain && res.single && res.restored;
                 return res;
             })());
         }
@@ -532,8 +535,8 @@
             const count = () => ({
                 messages: inner.querySelectorAll('[data-et-role~="message"]').length,
                 reactButtons: inner.querySelectorAll('[data-et-action="react"]').length,
-                pills: inner.querySelectorAll('[data-et-action="reaction-toggle"]').length,
-                charReactions: inner.querySelectorAll('.et-char-reaction-pill').length,
+                pills: inner.querySelectorAll('.et-message-char [data-et-role~="tapback"]').length,
+                charReactions: inner.querySelectorAll('.et-message-user [data-et-role~="tapback"]').length,
                 notes: inner.querySelectorAll('.et-reaction-note').length,
             });
             const r = window.EchoTextHarness[newLabel](env);
@@ -575,8 +578,8 @@
                 platform: document.getElementById('et-panel').dataset.platform,
                 messages: inner.querySelectorAll('[data-et-role~="message"]').length,
                 reactButtons: inner.querySelectorAll('[data-et-action="react"]').length,
-                pills: inner.querySelectorAll('[data-et-action="reaction-toggle"]').length,
-                charReactions: inner.querySelectorAll('.et-char-reaction-pill').length,
+                pills: inner.querySelectorAll('.et-message-char [data-et-role~="tapback"]').length,
+                charReactions: inner.querySelectorAll('.et-message-user [data-et-role~="tapback"]').length,
             });
             const r = window.EchoTextHarness[newLabel](env);
             r.bindPlatformSelects();

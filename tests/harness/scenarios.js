@@ -62,14 +62,16 @@
     ];
 
     // Quoted replies (<reply>): the user quoting the character, the character quoting
-    // the user and a photo, a quote on a leading bubble, a long quote, one without a name
+    // the user and a photo, a quote on a leading bubble, a long quote, one without a name.
+    // Tapbacks on single bubbles (9c): one on the photo, two on one bubble, and the
+    // character's on the user's message
     const replies = () => [
         { is_user: true, mes: 'are you free tonight?', send_date: m(0) },
-        { is_user: false, mes: 'maybe\n<photo>a ticket to the late show</photo>\nlook what I got', send_date: m(1) },
+        { is_user: false, mes: 'maybe\n<photo>a ticket to the late show</photo>\nlook what I got', send_date: m(1), bubbleReactions: { 1: ['heart'] } },
         { is_user: true, mes: '<reply>Mira: [Photo: a ticket to the late show]</reply>\nno way, for us?', send_date: m(2) },
-        { is_user: false, mes: '<reply>我: are you free tonight?</reply>\nyes I am\n<reply>Mira: maybe</reply>\nscratch the maybe', send_date: m(3) },
+        { is_user: false, mes: '<reply>我: are you free tonight?</reply>\nyes I am\n<reply>Mira: maybe</reply>\nscratch the maybe', send_date: m(3), bubbleReactions: { 0: ['haha', 'fire'] } },
         { is_user: true, mes: '<reply>Mira: a very long line that keeps going and going well past what a quote should ever show in one row of the chat</reply>\nok', send_date: m(4) },
-        { is_user: false, mes: '<quote>just words</quote> fine', send_date: m(5) },
+        { is_user: false, mes: '<quote>just words</quote> fine\n<react>like</react>', send_date: m(5) },
     ];
 
     const baseSettings = {

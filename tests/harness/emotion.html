@@ -35,7 +35,7 @@
 //   ?tab=emotions|personality  the popup as a screenshot shows it (filled-in example values; Desire and Morality with ?desire;
 //                              &auto: in Auto mode, the last reply's changes beside the values for a few seconds)
 //   ?auto                      a reply in Auto mode arriving with the popup closed: the chips under the header
-//   ?report                    runs runEmotionTest(), runAutoTest() and runReplyTest() and posts their results to the server
+//   ?report                    runs runEmotionTest(), runAutoTest(), runReplyTest() and runTapbackTest() and posts their results
 //   ?draft=N                   Reply picked on message N: the quote waiting above the input bar
 (async function () {
     const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -425,6 +425,88 @@
         return res;
     };
 
+    // Tapbacks on single bubbles (docs/platform-plan.md 9c): the picker per bubble, the
+    // corner badge, room above it with the bubble kept in place, what the model is
+    // sent, the former whole-message ones, deleting a bubble, swipes
+    window.runTapbackTest = async function () {
+        const res = {};
+        errors.length = 0;
+        const chat = () => env.settings.chatHistory['mira.png'];
+        // A long chat, scrolled to the end, so the list can slide what's above
+        const filler = Array.from({ length: 14 }, (_, i) => ({ is_user: i % 2 === 0, mes: `line ${i}`, send_date: Date.now() - 600000 + i * 1000 }));
+        env.settings.chatHistory['mira.png'] = [...filler,
+            { is_user: true, mes: 'how was it?', send_date: Date.now() - 120000 },
+            { is_user: false, mes: 'one\ntwo\nthree', send_date: Date.now() - 60000 }];
+        const idx = chat().length - 1;
+        r.renderMessages(chat());
+        const list = document.getElementById('et-messages');
+        list.scrollTop = list.scrollHeight;
+        await sleep(400);
+        const msgEl = () => panel.querySelector(`[data-et-role="message"][data-index="${idx}"]`);
+        const bubbles = () => [...msgEl().querySelectorAll('[data-et-role~="bubble"]')];
+        const pick = async (part, id) => {
+            const btn = bubbles()[part].querySelector('[data-et-action="react"]');
+            r.toggleReactOverlay(jQuery(btn), idx, part);
+            const emoji = document.querySelector(`.et-react-overlay [data-emoji="${id}"]`);
+            const on = emoji.classList.contains('et-overlay-emoji-on');
+            emoji.click();
+            await sleep(450);
+            document.querySelectorAll('.et-react-overlay').forEach(o => o.remove());
+            return on;
+        };
+
+        // A heart on the first bubble: the badge on its top right, the bubble stays put while the room opens
+        const topBefore = bubbles()[0].getBoundingClientRect().top;
+        const aboveBefore = msgEl().previousElementSibling.getBoundingClientRect().top;
+        await pick(0, 'heart');
+        res.stored = JSON.stringify(chat()[idx].bubbleReactions) === '{"0":["heart"]}';
+        const badge = bubbles()[0].querySelector('[data-et-role~="tapback"]');
+        const b = badge?.getBoundingClientRect(), bb = bubbles()[0].getBoundingClientRect();
+        res.badgeTopRight = !!badge && b.top < bb.top && b.right > bb.right - 4 && !bubbles()[1].querySelector('[data-et-role~="tapback"]');
+        res.roomAbove = parseFloat(getComputedStyle(bubbles()[0]).marginTop) >= 10;
+        res.bubbleKeptInPlace = Math.abs(bubbles()[0].getBoundingClientRect().top - topBefore) <= 1;
+        res.aboveSlidUp = msgEl().previousElementSibling.getBoundingClientRect().top < aboveBefore - 5;
+
+        // The picker marks it; the model gets it with a quote of that bubble
+        res.pickerMarks = await pick(0, 'heart') === true && !chat()[idx].bubbleReactions;
+        await pick(0, 'heart');
+        await pick(2, 'fire');
+        res.modelText = r.buildUserReactionText(chat()[idx]) === '<react>fire</react>\n<reply>Mira: one</reply>\n<react>heart</react>';
+
+        // Three at most on a bubble
+        await pick(2, 'haha');
+        await pick(2, 'wow');
+        await pick(2, 'star');
+        res.limit = JSON.stringify(chat()[idx].bubbleReactions[2]) === '["fire","haha","wow"]';
+
+        // The former whole-message tapbacks sit on the last bubble, and move into the per-bubble store
+        delete chat()[idx].bubbleReactions;
+        chat()[idx].reactions = { like: { count: 1, mine: true } };
+        r.renderMessages(chat());
+        res.legacyOnLast = !!bubbles()[2].querySelector('[data-et-role~="tapback"] .fa-thumbs-up');
+        await pick(0, 'sad');
+        res.legacyMoved = !chat()[idx].reactions && JSON.stringify(chat()[idx].bubbleReactions) === '{"0":["sad"],"2":["like"]}';
+
+        // Deleting the first bubble moves the rest up with their tapbacks
+        r.deleteMessagePart(chat(), idx, 0);
+        res.deleteShifts = chat()[idx].mes === 'two\nthree' && JSON.stringify(chat()[idx].bubbleReactions) === '{"1":["like"]}';
+
+        // The character's <react> on the user's message: top left of its bubble
+        env.buildApiMessagesFromHistory = async () => ({ apiMessages: [], rawPrompt: '', systemPrompt: '' });
+        env.requestEchoTextCompletion = async () => 'nice\n<react>heart</react>';
+        chat().push({ is_user: true, mes: 'see you', send_date: Date.now() });
+        r.renderMessages(chat());
+        await r.generateEchoText(chat());
+        await sleep(450);
+        const userBubble = panel.querySelector(`[data-et-role="message"][data-index="${chat().length - 2}"] [data-et-role~="bubble"]`);
+        const ub = userBubble.querySelector('[data-et-role~="tapback"]')?.getBoundingClientRect(), ubb = userBubble.getBoundingClientRect();
+        res.charTapbackTopLeft = !!ub && ub.top < ubb.top && ub.left < ubb.left + 4 && !userBubble.querySelector('[data-et-role~="tapback"]').hasAttribute('data-et-action');
+
+        res.errors = errors.slice();
+        res.ok = Object.values(res).filter(v => typeof v === 'boolean').every(Boolean) && !errors.length;
+        return res;
+    };
+
     // A screenshot: example values, a lock, Desire with ?nsfw
     const tab = params.get('tab');
     if (tab || params.has('auto')) {
@@ -447,7 +529,8 @@
         const result = await window.runEmotionTest();
         const auto = await window.runAutoTest();
         const reply = await window.runReplyTest();
-        fetch('/__log', { method: 'POST', body: JSON.stringify({ runEmotionTest: result, runAutoTest: auto, runReplyTest: reply }) }).catch(() => {});
+        const tapback = await window.runTapbackTest();
+        fetch('/__log', { method: 'POST', body: JSON.stringify({ runEmotionTest: result, runAutoTest: auto, runReplyTest: reply, runTapbackTest: tapback }) }).catch(() => {});
     }
     // ?draft=N: Reply picked on message N (its last bubble), the quote waiting above the input
     if (params.has('draft')) r.startReply(Number(params.get('draft')) || 0, null);

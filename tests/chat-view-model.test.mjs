@@ -8,7 +8,7 @@ globalThis.window = {};
 for (const file of ['rich-messages.js', 'features.js', 'chat-view-model.js']) {
     new Function(readFileSync(new URL(`../lib/${file}`, import.meta.url), 'utf8'))();
 }
-const { buildChatViewModel, getMessageDisplayParts, getStoredReactions, normalizeReactionStore } = window.EchoTextChatViewModel;
+const { buildChatViewModel, getMessageDisplayParts, getUserTapbacks, getUserTapbackIds, normalizeReactionStore } = window.EchoTextChatViewModel;
 
 const T0 = new Date(2026, 9, 8, 14, 0, 0).getTime();
 const at = min => T0 + min * 60000;
@@ -101,22 +101,25 @@ test('reactions outside the screen\'s reaction set are dropped everywhere', () =
         char('<react>heart</react>\nok', 1, { reactions: { heart: { count: 1, mine: true } } }),
     ], { reactionIds: [] });
     assert.equal(view[0].charReaction, null);
-    assert.deepEqual(view[1].reactions, []);
+    assert.equal(view[1].parts[0].tapbacks, undefined);
 });
 
-test("the user's tapbacks are normalized and limited to known reactions", () => {
+test("the user's tapbacks are per bubble; the former whole-message ones count on the last bubble", () => {
     const reactions = { haha: { count: 1, mine: true }, unknown: { count: 2 }, fire: { count: 0 }, star: { count: '2', mine: 'yes' } };
     assert.deepEqual(normalizeReactionStore(reactions), {
         haha: { count: 1, mine: true }, unknown: { count: 2, mine: false }, star: { count: 2, mine: false },
     });
-    assert.deepEqual(getStoredReactions({ is_user: false, reactions }), [
-        { id: 'haha', count: 1, mine: true }, { id: 'star', count: 2, mine: false },
-    ]);
-    assert.deepEqual(getStoredReactions({ is_user: true, reactions }), []);
     assert.deepEqual(normalizeReactionStore([1, 2]), {});
-    const [u, c] = build([user('hi', 0), char('yo', 1, { reactions })]);
-    assert.deepEqual(u.reactions, []);
-    assert.equal(c.reactions.length, 2);
+    // Only the user's own former ones, known ids, on bubbles that exist
+    const msg = { is_user: false, reactions, bubbleReactions: { 0: ['heart', 'nope'], 1: ['fire', 'fire'], 7: ['wow'], x: ['bolt'] } };
+    assert.deepEqual(getUserTapbacks(msg, 3), { 0: ['heart'], 1: ['fire'], 2: ['haha'] });
+    assert.deepEqual(getUserTapbacks(msg, 3, ['haha']), { 2: ['haha'] });
+    assert.deepEqual(getUserTapbacks({ ...msg, is_user: true }, 3), {});
+    assert.deepEqual(getUserTapbackIds(msg), ['heart', 'fire', 'wow', 'haha']);
+    // On screen, each bubble carries its own
+    const [u, c] = build([user('hi', 0), char('yo\nsup\nok', 1, { reactions, bubbleReactions: { 0: ['heart'] } })]);
+    assert.ok(u.parts.every(p => !p.tapbacks));
+    assert.deepEqual(c.parts.map(p => p.tapbacks || []), [['heart'], [], ['haha']]);
 });
 
 test('consecutive user messages within the window are grouped; only the last shows its footer', () => {
@@ -215,7 +218,6 @@ test('without reactions: reaction-only replies, tapbacks and character reactions
     const view = build(history, { features: ['photo', 'transfer'] });
     assert.deepEqual(view.map(m => m.index), [0, 2, 3, 4]);
     assert.deepEqual(view.map(m => m.charReaction), [null, null, null, null]);
-    assert.deepEqual(view[2].reactions, []);
     assert.deepEqual(view[2].parts, [{ type: 'text', text: 'ok' }]);
     // A reply that was only a reaction still shows its image
     assert.deepEqual(view[3].parts, [{ type: 'text', text: '' }]);

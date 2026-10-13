@@ -9,7 +9,8 @@
      * entry from lib/chat-view-model.js; ctx comes from index.js:
      *   verbosity ('short' | 'medium' | 'long' | null), charName
      *   has(featureId)        whether the platform's feature is on (lib/features.js)
-     *   animateReaction       message(): pop the character's reaction in
+     *   arrivingTapbacks      message(): indices of bubbles whose tapback is new (it pops in,
+     *                         and the bubble makes room for it)
      *   escapeHtml(text)      text for HTML
      *   sanitize(text)        plain text with any tags stripped
      *   formatText(text)      message text as safe HTML (markdown, emoticons)
@@ -167,7 +168,7 @@
      */
     function leadingBubbles(m, sideClass, ctx) {
         return m.parts.slice(0, -1).map((p, j) =>
-            `${replyQuote(p, ctx)}<div class="et-bubble ${sideClass} et-bubble-part${partBubbleClass(p)}" data-et-role="bubble">${part(p, ctx)}${bubbleTools(m, j, false, ctx)}</div>`
+            `${replyQuote(p, ctx)}<div class="et-bubble ${sideClass} et-bubble-part${partBubbleClass(p)}${tapbackClass(m, p, j, ctx)}" data-et-role="bubble">${part(p, ctx)}${tapbackBadge(bubbleTapbacks(m, p, j), m, j, ctx)}${bubbleTools(m, j, false, ctx)}</div>`
         ).join('');
     }
 
@@ -198,32 +199,40 @@
         return `<span class="et-verbosity-badge" title="${badge?.tip || 'Verbosity'}">${badge?.label || ''}</span>`;
     }
 
-    /** The user's tapbacks under a character message. */
-    function reactionPills(reactions, ctx) {
-        return reactions.map((reaction) => {
-            const def = ctx.reaction(reaction.id);
-            if (!def) return '';
-            return `<button class="et-reaction-pill${reaction.mine ? ' et-reaction-mine' : ''}" data-et-action="reaction-toggle" data-reaction="${reaction.id}" title="${def.label}" style="--react-color:${def.color}">
-                    <i class="${def.icon} et-reaction-icon"></i>
-                    <span class="et-reaction-count">${reaction.count}</span>
-                </button>`;
-        }).join('');
+    /**
+     * Tapbacks on a bubble's top corner, as iMessage shows them: the user's on the
+     * character's bubbles (top right; tapping them opens the picker for that bubble),
+     * the character's on the user's last bubble (top left). Icons only.
+     */
+    function tapbackBadge(ids, m, j, ctx) {
+        const defs = ids.map(id => ctx.reaction(id)).filter(Boolean);
+        if (!defs.length) return '';
+        const icons = defs.map(def => `<i class="${def.icon}" style="--react-color:${def.color}"></i>`).join('');
+        const isNew = (ctx.arrivingTapbacks || []).includes(j) ? ' et-tapback-new' : '';
+        const label = defs.map(def => def.label).join(', ');
+        const action = m.isUser ? '' : ` data-et-action="react" data-index="${m.index}" data-part="${j}" role="button" tabindex="0"`;
+        return `<div class="et-tapback${isNew}" data-et-role="tapback" title="${label}" style="--react-color:${defs[0].color}"${action}>${icons}</div>`;
     }
 
-    /** The character's reaction pill under a user message. */
-    function charReaction(reactionId, ctx) {
-        const def = ctx.reaction(reactionId);
-        if (!def) return '';
-        return `<div class="et-char-reaction-pill${ctx.animateReaction ? ' et-reaction-new' : ''}" style="--react-color:${def.color}" title="${def.label}">
-                <i class="${def.icon} et-char-reaction-icon"></i>
-            </div>`;
+    /** A bubble's tapback ids: the user's on a character bubble, the character's on the user's last. */
+    function bubbleTapbacks(m, p, j) {
+        if (!m.isUser) return p.tapbacks || [];
+        return j === m.parts.length - 1 && m.charReaction ? [m.charReaction] : [];
+    }
+
+    /** Classes for a bubble with a tapback: room above for it, and the room opening when it's new. */
+    function tapbackClass(m, p, j, ctx) {
+        if (!bubbleTapbacks(m, p, j).length) return '';
+        return ` et-bubble-tapped${(ctx.arrivingTapbacks || []).includes(j) ? ' et-tapback-arriving' : ''}`;
     }
 
     /** One message, from its view-model entry. */
     function message(m, ctx) {
         const index = m.index;
-        const mainPart = m.parts[m.parts.length - 1];
-        const mainCardClass = partBubbleClass(mainPart);
+        const last = m.parts.length - 1;
+        const mainPart = m.parts[last];
+        const mainCardClass = partBubbleClass(mainPart) + tapbackClass(m, mainPart, last, ctx);
+        const mainTapback = tapbackBadge(bubbleTapbacks(m, mainPart, last), m, last, ctx);
         const msgDate = new Date(m.timestamp || Date.now());
         const time = msgDate.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
         const fullDateToolip = msgDate.toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
@@ -236,14 +245,14 @@
                 ${replyQuote(mainPart, ctx)}
                 <div class="et-bubble et-bubble-user et-bubble-main${mainCardClass}" data-et-role="bubble main">
                     ${part(mainPart, ctx)}
-                    ${bubbleTools(m, m.parts.length - 1, true, ctx)}
+                    ${mainTapback}
+                    ${bubbleTools(m, last, true, ctx)}
                 </div>
                 <div class="et-message-footer">
                     <span class="et-message-time" title="${fullDateToolip}">${time}</span>
                     <span class="et-user-name">${safeUserName}</span>
                     ${receipt(m.receipt, ctx)}
                 </div>
-                <div class="et-char-reaction-bar" id="et-char-reaction-${index}" data-et-role="char-reaction">${m.charReaction ? charReaction(m.charReaction, ctx) : ''}</div>
             </div>`;
         }
 
@@ -268,15 +277,13 @@
                         ${part(mainPart, ctx)}
                         ${imageAttachment(m.imageAttachment)}
                         ${swipeNavHtml}
-                        ${bubbleTools(m, m.parts.length - 1, true, ctx)}
+                        ${mainTapback}
+                        ${bubbleTools(m, last, true, ctx)}
                     </div>
                     <div class="et-message-footer">
                         <span class="et-footer-name" title="${safeCharName}">${safeCharName}</span>
                         <span class="et-message-time" title="${fullDateToolip}">${time}</span>
                         ${verbosityBadge(ctx.verbosity)}
-                    </div>
-                    <div class="et-bubble-reactions-bar" id="et-reactions-bar-${index}">
-                        <div class="et-active-reactions" id="et-reactions-${index}" data-et-role="reactions">${reactionPills(m.reactions, ctx)}</div>
                     </div>
                 </div>
             </div>`;

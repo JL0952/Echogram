@@ -6,7 +6,9 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 globalThis.window = {};
-for (const f of ['lib/emotion-model.js', 'lib/proactive-messaging.js']) new Function(readFileSync(new URL(`../${f}`, import.meta.url), 'utf8'))();
+for (const f of ['lib/rich-messages.js', 'lib/features.js', 'lib/chat-view-model.js', 'lib/emotion-model.js', 'lib/proactive-messaging.js']) {
+    new Function(readFileSync(new URL(`../${f}`, import.meta.url), 'utf8'))();
+}
 const Model = window.EchoTextEmotionModel;
 
 const HOUR = 3600000;
@@ -19,7 +21,7 @@ const EMOTION_TRIGGERS = ['affection_reciprocation', 'repair_attempt', 'curiosit
  * afternoons (some triggers only run on odd or even dates, or some weekdays), with
  * the user's last text 5 hours back. `values: null` is emotions off.
  */
-function triggers(values, { snapshot = null, heart = false, pace = 1, lastUserHours = 5, lastProactiveHours = null } = {}) {
+function triggers(values, { snapshot = null, heart = false, bubbleHeart = false, pace = 1, lastUserHours = 5, lastProactiveHours = null } = {}) {
     const found = new Set();
     let blocked = 0;
     for (let d = 0; d < 7; d++) {
@@ -34,7 +36,8 @@ function triggers(values, { snapshot = null, heart = false, pace = 1, lastUserHo
         });
         const userAt = now.getTime() - lastUserHours * HOUR;
         const history = [
-            { is_user: false, mes: 'hey', send_date: userAt - HOUR, ...(heart ? { reactions: { heart: { count: 1, mine: true } } } : {}) },
+            { is_user: false, mes: 'hey\nthere', send_date: userAt - HOUR, ...(heart ? { reactions: { heart: { count: 1, mine: true } } } : {}),
+                ...(bubbleHeart ? { bubbleReactions: { 0: ['heart'] } } : {}) },
             { is_user: true, mes: 'ok', send_date: userAt },
         ];
         const state = { lastUserMessageAt: userAt, lastCharacterMessageAt: userAt - HOUR, triggerHistory: {}, lastEmotionSnapshot: snapshot,
@@ -57,6 +60,8 @@ test('making up only on good terms; on bad terms an upset character goes cold', 
 
 test('the relationship gates the warm triggers: Rapport 20 and up', () => {
     assert.ok(has({ rapport: 20 }, 'affection_reciprocation', { heart: true }));
+    // A heart on any one bubble counts too
+    assert.ok(has({ rapport: 20 }, 'affection_reciprocation', { bubbleHeart: true }));
     assert.ok(has({ joy: 50 }, 'affection_reciprocation', { heart: true }));
     assert.ok(!has({ rapport: 10 }, 'affection_reciprocation', { heart: true }));
     assert.ok(!has({ rapport: 80 }, 'affection_reciprocation'));

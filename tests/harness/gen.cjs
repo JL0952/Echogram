@@ -32,6 +32,7 @@ const WANT = [
     'renderMessages', 'showPrevSwipe', 'showNextSwipe', 'openImageAttachment', 'MESSAGE_ACTIONS', 'onMessageAction', 'bindMessageActions', 'onBubbleTap',
     'renderedViews', 'renderedFrame', 'getRenderFrame', 'updateMessageList', 'replaceMessageElement', 'scrollMessagesToEnd',
     'getChatViewOptions', 'getMessageRenderContext', 'findMessageElement', 'decorateMessage', 'refreshMessages',
+    'renderedEntry', 'tapbackMarks', 'keepInPlace',
     'toggleVoiceTranscript', 'toggleExpanded', 'syncRenderedView',
     // the "+" panel (syncPlatformChrome closes it)
     'closeAttachPanel', 'followAttachPanel', 'attachPanelDuration', 'messagesFromBottom',
