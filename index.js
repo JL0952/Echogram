@@ -84,7 +84,7 @@
     // Platform packs (platforms/<id>/platform.js), in menu order. Their scripts are
     // small and all load now; a pack's stylesheet loads only while it's in use.
     // EchoText's own look must load, the others are optional.
-    const PLATFORM_IDS = ['echotext', 'wechat'];
+    const PLATFORM_IDS = ['echotext', 'wechat', 'instagram'];
     for (const id of PLATFORM_IDS) {
         try {
             if (!window.EchoTextPlatforms?.[id]) runEchoTextScript(`platforms/${id}/platform.js`);

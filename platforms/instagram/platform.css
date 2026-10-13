@@ -1,0 +1,586 @@
+/*
+ * Instagram DMs for EchoText — ported from dhellebaut-cloud/fakechat-studio
+ * (src/platforms/Instagram.jsx, the .ig-* rules and .typing-dot in src/styles.css)
+ * for the dark look, and MockSocial's InstagramSkin for the light one and "Seen".
+ * Every rule hangs under [data-platform="instagram"]. Dark by default; light when
+ * the panel sits on a light background (data-et-scheme="light").
+ */
+
+[data-platform="instagram"] {
+    /* EchoText's font setting first, then Instagram's system stack */
+    --ig-font: var(--et-font-name, -apple-system), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, "PingFang SC", sans-serif;
+    --ig-bg: #000000;
+    --ig-text: #ffffff;
+    --ig-muted: #8e8e93;
+    --ig-in: #262626;
+    --ig-out: linear-gradient(135deg, #8b5cf6 0%, #ec4899 100%);
+    --ig-pill: #1c1c1e;
+    --ig-pill-border: #2c2c2e;
+    --ig-quote: #1a1a1a;
+    --ig-border: rgba(255, 255, 255, 0.1);
+    /* A bubble's corners: 22px, the ones toward the next or previous bubble of the run tighter */
+    --ig-round: 22px;
+    --ig-joined: 5px;
+}
+
+[data-platform="instagram"][data-et-scheme="light"] {
+    --ig-bg: #ffffff;
+    --ig-text: #000000;
+    --ig-muted: #737373;
+    --ig-in: #efefef;
+    --ig-pill: #efefef;
+    --ig-pill-border: #ffffff;
+    --ig-quote: #f5f5f5;
+    --ig-border: #dbdbdb;
+}
+
+/* ── Panel surfaces ─────────────────────────────────────────── */
+
+[data-platform="instagram"] [data-et-role~="messages"] {
+    padding: 6px 0 14px;
+    background: var(--ig-bg);
+}
+
+[data-platform="instagram"] [data-et-role~="message-list"] {
+    gap: 0;
+}
+
+[data-platform="instagram"] [data-et-role~="header"],
+[data-platform="instagram"] [data-et-role~="input-bar"] {
+    background: var(--ig-bg);
+    border-color: var(--ig-border);
+}
+
+/* ── Messages ───────────────────────────────────────────────── */
+
+[data-platform="instagram"] .ig-message {
+    display: flow-root;
+    color: var(--ig-text);
+    font-family: var(--ig-font);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    animation: ig-rise 0.32s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* A new message slides up (MockSocial's y 10px fade-in, a little slower); so does
+   each bubble of a reply arriving one by one. Messages re-rendered in place don't. */
+[data-platform="instagram"] .ig-message[data-et-refreshed] {
+    animation: none;
+}
+
+[data-platform="instagram"] .ig-row[data-et-arrive] {
+    animation: ig-rise 0.32s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes ig-rise {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    [data-platform="instagram"] .ig-message,
+    [data-platform="instagram"] .ig-row[data-et-arrive] {
+        animation: none;
+    }
+}
+
+[data-platform="instagram"] .ig-time {
+    margin: 18px 12px 8px;
+    color: var(--ig-muted);
+    text-align: center;
+    font-size: 12px;
+    font-weight: 500;
+}
+
+[data-platform="instagram"] .ig-sender {
+    margin: 10px 0 -6px 50px;
+    color: var(--ig-muted);
+    font-size: 12px;
+}
+
+/* ── Rows: one per bubble ───────────────────────────────────── */
+
+[data-platform="instagram"] .ig-row {
+    --ig-top: var(--ig-round);
+    --ig-bottom: var(--ig-round);
+    position: relative;
+    display: flex;
+    align-items: flex-end;
+    gap: 8px;
+    padding: 0 12px;
+    margin-top: 2px;
+}
+
+[data-platform="instagram"] .ig-row-me {
+    flex-direction: row-reverse;
+}
+
+/* A run starts a little apart from what's above */
+[data-platform="instagram"] .ig-row[data-pos="first"],
+[data-platform="instagram"] .ig-row[data-pos="single"] {
+    margin-top: 10px;
+}
+
+[data-platform="instagram"] .ig-time + .ig-row {
+    margin-top: 0;
+}
+
+/* The corners toward the sender's other bubbles go tight (on the sender's side) */
+[data-platform="instagram"] .ig-row[data-pos="first"] { --ig-bottom: var(--ig-joined); }
+[data-platform="instagram"] .ig-row[data-pos="middle"] { --ig-top: var(--ig-joined); --ig-bottom: var(--ig-joined); }
+[data-platform="instagram"] .ig-row[data-pos="last"] { --ig-top: var(--ig-joined); }
+
+/* Messages in a row from the same side are one run: the first bubble of the next
+   joins the last of the one before (not across a time divider, data-divider, nor
+   between group members) */
+[data-platform="instagram"] .ig-message-me + .ig-message-me:not([data-divider]) > .ig-row:is([data-pos="first"], [data-pos="single"]),
+[data-platform="instagram"] .ig-message-them + .ig-message-them:not([data-group]):not([data-divider]) > .ig-row:is([data-pos="first"], [data-pos="single"]) {
+    --ig-top: var(--ig-joined);
+    margin-top: 2px;
+}
+
+[data-platform="instagram"] .ig-message-me:has(+ .ig-message-me:not([data-divider])) > .ig-row:is([data-pos="last"], [data-pos="single"]),
+[data-platform="instagram"] .ig-message-them:not([data-group]):has(+ .ig-message-them:not([data-divider])) > .ig-row:is([data-pos="last"], [data-pos="single"]) {
+    --ig-bottom: var(--ig-joined);
+}
+
+/* The character's avatar sits by the last bubble of a run (the typing bubble's, while typing) */
+[data-platform="instagram"] .ig-message-them:not([data-group]):has(+ .ig-message-them:not([data-divider])) .ig-avatar {
+    visibility: hidden;
+}
+
+[data-platform="instagram"] .ig-avatar-slot {
+    flex: 0 0 28px;
+    width: 28px;
+}
+
+[data-platform="instagram"] .ig-avatar {
+    position: relative;
+    display: grid;
+    place-items: center;
+    width: 28px;
+    height: 28px;
+    overflow: hidden;
+    border-radius: 50%;
+    color: #fff;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+[data-platform="instagram"] .ig-avatar img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+[data-platform="instagram"] .ig-col {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    min-width: 0;
+    max-width: 70%;
+}
+
+[data-platform="instagram"] .ig-row-me .ig-col {
+    align-items: flex-end;
+}
+
+/* ── Bubbles ────────────────────────────────────────────────── */
+
+[data-platform="instagram"] .ig-bubble,
+[data-platform="instagram"] .ig-photo {
+    border-radius: var(--ig-top) var(--ig-round) var(--ig-round) var(--ig-bottom);
+}
+
+[data-platform="instagram"] .ig-row-me .ig-bubble,
+[data-platform="instagram"] .ig-row-me .ig-photo {
+    border-radius: var(--ig-round) var(--ig-top) var(--ig-bottom) var(--ig-round);
+}
+
+[data-platform="instagram"] .ig-bubble {
+    box-sizing: border-box;
+    max-width: 100%;
+    padding: 9px 14px;
+    color: var(--ig-text);
+    background: var(--ig-in);
+    overflow-wrap: anywhere;
+}
+
+[data-platform="instagram"] .ig-row-me .ig-bubble {
+    color: #ffffff;
+    background: var(--ig-out);
+}
+
+[data-platform="instagram"] .ig-text {
+    font-size: var(--et-font-size, 15px);
+    line-height: 1.35;
+}
+
+[data-platform="instagram"] .ig-text[contenteditable="true"] {
+    min-height: 20px;
+    white-space: pre-wrap;
+    outline: 1px solid currentColor;
+    outline-offset: 3px;
+    border-radius: 2px;
+    cursor: text;
+}
+
+/* A reply that is only an image has no text bubble (editing fills the text, so it shows again) */
+[data-platform="instagram"] .ig-col:has(.ig-image, .ig-placeholder) > .ig-bubble:has(> .ig-text > p:only-child:empty) {
+    display: none;
+}
+
+[data-platform="instagram"] .ig-text p {
+    margin: 0;
+}
+
+[data-platform="instagram"] .ig-text a {
+    color: inherit;
+    text-decoration: underline;
+}
+
+/* ── Photo: a frame; tapped, the description inside it ──────── */
+
+[data-platform="instagram"] .ig-photo {
+    position: relative;
+    display: grid;
+    place-items: center;
+    width: 220px;
+    max-width: 100%;
+    aspect-ratio: 4 / 5;
+    overflow: hidden;
+    color: var(--ig-muted);
+    background: var(--ig-in);
+    cursor: pointer;
+}
+
+[data-platform="instagram"] .ig-photo svg {
+    width: 42px;
+    height: 42px;
+}
+
+[data-platform="instagram"] .ig-photo-caption {
+    display: none;
+    position: absolute;
+    inset: 0;
+    flex-direction: column;
+    padding: 12px 14px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    color: var(--ig-text);
+    font-size: var(--et-font-size, 15px);
+    line-height: 1.35;
+    text-align: center;
+    overflow-wrap: anywhere;
+}
+
+/* margin:auto centres a short description, yet a long one still scrolls from its first line */
+[data-platform="instagram"] .ig-photo-caption > span {
+    margin: auto 0;
+}
+
+[data-platform="instagram"] .ig-photo[aria-expanded="true"] svg {
+    display: none;
+}
+
+[data-platform="instagram"] .ig-photo[aria-expanded="true"] .ig-photo-caption {
+    display: flex;
+}
+
+/* ── Voice: play, waveform, length; tapped, the words underneath ── */
+
+[data-platform="instagram"] .ig-voice {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 220px;
+    max-width: 100%;
+    padding: 8px 14px 8px 8px;
+    cursor: pointer;
+}
+
+[data-platform="instagram"] .ig-voice-play {
+    display: grid;
+    place-items: center;
+    flex: 0 0 26px;
+    height: 26px;
+}
+
+[data-platform="instagram"] .ig-voice-play svg {
+    width: 20px;
+    height: 20px;
+}
+
+[data-platform="instagram"] .ig-voice-wave {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    flex: 1;
+    height: 22px;
+}
+
+[data-platform="instagram"] .ig-voice-wave i {
+    flex: 1;
+    min-height: 3px;
+    border-radius: 2px;
+    background: currentColor;
+    opacity: 0.85;
+}
+
+[data-platform="instagram"] .ig-voice-time {
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+}
+
+[data-platform="instagram"] .ig-voice-unread {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #ec4899;
+}
+
+[data-platform="instagram"] .ig-transcript {
+    box-sizing: border-box;
+    max-width: 100%;
+    margin-top: 4px;
+    padding: 8px 12px;
+    border-radius: 16px;
+    color: var(--ig-text);
+    background: var(--ig-quote);
+    font-size: calc(var(--et-font-size, 15px) - 1px);
+    line-height: 1.35;
+    overflow-wrap: anywhere;
+}
+
+[data-platform="instagram"] .ig-voice[aria-expanded="false"] + .ig-transcript {
+    display: none;
+}
+
+/* ── Reply: who it answers, and the original as a faded bubble above ── */
+
+[data-platform="instagram"] .ig-quote {
+    display: flex;
+    flex-direction: column;
+    align-items: inherit;
+    max-width: 100%;
+    margin: 4px 0 -10px;
+}
+
+[data-platform="instagram"] .ig-quote-label {
+    margin: 0 4px 4px;
+    color: var(--ig-muted);
+    font-size: 11px;
+}
+
+[data-platform="instagram"] .ig-quote-text {
+    box-sizing: border-box;
+    max-width: 100%;
+    padding: 8px 14px 18px;
+    border-radius: 18px;
+    color: var(--ig-muted);
+    background: var(--ig-quote);
+    font-size: calc(var(--et-font-size, 15px) - 1px);
+    line-height: 1.3;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    overflow-wrap: anywhere;
+}
+
+/* The answer sits on the quote's lower edge */
+[data-platform="instagram"] .ig-quote + .ig-bubble,
+[data-platform="instagram"] .ig-quote + .ig-photo {
+    position: relative;
+}
+
+/* ── Reactions: the emoji pill on the bubble's lower edge ───── */
+
+[data-platform="instagram"] .ig-reactions {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    gap: 1px;
+    margin: -7px 10px 0;
+    padding: 2px 6px;
+    border: 2px solid var(--ig-bg);
+    border-radius: 14px;
+    background: var(--ig-pill);
+    font-size: 13px;
+    line-height: 1.25;
+}
+
+[data-platform="instagram"] .ig-reactions[data-et-action] {
+    cursor: pointer;
+}
+
+[data-platform="instagram"] .ig-reactions-new {
+    animation: et-reaction-pop 0.42s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    [data-platform="instagram"] .ig-reactions-new {
+        animation: none;
+    }
+}
+
+/* ── Typing: three dots in a received bubble ────────────────── */
+
+[data-platform="instagram"] .ig-typing {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 13px 14px;
+}
+
+[data-platform="instagram"] .ig-typing span {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--ig-muted);
+    animation: ig-typing 1.2s ease-in-out infinite;
+}
+
+[data-platform="instagram"] .ig-typing span:nth-child(2) {
+    animation-delay: 180ms;
+}
+
+[data-platform="instagram"] .ig-typing span:nth-child(3) {
+    animation-delay: 360ms;
+}
+
+@keyframes ig-typing {
+    0%, 60%, 100% { transform: translateY(0); opacity: 0.6; }
+    30% { transform: translateY(-4px); opacity: 1; }
+}
+
+/* ── Seen: under the user's message while it's the last in the chat ── */
+
+[data-platform="instagram"] .ig-seen {
+    margin: 3px 14px 0;
+    color: var(--ig-muted);
+    text-align: right;
+    font-size: 11px;
+}
+
+[data-platform="instagram"] .ig-message:has(~ [data-et-role~="message"]) > .ig-seen {
+    display: none;
+}
+
+/* ── A bubble's own controls: shown on hover, or once it's tapped ── */
+
+[data-platform="instagram"] .ig-tools {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    align-self: center;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.15s;
+}
+
+[data-platform="instagram"] .ig-row-me .ig-tools {
+    flex-direction: row-reverse;
+}
+
+[data-platform="instagram"] .ig-row:hover .ig-tools,
+[data-platform="instagram"] .ig-row[data-et-revealed] .ig-tools,
+[data-platform="instagram"] .ig-tools:focus-within {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+[data-platform="instagram"] .ig-tools .et-bubble-tool {
+    color: var(--ig-muted);
+}
+
+/* Touch screens: only once tapped (iOS leaves :hover on whatever was tapped last) */
+@media (hover: none) {
+    [data-platform="instagram"] .ig-row:hover .ig-tools {
+        opacity: 0;
+        pointer-events: none;
+    }
+
+    [data-platform="instagram"] .ig-row[data-et-revealed] .ig-tools {
+        opacity: 1;
+        pointer-events: auto;
+    }
+}
+
+/* ── A generated image, or its placeholder ──────────────────── */
+
+[data-platform="instagram"] .ig-image {
+    margin-top: 4px;
+    cursor: pointer;
+}
+
+[data-platform="instagram"] .ig-image img {
+    display: block;
+    max-width: 220px;
+    border-radius: 18px;
+}
+
+[data-platform="instagram"] .ig-placeholder {
+    padding: 9px 14px;
+    border-radius: var(--ig-round);
+    color: var(--ig-muted);
+    background: var(--ig-in);
+    font-size: 13px;
+}
+
+/* ── Versions of the last reply, under its bubbles ──────────── */
+
+[data-platform="instagram"] .ig-swipe {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin: 4px 0 0 46px;
+    color: var(--ig-muted);
+    font-size: 12px;
+}
+
+[data-platform="instagram"] .ig-swipe button {
+    padding: 2px 6px;
+    border: 0;
+    background: none;
+    color: inherit;
+    font-size: 15px;
+    line-height: 1;
+    cursor: pointer;
+}
+
+[data-platform="instagram"] .ig-swipe button:disabled {
+    opacity: 0.35;
+    cursor: default;
+}
+
+/* ── Editing in place ───────────────────────────────────────── */
+
+[data-platform="instagram"] .ig-edit-bar {
+    display: flex;
+    gap: 14px;
+    margin: 6px 0 0 48px;
+}
+
+[data-platform="instagram"] .ig-message[data-is-user="1"] > .ig-edit-bar {
+    justify-content: flex-end;
+    margin: 6px 14px 0 0;
+}
+
+[data-platform="instagram"] .ig-edit-btn {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--ig-muted);
+    font: 600 13px var(--ig-font);
+    cursor: pointer;
+}
+
+[data-platform="instagram"] .ig-edit-btn-primary {
+    color: #3797f0;
+}

@@ -21,6 +21,7 @@
 <script src="../../lib/chat-view-model.js"></script>
 <script src="../../platforms/echotext/platform.js"></script>
 <script src="../../platforms/wechat/platform.js"></script>
+<script src="../../platforms/instagram/platform.js"></script>
 <script src="scenarios.js"></script>
 <script src="build/bundle-reply.js"></script>
 <script src="../../lib/emotion-model.js"></script>
@@ -35,11 +36,12 @@
 // The emotion popup and status chip (lib/emotion-system.js) on the real panel, and
 // how a reply lands in Auto mode (index.js's generateEchoText / generateEchoTextSwipe,
 // with the model stubbed).
-//   ?platform=echotext|wechat  ?scheme=dark|light  ?width=320  ?desire  ?scenario=N (tests/harness/scenarios.js; default 0)
+//   ?platform=echotext|wechat|instagram  ?scheme=dark|light  ?width=320  ?desire  ?scenario=N (tests/harness/scenarios.js; default 0)
 //   ?tab=emotions|personality  the popup as a screenshot shows it (filled-in example values; Desire and Morality with ?desire;
 //                              &auto: in Auto mode, the last reply's changes beside the values for a few seconds)
 //   ?auto                      a reply in Auto mode arriving with the popup closed: the chips under the header
-//   ?report                    runs runEmotionTest(), runAutoTest(), runReplyTest(), runTapbackTest(), runMemoryTest() and runSummaryTest() and posts their results
+//   ?report                    runs runEmotionTest(), runAutoTest(), runReplyTest(), runTapbackTest(), runMemoryTest(), runSummaryTest()
+//                              and runInstagramTest() and posts their results
 //   ?draft=N                   Reply picked on message N: the quote waiting above the input bar
 //   ?memory                    Add Memory open on a bubble, and the settings panel's memory list and summaries beside the panel
 (async function () {
@@ -79,6 +81,8 @@
         sleepWithAbort: async () => {}, error: (...a) => errors.push(a.join(' ')), stripThinkingTags: t => t };
     env.memorySystem = window.EchoTextMemorySystem.createMemorySystem({ getSettings: () => env.settings, saveSettings: () => {}, getCharacterKey: () => 'mira.png' });
     r = window.EchoTextHarness.reply(env);
+    // For poking at from the console
+    window.__harness = { r, env };
     document.getElementById('host').innerHTML = r.buildPanelHtml();
     r.renderMessages(history);
     const panel = document.getElementById('et-panel');
@@ -712,6 +716,111 @@
         return res;
     };
 
+    // Instagram's look (docs/platform-plan.md 5a) through the real code: a sender's
+    // messages joining into one run, the avatar by its last bubble, "Seen" only under
+    // the last message, reply labels, photo and voice, the bubble controls, tapbacks
+    // as emoji, editing, and a reply arriving bubble by bubble
+    window.runInstagramTest = async function () {
+        const res = {};
+        errors.length = 0;
+        const platformBefore = env.settings.defaultPlatform;
+        env.settings.defaultPlatform = 'instagram';
+        const chat = () => env.settings.chatHistory['mira.png'];
+        const t = Date.now() - 600000;
+        env.settings.chatHistory['mira.png'] = [
+            { is_user: true, mes: 'hey', send_date: t, meta: { receipt: { state: 'read' } } },
+            { is_user: true, mes: 'you there?', send_date: t + 1000, meta: { receipt: { state: 'read' } } },
+            { is_user: false, mes: 'yes\n<photo>a cat on the sill</photo>\n<voice>hello there</voice>', send_date: t + 60000 },
+            { is_user: false, mes: '<reply>我: you there?</reply>\nalways', send_date: t + 61000 },
+            { is_user: true, mes: 'cute', send_date: t + 120000, meta: { receipt: { state: 'read' } } },
+        ];
+        if (r.bindMessageActions) r.bindMessageActions();
+        r.renderMessages(chat());
+        await sleep(600);
+        const msg = i => panel.querySelector(`[data-et-role="message"][data-index="${i}"]`);
+        const rows = i => [...msg(i).querySelectorAll('.ig-row')];
+        const css = (el, prop) => getComputedStyle(el)[prop];
+        res.platform = panel.getAttribute('data-platform') === 'instagram' && !!msg(0)?.classList.contains('ig-message');
+
+        // One sender's messages join: the corners between them go tight, the outer ones stay round
+        const b0 = rows(0)[0].querySelector('.ig-bubble'), b1 = rows(1)[0].querySelector('.ig-bubble');
+        res.userRunJoined = css(b0, 'borderTopRightRadius') === '22px' && css(b0, 'borderBottomRightRadius') === '5px'
+            && css(b1, 'borderTopRightRadius') === '5px' && css(b1, 'borderBottomRightRadius') === '22px' && css(b1, 'borderBottomLeftRadius') === '22px';
+        res.charPositions = rows(2).map(row => row.dataset.pos).join(',') === 'first,middle,last' && rows(3)[0].dataset.pos === 'single';
+        const last2 = rows(2)[2].querySelector('.ig-voice'), only3 = rows(3)[0].querySelector('.ig-bubble');
+        res.charRunJoined = css(last2, 'borderBottomLeftRadius') === '5px' && css(only3, 'borderTopLeftRadius') === '5px' && css(only3, 'borderBottomLeftRadius') === '22px';
+        // The avatar: only by the run's last bubble
+        res.avatarByLast = rows(2).slice(0, 2).every(row => !row.querySelector('.ig-avatar'))
+            && css(rows(2)[2].querySelector('.ig-avatar'), 'visibility') === 'hidden' && css(rows(3)[0].querySelector('.ig-avatar'), 'visibility') === 'visible';
+
+        // "Seen" only under the last message
+        const seen = [...panel.querySelectorAll('.ig-seen')].filter(el => el.offsetParent);
+        res.seenLastOnly = seen.length === 1 && !!seen[0].closest('[data-index="4"]') && seen[0].textContent === 'Seen';
+        res.replyLabel = msg(3).querySelector('.ig-quote-label')?.textContent === 'Mira replied to you' && msg(3).querySelector('.ig-quote-text')?.textContent === 'you there?';
+
+        // Photo and voice open on a tap; the voice message's dot goes once it's heard
+        const photoEl = msg(2).querySelector('.ig-photo');
+        photoEl.click();
+        res.photoOpens = photoEl.getAttribute('aria-expanded') === 'true' && css(photoEl.querySelector('.ig-photo-caption'), 'display') === 'flex';
+        res.voiceUnread = !!msg(2).querySelector('.ig-voice-unread');
+        msg(2).querySelector('.ig-voice').click();
+        await sleep(100);
+        res.voiceOpens = css(msg(2).querySelector('.ig-transcript'), 'display') !== 'none' && !msg(2).querySelector('.ig-voice-unread')
+            && JSON.stringify(chat()[2].voiceHeard) === '[0]';
+
+        // The controls show once a bubble is tapped; the menu starts with Reply
+        const row = rows(2)[0];
+        row.setAttribute('data-et-revealed', '');
+        await sleep(250);
+        // (another row shows them too while the pointer happens to be over it)
+        const other = rows(2)[1];
+        res.toolsShow = css(row.querySelector('.ig-tools'), 'opacity') === '1' && (other.matches(':hover') || css(other.querySelector('.ig-tools'), 'opacity') === '0');
+        row.querySelector('[data-et-action="part-menu"]').click();
+        res.menu = document.querySelector('.et-dots-menu .et-dots-item')?.dataset.action === 'reply';
+        document.querySelectorAll('.et-dots-menu').forEach(m => m.remove());
+
+        // A tapback on the first bubble shows as emoji on its lower edge, popping in
+        rows(2)[0].querySelector('.ig-tools [data-et-action="react"]').click();
+        document.querySelector('.et-react-overlay [data-emoji="heart"]').click();
+        await sleep(450);
+        document.querySelectorAll('.et-react-overlay').forEach(o => o.remove());
+        const pill = rows(2)[0].querySelector('.ig-reactions');
+        res.tapback = JSON.stringify(chat()[2].bubbleReactions) === '{"0":["heart"]}' && pill?.textContent === '❤️'
+            && pill.classList.contains('ig-reactions-new') && pill.dataset.etAction === 'react'
+            && pill.getBoundingClientRect().top < rows(2)[0].querySelector('.ig-bubble').getBoundingClientRect().bottom;
+        // The character's on your message: under it, not tappable
+        chat()[4].charReaction = 'haha';
+        r.renderMessages(chat());
+        await sleep(100);
+        const charPill = msg(4).querySelector('.ig-reactions');
+        res.charTapback = charPill?.textContent === '😂' && !charPill.hasAttribute('data-et-action');
+
+        // Editing: the text becomes editable, Cancel / Save under it
+        r.startInlineEdit(chat(), 4);
+        res.editOpens = !!msg(4).querySelector('.ig-text[contenteditable="true"]') && !!msg(4).querySelector('.ig-edit-bar [data-et-role="edit-save"]');
+        msg(4).querySelector('[data-et-role="edit-cancel"]').click();
+        await sleep(50);
+        res.editCancels = !msg(4).querySelector('[contenteditable="true"]') && !msg(4).querySelector('.ig-edit-bar');
+
+        // A reply in three bubbles arrives one by one, the typing bubble between them
+        env.buildApiMessagesFromHistory = async () => ({ apiMessages: [], rawPrompt: '', systemPrompt: '' });
+        env.requestEchoTextCompletion = async () => 'one\ntwo\nthree';
+        chat().push({ is_user: true, mes: 'tell me', send_date: Date.now() });
+        r.renderMessages(chat());
+        await r.generateEchoText(chat());
+        await sleep(500);
+        const arriving = msg(chat().length - 1);
+        res.typingBetween = !!arriving?.querySelector('.ig-row .ig-typing') && arriving.querySelectorAll('.ig-row[style*="display: none"]').length >= 1;
+        await sleep(3500);
+        res.allArrive = [...arriving.querySelectorAll('.ig-row')].filter(row => row.offsetParent).length === 3 && !arriving.querySelector('.ig-typing');
+
+        env.settings.defaultPlatform = platformBefore;
+        r.renderMessages(chat());
+        res.errors = errors.slice();
+        res.ok = Object.values(res).filter(v => typeof v === 'boolean').every(Boolean) && !errors.length;
+        return res;
+    };
+
     // A screenshot: example values, a lock, Desire with ?nsfw
     const tab = params.get('tab');
     if (tab || params.has('auto')) {
@@ -737,7 +846,8 @@
         const tapback = await window.runTapbackTest();
         const memory = await window.runMemoryTest();
         const summary = await window.runSummaryTest();
-        fetch('/__log', { method: 'POST', body: JSON.stringify({ runEmotionTest: result, runAutoTest: auto, runReplyTest: reply, runTapbackTest: tapback, runMemoryTest: memory, runSummaryTest: summary }) }).catch(() => {});
+        const instagram = await window.runInstagramTest();
+        fetch('/__log', { method: 'POST', body: JSON.stringify({ runEmotionTest: result, runAutoTest: auto, runReplyTest: reply, runTapbackTest: tapback, runMemoryTest: memory, runSummaryTest: summary, runInstagramTest: instagram }) }).catch(() => {});
     } else if (params.has('memory')) {
         // Two memories, one pinned, the other in the last prompt; Add Memory open on a bubble
         env.settings.characterMemories = { 'mira.png': [
