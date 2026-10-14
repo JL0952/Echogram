@@ -5891,8 +5891,9 @@
             .replace(/\*\*\*(.*?)\*\*\*/gs, '<strong><em>$1</em></strong>')
             .replace(/\*\*(.*?)\*\*/gs, '<strong>$1</strong>')
             .replace(/\*(.*?)\*/gs, '<em>$1</em>')
-            .replace(/__(.*?)__/gs, '<u>$1</u>')
-            .replace(/_(.*?)_/gs, '<em>$1</em>')
+            // Underscores inside a word (snake_case, file names, links) stay as they are
+            .replace(/(?<![\p{L}\p{N}_])__(?!\s)(.+?)(?<!\s)__(?![\p{L}\p{N}_])/gsu, '<u>$1</u>')
+            .replace(/(?<![\p{L}\p{N}_])_(?!\s)(.+?)(?<!\s)_(?![\p{L}\p{N}_])/gsu, '<em>$1</em>')
             .replace(/~~(.*?)~~/gs, '<del>$1</del>')
             .replace(/`(.+?)`/g, '<code>$1</code>');
 
