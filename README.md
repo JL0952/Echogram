@@ -34,7 +34,7 @@ Text your SillyTavern characters like they're on your phone.
 In SillyTavern, open **Extensions → Install extension** and paste:
 
 ```
-https://github.com/JL0952/SillyTavern-EchoText-Custom
+https://github.com/JL0952/Echogram
 ```
 
 ## Credits
