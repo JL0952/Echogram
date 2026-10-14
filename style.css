@@ -7819,6 +7819,7 @@ html.et-bg-light {
 
 .et-mem-scope-pills {
     display: flex;
+    flex-wrap: wrap;
     gap: 6px;
 }
 
@@ -7873,11 +7874,13 @@ html.et-bg-light {
 
 /* ── List header row (title + add button) ────────────────── */
 
+/* The buttons drop below the title when the row is too narrow for both */
 .et-mem-list-header {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     justify-content: space-between;
-    gap: 10px;
+    gap: 8px 10px;
     margin-bottom: 10px;
 }
 
@@ -7936,15 +7939,19 @@ html.et-bg-light {
     gap: 8px;
 }
 
-/* Row: category select + label input side-by-side */
+/* Row: category select + label input side-by-side. Too narrow for both, the
+   label drops below and each takes the full width; sharing a line, the label's
+   large grow factor keeps the select at its basis. */
 .et-mem-form-row {
     display: flex;
+    flex-wrap: wrap;
     gap: 8px;
     align-items: flex-start;
 }
 
 .et-mem-form-row .et-select-wrapper {
-    flex: 0 0 168px;
+    flex: 1 1 168px;
+    min-width: 0;
     margin-bottom: 0;
 }
 
@@ -7955,7 +7962,8 @@ html.et-bg-light {
 }
 
 .et-mem-form-row .et-mem-form-label {
-    flex: 1;
+    flex: 999 1 168px;
+    min-width: 0;
     margin-bottom: 0;
     font-size: 0.86rem;
     padding: 8px 12px;
@@ -8107,6 +8115,7 @@ html.et-bg-light {
 /* Card top bar: category chip + auto badge on left, actions on right */
 .et-mem-card-header {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     justify-content: space-between;
     gap: 8px;
@@ -8206,11 +8215,13 @@ html.et-bg-light {
 
 /* ── Card action buttons (pin, edit, delete) ─────────────── */
 
+/* Right-aligned, on the chip's line or (too narrow) the next */
 .et-mem-card-actions {
     display: flex;
     align-items: center;
     gap: 4px;
     flex-shrink: 0;
+    margin-left: auto;
 }
 
 .et-mem-btn {
@@ -8322,10 +8333,13 @@ html.et-bg-light {
 .et-mem-card-edit .et-mem-form-row .et-select {
     font-size: 0.80rem;
     padding: 7px 28px 7px 9px;
-    flex: 0 0 148px;
+    flex: 1 1 148px;
+    min-width: 0;
 }
 
 .et-mem-card-edit .et-mem-edit-label {
+    flex: 999 1 148px;
+    min-width: 0;
     font-size: 0.82rem;
     padding: 7px 10px;
     margin-bottom: 0;
@@ -9167,6 +9181,7 @@ details.et-te-advanced[open] .et-te-advanced-toggle::before { transform: rotate(
     color: rgba(248, 113, 113, 0.70);
     font-size: 0.78rem;
     font-weight: 600;
+    white-space: nowrap;
     cursor: pointer;
     transition: background 0.14s, border-color 0.14s, color 0.14s, transform 0.1s;
     font-family: var(--et-font-family, inherit);
@@ -9185,8 +9200,10 @@ details.et-te-advanced[open] .et-te-advanced-toggle::before { transform: rotate(
 
 /* ── Inline confirmation pending state ───────────────────── */
 
+/* The longer prompt may wrap, rather than push "Add" out of a narrow row */
 .et-mem-clear-btn.et-mem-confirm-pending,
 .et-mem-clear-btn.et-mem-confirm-pending:hover {
+    white-space: normal;
     background: rgba(248, 113, 113, 0.22);
     border-color: #f87171;
     color: #f87171;

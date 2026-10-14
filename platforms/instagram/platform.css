@@ -238,10 +238,13 @@
     font-size: 10px;
 }
 
-/* Back, call, video and more: icons in the text colour */
+/* Back, call, video and more: icons in the text colour. Centred in their
+   columns: a phone's 44px tap target (mobile-style.css) spills evenly into the
+   gaps instead of pushing the icon off its column. */
 [data-platform="instagram"] #et-close-btn,
 [data-platform="instagram"] #et-overflow-btn {
     grid-row: 1;
+    justify-self: center;
     display: grid;
     place-items: center;
     width: 26px;
@@ -298,6 +301,7 @@
     --ig-glyph: var(--ig-icon-video);
     grid-column: 5;
     grid-row: 1;
+    justify-self: center;
     width: 28px;
     height: 28px;
 }
@@ -506,6 +510,12 @@
 
 [data-platform="instagram"] .et-input-wrap-compose[data-et-compose="voice"] #et-voice-btn {
     margin-right: 12px;
+}
+
+/* Once "Send" (or stop) shows at the end, the text stops short of it, as in the plain field */
+[data-platform="instagram"] .et-input-wrap-compose #et-input:not(:placeholder-shown),
+[data-platform="instagram"] [data-et-role~="input-bar"]:has(#et-send-btn.et-send-stop) .et-input-wrap-compose #et-input {
+    padding-right: 76px !important;
 }
 
 /* "Send" in place of the icons once there is text; a quiet stop while a reply is generated */
