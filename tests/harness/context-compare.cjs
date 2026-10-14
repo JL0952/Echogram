@@ -23,7 +23,7 @@ const NAMES = ['RichMessages', 'Features', 'ChatViewModel', 'Platform', 'Platfor
     'getContextMessageText', 'buildCombinedReactionTurns', 'getUserReactionIds', 'buildUserReactionText', 'resolveHistoryMessageText', 'buildMessageFormatPrompt',
     'getMessageDisplayParts', 'quoteForBubble'];
 function load(code) {
-    const ast = acorn.parse(code, { ecmaVersion: 'latest' });
+    const ast = acorn.parse(code, { ecmaVersion: 'latest', sourceType: 'module' });
     const body = ast.body.find(n => n.type === 'ExpressionStatement').expression.callee.body.body;
     const parts = [];
     for (const node of body) {

@@ -15,7 +15,7 @@ const acorn = require(path.join(ST_ROOT, 'node_modules/acorn'));
 
 const [, , src, label, out] = process.argv;
 const code = fs.readFileSync(src, 'utf8');
-const ast = acorn.parse(code, { ecmaVersion: 'latest', sourceType: 'script' });
+const ast = acorn.parse(code, { ecmaVersion: 'latest', sourceType: 'module' });
 
 // The IIFE body: (function () { ... })();
 const iife = ast.body.find(n => n.type === 'ExpressionStatement');

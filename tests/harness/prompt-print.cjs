@@ -102,7 +102,7 @@ const STUBS = `
     const isCombinedGroupMode = () => false; const groupManager = null;
     const expandTimeDateMacros = t => t; const getChatHistory = () => settings.chatHistory?.[env.char.avatar] || [];`;
 const code = fs.readFileSync(`${REPO}/index.js`, 'utf8');
-const body = acorn.parse(code, { ecmaVersion: 'latest' }).body.find(n => n.type === 'ExpressionStatement').expression.callee.body.body;
+const body = acorn.parse(code, { ecmaVersion: 'latest', sourceType: 'module' }).body.find(n => n.type === 'ExpressionStatement').expression.callee.body.body;
 const parts = body.filter(node => {
     const names = node.type === 'FunctionDeclaration' ? [node.id.name] : node.type === 'VariableDeclaration' ? node.declarations.map(d => d.id.name) : [];
     return names.some(n => NAMES.includes(n));

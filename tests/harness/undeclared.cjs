@@ -13,7 +13,7 @@ const REF = process.argv[2] || 'HEAD';
 const BROWSER_GLOBALS = new Set(['FileReader', 'Image', 'HTMLElement', 'HTMLImageElement', 'MutationObserver', 'ResizeObserver', 'IntersectionObserver', 'getComputedStyle', 'requestAnimationFrame', 'cancelAnimationFrame', 'matchMedia', 'localStorage', 'sessionStorage', 'navigator', 'location', 'innerWidth', 'innerHeight']);
 
 function undeclared(code) {
-    const ast = acorn.parse(code, { ecmaVersion: 'latest', sourceType: 'script' });
+    const ast = acorn.parse(code, { ecmaVersion: 'latest', sourceType: 'module' });
     const declared = new Set(), used = new Set();
     const declarePattern = p => {
         if (!p) return;
@@ -34,7 +34,8 @@ function undeclared(code) {
             case 'Identifier': {
                 const isProp = (parent?.type === 'MemberExpression' && key === 'property' && !parent.computed)
                     || ((parent?.type === 'Property' || parent?.type === 'MethodDefinition') && key === 'key' && !parent.computed)
-                    || parent?.type === 'LabeledStatement' || parent?.type === 'BreakStatement' || parent?.type === 'ContinueStatement';
+                    || parent?.type === 'LabeledStatement' || parent?.type === 'BreakStatement' || parent?.type === 'ContinueStatement'
+                    || parent?.type === 'MetaProperty';
                 if (!isProp) used.add(node.name);
             }
         }

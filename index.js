@@ -7,29 +7,11 @@
     const MODULE_NAME = 'EchoText';
     const EXTENSION_NAME = 'EchoText';
 
-    // Get BASE_URL and cache-buster from script tag
-    const scripts = document.querySelectorAll('script[src*="index.js"]');
-    let BASE_URL = '';
-    let VERSION_QUERY = '';
-    for (const script of scripts) {
-        if (script.src.includes('EchoText')) {
-            // Use URL API for resilient parsing
-            try {
-                const urlObj = new URL(script.src, window.location.href);
-                VERSION_QUERY = urlObj.search; // Contains "?test5" etc
-                BASE_URL = urlObj.origin + urlObj.pathname.split('/').slice(0, -1).join('/');
-            } catch (e) {
-                // Fallback for unexpected URL formats
-                BASE_URL = script.src.split('?')[0].split('/').slice(0, -1).join('/');
-                const parts = script.src.split('?');
-                if (parts.length > 1) VERSION_QUERY = '?' + parts[1];
-            }
-            break;
-        }
-    }
-    if (!BASE_URL) {
-        BASE_URL = '/scripts/extensions/third-party/SillyTavern-EchoText';
-    }
+    // BASE_URL and cache-buster from this file's own URL (SillyTavern loads it as a
+    // module), so any install folder name works
+    const ownUrl = new URL(import.meta.url);
+    const BASE_URL = ownUrl.origin + ownUrl.pathname.split('/').slice(0, -1).join('/');
+    let VERSION_QUERY = ownUrl.search;
     // SillyTavern loads index.js without a version: give the files EchoText loads
     // itself one per page load, so a browser never keeps a stylesheet or module
     // from before an update (a platform stylesheet goes in after page load, when a
