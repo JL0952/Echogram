@@ -1,8 +1,19 @@
+<div align="center">
+
 # Echogram
 
 Text your SillyTavern characters like they're on your phone.
 
-A personal fork of [SillyTavern-EchoText](https://github.com/mattjaybe/SillyTavern-EchoText) by mattjaybe.
+<img src="screenshots/echogram.jpg" height="500" alt="Echogram">&nbsp;
+<img src="screenshots/wechat.jpg" height="500" alt="WeChat">&nbsp;
+<img src="screenshots/instagram.jpg" height="500" alt="Instagram">
+
+<img src="screenshots/emotions.jpg" height="500" alt="Emotions">&nbsp;
+<img src="screenshots/personality.jpg" height="500" alt="Personality">
+
+<sub>A personal fork of <a href="https://github.com/mattjaybe/SillyTavern-EchoText">SillyTavern-EchoText</a> by mattjaybe.</sub>
+
+</div>
 
 ## Features
 
