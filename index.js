@@ -2049,7 +2049,7 @@
         const rules = Features.buildFeaturePrompts(getActiveFeatures(), { charName, userName, reactionIds: getReactionIds() });
         // What every tag below shares, said once
         const tags = rules.length ? ' Each tag below goes on a line of its own too, as one of the texts. Write the texts and what goes inside the tags in the language of the conversation.' : '';
-        return [`MESSAGES: Put each text on its own line — every line reaches ${userName} as a separate message bubble.${tags}`, ...rules].join('\n');
+        return [`MESSAGES: Put each text on its own line — every line reaches ${userName} as a separate message bubble. Hard limit: 10 texts per reply at most, however eager or worked up ${charName} is. Only what ${charName} would actually send: never their unspoken thoughts.${tags}`, ...rules].join('\n');
     }
 
     async function getActiveWorldInfoEntries() {
