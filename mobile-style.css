@@ -550,7 +550,7 @@
    PANEL ACCORDION (settings-in-panel) â€” overflow-safe
    ============================================================ */
 
-.et-accordion-content {
+.et-accordion-section.open .et-accordion-content {
     overflow-y: auto !important;
     -webkit-overflow-scrolling: touch;
     max-height: 70vh !important;
