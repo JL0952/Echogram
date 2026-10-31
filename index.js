@@ -5131,8 +5131,8 @@
             // "place | address"
             mes = `<location>${text.replace(/\s*\n\s*/g, ' ')}</location>`;
         } else if (mode === 'music') {
-            // "song | artist", or "song | artist | a line; the next line"
-            mes = `<music>${text.replace(/\s*\n\s*/g, ' ')}</music>`;
+            // "song | artist", then lines of lyrics (semicolons or line breaks)
+            mes = RichMessages.musicTag(text);
         } else if (mode === 'file') {
             // "title | description", as the kind picked on the chip
             mes = RichMessages.shareTag(text, shareType);

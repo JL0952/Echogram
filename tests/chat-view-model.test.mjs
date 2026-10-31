@@ -439,6 +439,16 @@ test('a song shared with some of its lines: the third field, one line per semico
     assert.deepEqual(song('<music>Song A | Band B |</music>').lyrics, []);
 });
 
+test('a song shared from the composer: pasted lyrics keep their lines', () => {
+    const { musicTag } = window.EchoTextRichMessages;
+    assert.equal(musicTag('Song A | Band B | a made-up line\nanother\n\nafter a blank'), '<music>Song A | Band B | a made-up line; another; after a blank</music>');
+    // Lyrics pasted on the line after "song | artist", line breaks and semicolons mixed, Windows line ends
+    assert.equal(musicTag('Song A | Band B\none\r\ntwo; three'), '<music>Song A | Band B | one; two; three</music>');
+    assert.equal(musicTag('Song A |\nonly lyrics'), '<music>Song A | | only lyrics</music>');
+    assert.equal(musicTag('Song A | Band B'), '<music>Song A | Band B</music>');
+    assert.equal(musicTag('  '), null);
+});
+
 test('without places, a location card becomes the note the model sees', () => {
     const [m] = build([char('<location>home | 1 Main St</location>', 0)], { features: ['photo'] });
     assert.deepEqual(m.parts, [{ type: 'text', text: '[Location: home | 1 Main St]' }]);
