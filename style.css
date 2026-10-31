@@ -4617,6 +4617,118 @@ html.et-bg-light {
     color: var(--et-theme-color);
 }
 
+/* While drafting: the spinner and Cancel */
+.et-sched-drafting {
+    align-items: center;
+    gap: 14px;
+}
+
+/* A row opens its editor */
+.et-sched-row[data-emo-block] {
+    cursor: pointer;
+    transition: background 0.15s;
+}
+
+.et-sched-row[data-emo-block]:hover {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.et-sched-add {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    width: 100%;
+    margin-top: 6px;
+    padding: 6px;
+    border: 1px dashed rgba(255, 255, 255, 0.16);
+    border-radius: 10px;
+    background: transparent;
+    color: var(--et-text-muted);
+    font-family: var(--et-font-family);
+    font-size: 0.72rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+}
+
+.et-sched-add:hover {
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--et-text);
+}
+
+/* The editor: times, what, where, phone, then Delete / Cancel / Save */
+.et-sched-edit {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin: 4px 0;
+    padding: 8px;
+    border: 1px solid color-mix(in srgb, var(--et-theme-color) 45%, transparent);
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.04);
+}
+
+.et-sched-edit .et-emo-seg {
+    margin: 0;
+}
+
+.et-sched-edit-times {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--et-text-muted);
+}
+
+.et-sched-in {
+    flex: 1;
+    min-width: 0;
+    padding: 5px 8px;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    border-radius: 8px;
+    background: rgba(0, 0, 0, 0.25);
+    color: var(--et-text);
+    color-scheme: dark;
+    font-family: var(--et-font-family);
+    font-size: 0.76rem;
+    outline: none;
+}
+
+.et-sched-in:focus {
+    border-color: var(--et-theme-color);
+}
+
+.et-sched-in.et-sched-in-bad {
+    border-color: #f87171;
+}
+
+.et-sched-edit-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 6px;
+}
+
+.et-sched-delete {
+    margin-right: auto;
+    padding: 3px 8px;
+    border: none;
+    background: transparent;
+    color: #f87171;
+    cursor: pointer;
+}
+
+.et-sched-save {
+    padding: 3px 10px;
+    border: 1px solid color-mix(in srgb, var(--et-theme-color) 70%, transparent);
+    border-radius: var(--et-radius-sm);
+    background: color-mix(in srgb, var(--et-theme-color) 28%, transparent);
+    color: var(--et-text);
+    font-size: 0.72rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+
 /* One feeling or trait: icon, name, slider or levels, value, lock */
 .et-emo-row {
     position: relative;

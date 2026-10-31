@@ -2012,6 +2012,10 @@
         // Pinned memories and the ones the recent messages bring up (lib/memory-recall.js).
         prompt += buildMemoryContext(history || getChatHistory());
 
+        // ── 3b. DAILY LIFE ───────────────────────────────────────────────────────
+        // Where the character is in their week right now (lib/daily-life.js).
+        prompt += buildDailyLifeContext(name);
+
         // ── 4. BEHAVIOUR LOCK ────────────────────────────────────────────────────
         // Fiction frame + persona-lock reminder land last so they act as the final
         // instruction the model reads before generating — maximising adherence.
@@ -4000,9 +4004,13 @@
     }
 
     function getEmotionReplyTimingModel() {
-        return emotionSystem
+        const timing = emotionSystem
             ? emotionSystem.getEmotionReplyTimingModel()
             : { deliveredDelayMs: 500, readDelayMs: 1200, ghostDelayMs: 0, typingLeadMs: 300, replyDelayMs: 600 };
+        // Daily Life: busy or asleep, they read and answer more slowly
+        const phone = currentScheduleBlock()?.block.phone;
+        if (phone !== 'busy' && phone !== 'asleep') return timing;
+        return { ...timing, readDelayMs: timing.readDelayMs * BUSY_SLOWDOWN, replyDelayMs: timing.replyDelayMs * BUSY_SLOWDOWN };
     }
 
     function syncProactiveStateWithHistory(characterKey, history) {
@@ -4019,6 +4027,7 @@
 
     function refreshProactiveInsights() {
         if (proactiveMessaging) proactiveMessaging.refreshProactiveInsights();
+        jQuery('#et_proactive_life, #et_proactive_life_panel').text(scheduleInsight());
     }
 
     async function triggerTestProactiveMessage() {
@@ -5832,8 +5841,8 @@
     // ============================================================
 
     const DailyLife = window.EchoTextDailyLife;
-    // The characters whose week is being drafted
-    const schedulesDrafting = new Set();
+    // How much slower a busy or sleeping character reads and answers
+    const BUSY_SLOWDOWN = 2;
 
     /** Daily Life on or off: both settings' switches and the popup's Schedule tab follow. */
     function setDailyLifeEnabled(on) {
@@ -5841,45 +5850,73 @@
         saveSettings();
         jQuery('#et_daily_life, #et_daily_life_panel').prop('checked', settings.dailyLifeEnabled);
         if (emotionSystem) emotionSystem.refresh();
+        refreshProactiveInsights();
+    }
+
+    /** The current character's week while Daily Life is on (not in group chats), else null. */
+    function activeSchedule() {
+        if (settings.dailyLifeEnabled !== true || inGroupSession()) return null;
+        const key = getCharacterKey();
+        const schedule = DailyLife.normalizeSchedule(key ? settings.characterSchedules[key] : null);
+        return DailyLife.hasSchedule(schedule) ? schedule : null;
+    }
+
+    /** The block of the week the character is in now ({ day, index, block }), or null. */
+    function currentScheduleBlock() {
+        const schedule = activeSchedule();
+        return schedule ? DailyLife.blockAt(schedule, new Date()) : null;
+    }
+
+    /** Where the character is in their day, for the system prompt; '' without Daily Life or a week. */
+    function buildDailyLifeContext(charName) {
+        const schedule = activeSchedule();
+        return schedule ? `\n\n${DailyLife.describeNow({ schedule, date: new Date(), charName })}` : '';
+    }
+
+    /** The insights row: the block the character is in now. */
+    function scheduleInsight() {
+        if (!activeSchedule()) return '—';
+        const now = currentScheduleBlock();
+        if (!now) return 'Free';
+        const { block } = now;
+        const phone = DailyLife.PHONES.find(p => p.id === block.phone).label;
+        return `${block.from}–${block.to} ${[block.doing, block.place].filter(Boolean).join(' · ')} (${phone})`;
     }
 
     /**
      * Drafts the character's week from their card and the user's persona (one request,
      * without the chat) and keeps it in place of the one they had. Throws when the
-     * model sends back no schedule.
+     * model sends back no schedule, or when `signal` stops it (nothing is kept then).
      */
-    async function generateSchedule() {
+    async function generateSchedule({ signal = new AbortController().signal } = {}) {
         const char = getCurrentCharacter();
         const key = getCharacterKey();
-        if (!char || !key || schedulesDrafting.has(key)) return;
-        schedulesDrafting.add(key);
-        try {
-            const name = char.name || 'Character';
-            const card = [['description', `${name}'s description`], ['personality', `${name}'s personality`], ['scenario', 'Scenario']]
-                .flatMap(([field, label]) => {
-                    const text = String(char[field] || char.data?.[field] || '').trim();
-                    return text ? [`${label}: ${replaceMacros(text)}`] : [];
-                });
-            const opening = getEchoTextFirstMessage(char);
-            if (opening) card.push(`How the story began: ${opening.length > 3000 ? `${opening.slice(0, 3000)}…` : opening}`);
-            let persona = '';
-            try { persona = String(SillyTavern.getContext().powerUserSettings?.persona_description || '').trim(); } catch (e) { /* none */ }
-            const request = DailyLife.buildScheduleRequest({ charName: name, userName: getUserName(), card, persona: persona ? replaceMacros(persona) : '' });
-            // The same framing as the replies get, when it's on
-            const frame = settings.antiRefusal === true
-                ? replaceMacros(settings.promptAntiRefusalFrame || window.EchoTextConfig?.defaultSettings?.promptAntiRefusalFrame || '') : '';
-            const systemPrompt = frame ? `${request.systemPrompt}\n\n${frame}` : request.systemPrompt;
-            const raw = await sendCompletionRequest({
-                apiMessages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: request.prompt }],
-                rawPrompt: request.prompt, systemPrompt, signal: new AbortController().signal,
+        if (!char || !key) return;
+        const name = char.name || 'Character';
+        const card = [['description', `${name}'s description`], ['personality', `${name}'s personality`], ['scenario', 'Scenario']]
+            .flatMap(([field, label]) => {
+                const text = String(char[field] || char.data?.[field] || '').trim();
+                return text ? [`${label}: ${replaceMacros(text)}`] : [];
             });
-            const schedule = DailyLife.parseSchedule(stripThinkingTags(String(raw ?? '')));
-            if (!DailyLife.hasSchedule(schedule)) throw new Error('the model sent back no schedule');
-            settings.characterSchedules[key] = schedule;
-            saveSettings();
-        } finally {
-            schedulesDrafting.delete(key);
-        }
+        const opening = getEchoTextFirstMessage(char);
+        if (opening) card.push(`How the story began: ${opening.length > 3000 ? `${opening.slice(0, 3000)}…` : opening}`);
+        let persona = '';
+        try { persona = String(SillyTavern.getContext().powerUserSettings?.persona_description || '').trim(); } catch (e) { /* none */ }
+        const request = DailyLife.buildScheduleRequest({ charName: name, userName: getUserName(), card, persona: persona ? replaceMacros(persona) : '' });
+        // The same framing as the replies get, when it's on
+        const frame = settings.antiRefusal === true
+            ? replaceMacros(settings.promptAntiRefusalFrame || window.EchoTextConfig?.defaultSettings?.promptAntiRefusalFrame || '') : '';
+        const systemPrompt = frame ? `${request.systemPrompt}\n\n${frame}` : request.systemPrompt;
+        const raw = await sendCompletionRequest({
+            apiMessages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: request.prompt }],
+            rawPrompt: request.prompt, systemPrompt, signal,
+        });
+        // An answer that comes after all (the default connection can't be stopped)
+        if (signal.aborted) throw signal.reason ?? new DOMException('Aborted', 'AbortError');
+        const schedule = DailyLife.parseSchedule(stripThinkingTags(String(raw ?? '')));
+        if (!DailyLife.hasSchedule(schedule)) throw new Error('the model sent back no schedule');
+        settings.characterSchedules[key] = schedule;
+        saveSettings();
     }
 
     // ============================================================

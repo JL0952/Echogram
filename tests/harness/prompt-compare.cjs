@@ -19,19 +19,20 @@ const REF = args.find(a => !a.startsWith('--')) || 'HEAD';
 const PRINT = (args.find(a => a.startsWith('--print=')) || '').slice('--print='.length);
 
 global.window = {};
-for (const f of ['lib/config.js', 'lib/rich-messages.js', 'lib/features.js', 'lib/chat-view-model.js', 'platforms/echotext/platform.js', 'platforms/wechat/platform.js', 'platforms/instagram/platform.js']) new Function(fs.readFileSync(`${REPO}/${f}`, 'utf8'))();
+for (const f of ['lib/config.js', 'lib/rich-messages.js', 'lib/features.js', 'lib/chat-view-model.js', 'lib/daily-life.js', 'platforms/echotext/platform.js', 'platforms/wechat/platform.js', 'platforms/instagram/platform.js']) new Function(fs.readFileSync(`${REPO}/${f}`, 'utf8'))();
 new Function(fs.readFileSync(`${__dirname}/scenarios.js`, 'utf8'))();
 
 // Real index.js code: the prompt builder and the helpers it uses
 const NAMES = ['buildSystemPrompt', 'getVerbosityPrompt', 'getEchoTextFirstMessage', 'getSTStoryContext', 'findSTOpeningIndex',
     'isCharInCurrentSTChat', 'cleanSTMessageText', 'ST_STORY_MAX_MESSAGES', 'ST_STORY_MAX_CHARS', 'replaceMacros', 'buildMessageFormatPrompt',
-    'RichMessages', 'Features', 'Platforms', 'activePlatformMemo', 'getActivePlatform', 'getActiveFeatures', 'platformHas', 'getReactionIds', 'isTetheredMode'];
+    'RichMessages', 'Features', 'Platforms', 'activePlatformMemo', 'getActivePlatform', 'getActiveFeatures', 'platformHas', 'getReactionIds', 'isTetheredMode',
+    'DailyLife', 'activeSchedule', 'buildDailyLifeContext'];
 // Stubbed: SillyTavern state and the parts with their own data
 const STUBS = `
     const FA_REACTIONS = env.FA_REACTIONS; const settings = env.settings; const SillyTavern = env.SillyTavern;
     const getCurrentCharacter = () => env.char; const getCharacterKey = () => env.char?.avatar || null;
     const getCharacterName = () => env.char?.name || 'Character'; const getUserName = () => 'Qi';
-    const isCombinedGroupMode = () => false; const groupManager = null; const stripThinkingTags = t => t;
+    const isCombinedGroupMode = () => false; const inGroupSession = () => false; const groupManager = null; const stripThinkingTags = t => t;
     const expandTimeDateMacros = t => t; const getActiveWorldInfoEntries = async () => 'WORLD INFO STUB';
     const buildInsideJokesContext = () => '\\n\\n<memories>MEMORY STUB</memories>';
     const buildMemoryContext = buildInsideJokesContext; const getChatHistory = () => [];
@@ -78,6 +79,10 @@ const CASES = {
     noStoryOpen: { settings: { ctxDescription: false, verbosityByCharacter: { 'mira.png': 'short' } }, chat: [], extra: { characterId: undefined } },
     customPrompts: { settings: { promptSystemBase: 'Custom base for {{char}}.', promptTetheredNoFrame: 'Custom closing.', promptTextingFormat: 'Custom format.' }, chat: stChat },
     noCharacter: { settings: {}, chat: [], char: null },
+    // Daily Life on, a week whose blocks cover every hour (differs from refs before step 12a-2, and by the time it runs)
+    dailyLife: { settings: { dailyLifeEnabled: true, characterSchedules: { 'mira.png': Object.fromEntries(['weekday', 'saturday', 'sunday'].map(day => [day, [
+        { from: '07:00', to: '19:00', place: 'the safehouse', doing: 'watching the street', phone: 'busy' },
+        { from: '19:00', to: '07:00', place: 'the safehouse', doing: 'off watch', phone: 'free' }]])) } }, chat: stChat },
 };
 
 async function run(api) {

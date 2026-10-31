@@ -41,7 +41,7 @@
 //   ?platform=echotext|wechat|instagram  ?scheme=dark|light  ?width=320  ?desire  ?scenario=N (tests/harness/scenarios.js; default 0)
 //   ?tab=emotions|personality|schedule  the popup as a screenshot shows it (filled-in example values; Desire and Morality with ?desire;
 //                              &auto: in Auto mode, the last reply's changes beside the values for a few seconds;
-//                              schedule: Daily Life on and a week; &empty: no week yet, Generate)
+//                              schedule: Daily Life on and a week; &empty: no week yet, Generate; &edit: a block's editor open)
 //   ?auto                      a reply in Auto mode arriving with the popup closed: the chips under the header
 //   ?report                    runs runEmotionTest(), runAutoTest(), runReplyTest(), runTapbackTest(), runMemoryTest(), runSummaryTest(),
 //                              runInstagramTest() and runScheduleTest() and posts their results
@@ -70,7 +70,8 @@
         getSettings: () => settings, saveSettings: () => { saves++; },
         getCharacterKey: () => 'mira.png', getCharacterName: () => 'Mira', isPanelOpen: () => true,
         getChatHistory: key => r.getEmotionHistory(key),
-        generateSchedule: () => r.generateSchedule(),
+        generateSchedule: options => r.generateSchedule(options),
+        get scheduleTimeoutMs() { return window.__scheduleTimeoutMs; },
         onEmotionStateUpdated: () => { statusRow().innerHTML = emo.buildStatusHtml(); },
     });
     // What a failed generation reports
@@ -931,8 +932,8 @@
         return res;
     };
 
-    // Daily Life (docs/platform-plan.md 12a-1): the switch, the Schedule tab, and index.js's real
-    // setDailyLifeEnabled and generateSchedule with the model stubbed
+    // Daily Life (docs/platform-plan.md 12a-1, 12a-3): the switch, the Schedule tab, editing it, and
+    // index.js's real setDailyLifeEnabled and generateSchedule with the model stubbed
     const WEEK = '```\nweekday 07:00-08:30 | 家 | 起床 | free\nweekday 09:00-18:00 | 医院 | 上班 | busy\nweekday 23:00-07:00 | 家 | 睡觉 | asleep\n'
         + 'saturday 10:00-23:00 | 商场 | 逛街 | free\nsunday 00:00-10:00 | 家 | 睡懒觉\n```';
     window.runScheduleTest = async function () {
@@ -959,7 +960,8 @@
         r.setDailyLifeEnabled(true);
         res.shownWhenOn = env.settings.dailyLifeEnabled === true && tabs() === 'emotions,personality,schedule';
         click('[data-emo-tab="schedule"]');
-        res.emptyGenerate = $p('[data-emo-action="generate-schedule"]').length === 1 && !$p('[data-emo-action="regenerate-schedule"]').length;
+        res.emptyGenerate = $p('[data-emo-action="generate-schedule"]').length === 1 && !$p('[data-emo-action="regenerate-schedule"]').length
+            && $p('[data-emo-action="add-block"]').length === 1;
 
         // Generate: a spinner meanwhile, then today's day with the block the character is in lit
         let release;
@@ -1008,6 +1010,60 @@
             && env.settings.characterSchedules['mira.png'].weekday.length === 1 && $p('.et-sched-row').length === 1;
         errors.length = 0;
 
+        // Editing: a row opens its editor; a block that starts when it ends isn't kept; Save keeps it in time order
+        const week = () => env.settings.characterSchedules['mira.png'];
+        const field = name => $p(`[data-emo-field="${name}"]`);
+        click('[data-emo-block="0"]');
+        res.editorOpen = $p('.et-sched-edit').length === 1 && field('doing').val() === '上课' && field('place').val() === '学校'
+            && $p('[data-emo-phone].et-emo-seg-on').attr('data-emo-phone') === 'busy' && $p('.et-sched-delete').length === 1;
+        field('doing').val('上网课');
+        field('from').val('13:00');
+        field('to').val('13:00');
+        click('[data-emo-phone="free"]');
+        click('[data-emo-action="save-block"]');
+        res.badTime = $p('.et-sched-in-bad').length === 2 && week().weekday[0].doing === '上课'
+            && field('doing').val() === '上网课' && $p('[data-emo-phone].et-emo-seg-on').attr('data-emo-phone') === 'free';
+        field('to').val('16:00');
+        click('[data-emo-action="save-block"]');
+        res.saved = !$p('.et-sched-edit').length
+            && JSON.stringify(week().weekday) === JSON.stringify([{ from: '13:00', to: '16:00', place: '学校', doing: '上网课', phone: 'free' }]);
+        // Add starts where the day's last block ends; Cancel drops it; a saved one falls into place
+        click('[data-emo-action="add-block"]');
+        res.addDefaults = field('from').val() === '16:00' && field('to').val() === '17:00' && !$p('.et-sched-delete').length && !$p('[data-emo-action="add-block"]').length;
+        field('doing').val('健身');
+        click('[data-emo-action="cancel-block"]');
+        res.cancelled = week().weekday.length === 1 && !$p('.et-sched-edit').length;
+        click('[data-emo-action="add-block"]');
+        field('from').val('07:00');
+        field('to').val('08:00');
+        field('doing').val('早饭');
+        field('place').val('家');
+        click('[data-emo-action="save-block"]');
+        res.added = week().weekday.map(b => b.doing).join(',') === '早饭,上网课' && $p('.et-sched-row').length === 2;
+        click('[data-emo-block="1"]');
+        click('[data-emo-action="delete-block"]');
+        res.deleted = week().weekday.map(b => b.doing).join(',') === '早饭' && $p('.et-sched-row').length === 1;
+
+        // Cancel while drafting: it stops waiting at once, says nothing and keeps the week
+        let signal = null;
+        env.sendCompletionRequest = async req => { asked.push(req); signal = req.signal; return new Promise(() => {}); };
+        click('[data-emo-action="regenerate-schedule"]');
+        click('[data-emo-action="regenerate-schedule"]');
+        await sleep(0);
+        res.cancelShown = $p('.fa-spinner').length === 1 && $p('[data-emo-action="cancel-schedule"]').length === 1;
+        click('[data-emo-action="cancel-schedule"]');
+        await sleep(10);
+        res.cancelledDraft = !$p('.fa-spinner').length && !errors.length && signal?.aborted === true && week().weekday.length === 1;
+        // A draft that never answers gives up (after 5 minutes; here sooner)
+        window.__scheduleTimeoutMs = 50;
+        click('[data-emo-action="regenerate-schedule"]');
+        click('[data-emo-action="regenerate-schedule"]');
+        await sleep(150);
+        res.timedOut = errors.length === 1 && /^Could not make a schedule: no answer after 5 minutes/.test(errors[0])
+            && !$p('.fa-spinner').length && week().weekday.length === 1;
+        delete window.__scheduleTimeoutMs;
+        errors.length = 0;
+
         // Off again: the tab goes and the popup is back on Emotions; the week stays
         r.setDailyLifeEnabled(false);
         res.offAgain = tabs() === 'emotions,personality' && $p('.et-emo-tab-active').attr('data-emo-tab') === 'emotions'
@@ -1050,6 +1106,7 @@
         if (!tab) emo.noteReport();
         else open();
         if (tab === 'personality' || tab === 'schedule') $p(`[data-emo-tab="${tab}"]`)[0].click();
+        if (tab === 'schedule' && params.has('edit')) $p('[data-emo-block]')[1]?.click();
     } else if (params.has('report')) {
         const result = await window.runEmotionTest();
         const auto = await window.runAutoTest();

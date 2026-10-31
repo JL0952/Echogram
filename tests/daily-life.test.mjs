@@ -143,3 +143,48 @@ test('the request', () => {
     assert.equal(prompt, "<character_reference>\nMira's description: a night-shift nurse\n\nMira's personality: dry\n\n齐宁's persona: her neighbour\n</character_reference>");
     assert.doesNotMatch(Life.buildScheduleRequest({ card: ['x'] }).prompt, /persona/);
 });
+
+test('editing a day: replace, add, delete', () => {
+    const s = Life.parseSchedule(STANDARD);
+    const edited = Life.withBlock(s, 'weekday', 1, { from: '10:00', to: '19:00', place: '医院', doing: '值班', phone: 'busy' });
+    assert.deepEqual(edited.weekday.map(b => `${b.from} ${b.doing}`), ['07:00 起床洗漱', '10:00 值班', '23:30 睡觉']);
+    // Added blocks fall into time order
+    const added = Life.withBlock(s, 'weekday', -1, { from: '12:00', to: '13:00', doing: '午饭' });
+    assert.deepEqual(added.weekday.map(b => b.doing), ['起床洗漱', '上班', '午饭', '睡觉']);
+    assert.equal(added.weekday[2].phone, 'free');
+    // Not a block: nothing changes
+    assert.deepEqual(Life.withBlock(s, 'weekday', 0, { from: '12:00', to: '12:00', doing: 'x' }), s);
+    assert.deepEqual(Life.withBlock(s, 'friday', -1, { from: '12:00', to: '13:00' }), s);
+    assert.deepEqual(Life.withoutBlock(s, 'weekday', 1).weekday.map(b => b.doing), ['起床洗漱', '睡觉']);
+    assert.equal(s.weekday.length, 3);
+});
+
+test('the next block today', () => {
+    const s = Life.parseSchedule(STANDARD);
+    assert.equal(Life.nextBlockAt(s, at(26, 8)).doing, '上班');
+    assert.equal(Life.nextBlockAt(s, at(26, 12)).doing, '睡觉');
+    assert.equal(Life.nextBlockAt(s, at(26, 23, 45)), null);
+});
+
+test('where the character is now, for the prompt', () => {
+    const s = Life.parseSchedule(STANDARD);
+    assert.equal(Life.describeNow({ schedule: s, date: at(26, 10), charName: 'Mira' }), [
+        '<daily_life>',
+        'It is Monday, morning.',
+        'Right now (09:00–18:00): 上班, at 公司.',
+        'Mira is busy and can only glance at the phone now and then: replies are short or late, and Mira may say so.',
+        'Next (from 23:30): 睡觉, at 家.',
+        'This is where Mira is in their day: treat it as true and let it show when it fits, without reciting it.',
+        '</daily_life>',
+    ].join('\n'));
+    // Between blocks, and asleep (last night's sleep, nothing next today)
+    assert.match(Life.describeNow({ schedule: s, date: at(26, 19), charName: 'Mira' }),
+        /It is Monday, evening\.\nRight now: nothing in particular\. Mira is free to look at the phone and text\.\nNext \(from 23:30\)/);
+    const night = Life.describeNow({ schedule: s, date: at(27, 2), charName: 'Mira' });
+    assert.match(night, /It is Tuesday, before dawn\.\nRight now \(23:30–07:00\): 睡觉, at 家\.\nIt is Mira's time to sleep/);
+    assert.match(night, /Next \(from 07:00\): 起床洗漱/);
+    // A block with only a place
+    const placeOnly = Life.normalizeSchedule({ saturday: [{ from: '10:00', to: '12:00', place: '健身房', phone: 'free' }] });
+    assert.match(Life.describeNow({ schedule: placeOnly, date: at(31, 11), charName: 'Mira' }), /Right now \(10:00–12:00\): 健身房\.\nMira is free/);
+    assert.equal(Life.describeNow({ schedule: Life.normalizeSchedule(null), date: at(26, 10) }), '');
+});

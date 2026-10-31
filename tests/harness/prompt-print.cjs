@@ -24,7 +24,7 @@ if (!who) { console.error('usage: node tests/harness/prompt-print.cjs <character
 
 global.window = {};
 for (const f of ['lib/config.js', 'lib/rich-messages.js', 'lib/features.js', 'lib/chat-view-model.js', 'platforms/echotext/platform.js', 'platforms/wechat/platform.js', 'platforms/instagram/platform.js',
-    'lib/emotion-model.js', 'lib/emotion-icons.js', 'lib/texting-behavior.js', 'lib/emotion-system.js', 'lib/memory-recall.js', 'lib/memory-system.js', 'lib/chat-summaries.js']) new Function(fs.readFileSync(`${REPO}/${f}`, 'utf8'))();
+    'lib/emotion-model.js', 'lib/emotion-icons.js', 'lib/texting-behavior.js', 'lib/daily-life.js', 'lib/emotion-system.js', 'lib/memory-recall.js', 'lib/memory-system.js', 'lib/chat-summaries.js']) new Function(fs.readFileSync(`${REPO}/${f}`, 'utf8'))();
 
 // ── SillyTavern's data ──────────────────────────────────────────────────────
 
@@ -94,6 +94,7 @@ const NAMES = ['buildSystemPrompt', 'getVerbosityPrompt', 'getEchoTextFirstMessa
     'isCharInCurrentSTChat', 'cleanSTMessageText', 'ST_STORY_MAX_MESSAGES', 'ST_STORY_MAX_CHARS', 'replaceMacros', 'buildMessageFormatPrompt',
     'RichMessages', 'Features', 'Platforms', 'activePlatformMemo', 'getActivePlatform', 'getActiveFeatures', 'platformHas', 'getReactionIds',
     'getActiveWorldInfoEntries', 'buildMemoryContext', 'summariesOn', 'ChatSummaries', 'resolveHistoryMessageText', 'getContextMessageText', 'buildTextingStyleContext', 'buildBehaviorContext', 'buildMoodRules', 'inGroupSession',
+    'DailyLife', 'activeSchedule', 'buildDailyLifeContext',
     'stripThinkingTags', 'getStripTagsRegex', 'STRIP_TAGS_DEFAULTS', 'SPECIAL_PATTERNS', '_stripTagsRegex', '_stripTagsListHash'];
 const STUBS = `
     const FA_REACTIONS = window.EchoTextFeatures.REACTIONS; const settings = env.settings; const SillyTavern = env.SillyTavern; const emotionSystem = env.emotionSystem; const memorySystem = env.memorySystem;
