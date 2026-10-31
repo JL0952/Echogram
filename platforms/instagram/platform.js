@@ -94,10 +94,31 @@
         return `<div class="ig-link"><div class="ig-link-image">${LINK_GLYPH}</div><div class="ig-link-body"><div class="ig-link-title">${title}</div>${desc}${site}</div></div>`;
     }
 
-    /** One bubble's content: text, a photo, a voice message or a link card. */
+    /**
+     * A shared place's made-up map (the view's `map`), cropped from its middle to the
+     * frame: houses along the streets (a verge of open ground between), the streets, a
+     * park, water, the main roads.
+     */
+    function mapArt(map) {
+        const layer = (name, d) => d ? `<path class="ig-map-${name}" d="${d}"/>` : '';
+        return `<svg class="ig-map-art" viewBox="0 0 ${map.width} ${map.height}" preserveAspectRatio="xMidYMid slice" aria-hidden="true">${layer('houses', map.streets)}${layer('verge', map.streets)}${layer('streets', map.streets)}${layer('park', map.park)}${layer('water', map.water)}${layer('roads', map.roads)}</svg>`;
+    }
+
+    /**
+     * A shared place, as Instagram's location card without the live part: the map with
+     * a pin in the middle, the name and address, and View (only drawn, as the header's
+     * call buttons are).
+     */
+    function locationCard(p, ctx) {
+        const address = p.address ? `<div class="ig-location-address">${ctx.escapeHtml(p.address)}</div>` : '';
+        return `<div class="ig-location"><div class="ig-location-map">${mapArt(p.map)}<span class="ig-map-pin"></span></div><div class="ig-location-body"><div class="ig-location-name">${ctx.escapeHtml(p.name || 'Location')}</div>${address}<div class="ig-location-view">View</div></div></div>`;
+    }
+
+    /** One bubble's content: text, a photo, a voice message, a place or a link card. */
     function part(p, ctx) {
         if (p.type === 'photo') return photo(p, ctx);
         if (p.type === 'voice') return voice(p, ctx);
+        if (p.type === 'location') return locationCard(p, ctx);
         if (p.type === 'link') return linkCard(p, ctx);
         if (p.type !== 'text') return '';
         return `<div class="ig-bubble"><div class="ig-text" data-et-role="text">${ctx.formatText(p.text)}</div></div>`;
@@ -237,7 +258,7 @@
         id: 'instagram',
         name: 'Instagram',
         // Links show as a preview card; Instagram has no files or transfers
-        features: ['photo', 'voice', 'react', 'reply', 'link'],
+        features: ['photo', 'voice', 'location', 'react', 'reply', 'link'],
         stylesheet: 'platform.css',
         // Your bubbles share one gradient across the visible list (index.js updateSharedFill)
         sharedFill: '.ig-row-me .ig-bubble',

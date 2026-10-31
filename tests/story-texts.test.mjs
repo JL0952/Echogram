@@ -75,6 +75,12 @@ test('photos, transfers and their answers are written out', () => {
     ]);
 });
 
+test('a shared place is written out as its name and address', () => {
+    const chat = [story('开场', 0), story('next', 10, true)];
+    insertTexts(chat, [text('<location>星巴克 | 建国门外大街1号</location>', 1), text('<location>家</location>', 2, true)], options);
+    assert.deepEqual(shape(chat), ['开场', '间谍: [Location: 星巴克, 建国门外大街1号] | 齐宁: [Location: 家]', 'next']);
+});
+
 test('nothing to add leaves the chat alone', () => {
     const chat = [story('开场', 0)];
     assert.equal(insertTexts(chat, [], options), 0);

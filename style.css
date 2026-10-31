@@ -11039,6 +11039,61 @@ textarea.et-mem-save-snippet-edit::placeholder {
     text-overflow: ellipsis;
 }
 
+/* A shared place: the share card with a made-up map on top (Apple Maps' red pin in
+   its middle, the tip on the place), tinted by the theme; light on a light background */
+.et-location-map {
+    --et-map-land: color-mix(in srgb, var(--et-theme-color) 8%, #141a26);
+    --et-map-houses: color-mix(in srgb, var(--et-theme-color) 10%, #1d2433);
+    --et-map-street: color-mix(in srgb, var(--et-theme-color) 14%, #323b4e);
+    --et-map-road: color-mix(in srgb, var(--et-theme-color) 30%, #4a5468);
+    --et-map-park: color-mix(in srgb, #3f8f5f 32%, #141a26);
+    --et-map-water: color-mix(in srgb, #3b82c4 34%, #141a26);
+    position: relative;
+    height: 112px;
+    overflow: hidden;
+    background: var(--et-map-land);
+}
+
+html.et-bg-light .et-location-map {
+    --et-map-land: #eceef3;
+    --et-map-houses: #e0e3ea;
+    --et-map-street: #ffffff;
+    --et-map-road: color-mix(in srgb, var(--et-theme-color) 22%, #ffffff);
+    --et-map-park: #d2ead4;
+    --et-map-water: #b8d8f2;
+}
+
+.et-map-art {
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+
+.et-map-houses { fill: none; stroke: var(--et-map-houses); stroke-width: 15; stroke-dasharray: 6 3; }
+.et-map-verge { fill: none; stroke: var(--et-map-land); stroke-width: 6; }
+.et-map-streets { fill: none; stroke: var(--et-map-street); stroke-width: 2.4; stroke-linecap: round; }
+.et-map-roads { fill: none; stroke: var(--et-map-road); stroke-width: 5; stroke-linecap: round; }
+.et-map-park { fill: var(--et-map-park); }
+.et-map-water { fill: var(--et-map-water); }
+
+.et-map-pin {
+    position: absolute;
+    left: calc(50% - 11px);
+    top: calc(50% - 30px);
+    width: 22px;
+    height: 30px;
+    fill: #ff3b30;
+    filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.35));
+}
+
+.et-map-pin circle {
+    fill: #fff;
+}
+
+.et-location-card .et-share-body {
+    padding: 10px 14px;
+}
+
 /* Settled transfers and responses fade, like a paid bill */
 .et-transfer-accepted,
 .et-transfer-declined {

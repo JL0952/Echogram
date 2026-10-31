@@ -339,6 +339,43 @@ test('sharing a picked kind: the extension is added unless the title has one of 
     assert.equal(shareTag('  ', 'pdf'), null);
 });
 
+test('places: name and address read leniently, written back canonically', () => {
+    const { normalizeMessageTags, parseMessageParts, serializeParts, toPlainText } = window.EchoTextRichMessages;
+    assert.deepEqual(parseMessageParts('<location>Andrea Hylton Home | 352 Browning Pl, Lexington</location>'),
+        [{ type: 'location', name: 'Andrea Hylton Home', address: '352 Browning Pl, Lexington' }]);
+    // Other tag names, a full-width bar, attributes, no address, unclosed
+    assert.equal(normalizeMessageTags('<位置>星巴克（国贸店）｜建国门外大街1号</位置>'), '<location>星巴克（国贸店）｜建国门外大街1号</location>');
+    assert.equal(normalizeMessageTags('<place name="Joe\'s" address="5th Ave"/>'), '<location>Joe\'s | 5th Ave</location>');
+    assert.deepEqual(parseMessageParts('<地点>楼下便利店'), [{ type: 'location', name: '楼下便利店', address: '' }]);
+    for (const text of ['<location>a | b</location>', '<location>home</location>']) assert.equal(serializeParts(parseMessageParts(text)), text);
+    assert.equal(toPlainText('<location>home | 1 Main St</location>'), '[Location: home | 1 Main St]');
+});
+
+test('a place comes with a made-up map: the same for the same place, other places their own', () => {
+    const [m] = build([char('<location>Andrea Hylton Home | 352 Browning Pl</location>\n<location>Claire Lake Park</location>', 0)]);
+    const [a, b] = m.parts;
+    const { placeMap } = window.EchoTextRichMessages;
+    assert.deepEqual(a.map, placeMap('Andrea Hylton Home', '352 Browning Pl'));
+    assert.notDeepEqual(a.map, b.map);
+    assert.equal(a.map.width, 320);
+    assert.equal(a.map.height, 200);
+    assert.match(a.map.streets, /^M-?\d+ -?\d+Q/);
+    assert.ok(a.map.roads.length > 0);
+    // Parks and shores keep clear of the middle, where the place is
+    for (let i = 0; i < 200; i++) {
+        const map = placeMap(`place ${i}`, '');
+        for (const shape of [map.park, map.water].filter(Boolean)) {
+            const xs = [...shape.matchAll(/(-?\d+) (-?\d+)/g)].map(n => Number(n[1]));
+            assert.ok(xs.every(x => x < 160 - 12) || xs.every(x => x > 160 + 12), `place ${i}`);
+        }
+    }
+});
+
+test('without places, a location card becomes the note the model sees', () => {
+    const [m] = build([char('<location>home | 1 Main St</location>', 0)], { features: ['photo'] });
+    assert.deepEqual(m.parts, [{ type: 'text', text: '[Location: home | 1 Main St]' }]);
+});
+
 test('a web page shared without an address has a title and summary and no site', () => {
     const [m] = build([user('<link>西湖攻略 | 一天走完</link>', 0)]);
     assert.deepEqual([m.parts[0].title, m.parts[0].url, m.parts[0].summary, m.parts[0].host], ['西湖攻略', '', '一天走完', '']);

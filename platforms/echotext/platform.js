@@ -95,6 +95,25 @@
         return `<div class="et-share-card et-file-card" data-kind="${p.kind}"${tap}><div class="et-share-body"><div class="et-share-icon"><i class="fa-solid ${FILE_ICONS[p.kind] || FILE_ICONS.other}"></i></div><div class="et-share-info"><div class="et-share-title">${ctx.escapeHtml(p.name || 'File')}</div><div class="et-share-meta">${ctx.escapeHtml(meta)}</div></div></div>${summary}<div class="et-share-footer">File</div></div>`;
     }
 
+    // Apple Maps' red pin; its tip marks the place (style.css)
+    const MAP_PIN = '<svg class="et-map-pin" viewBox="0 0 24 32" aria-hidden="true"><path d="M12 0C5.4 0 0 5.2 0 11.6 0 20.3 12 32 12 32s12-11.7 12-20.4C24 5.2 18.6 0 12 0z"/><circle cx="12" cy="11.6" r="4.4"/></svg>';
+
+    /**
+     * A shared place's made-up map (the view's `map`), cropped from its middle to the
+     * frame: houses along the streets (a verge of open ground between), the streets, a
+     * park, water, the main roads.
+     */
+    function mapArt(map) {
+        const layer = (name, d) => d ? `<path class="et-map-${name}" d="${d}"/>` : '';
+        return `<svg class="et-map-art" viewBox="0 0 ${map.width} ${map.height}" preserveAspectRatio="xMidYMid slice" aria-hidden="true">${layer('houses', map.streets)}${layer('verge', map.streets)}${layer('streets', map.streets)}${layer('park', map.park)}${layer('water', map.water)}${layer('roads', map.roads)}</svg>`;
+    }
+
+    /** A shared place, the same card as a file: the map with its pin on top, the name and address, "Location" underneath. */
+    function locationCard(p, ctx) {
+        const address = p.address ? `<div class="et-share-meta">${ctx.escapeHtml(p.address)}</div>` : '';
+        return `<div class="et-share-card et-location-card"><div class="et-location-map">${mapArt(p.map)}${MAP_PIN}</div><div class="et-share-body"><div class="et-share-info"><div class="et-share-title">${ctx.escapeHtml(p.name || 'Location')}</div>${address}</div></div><div class="et-share-footer"><i class="fa-solid fa-location-dot"></i> Location</div></div>`;
+    }
+
     /** A shared web page, the same card: title and its line, the site underneath. */
     function linkCard(p, ctx) {
         const line = p.summary ? `<div class="et-share-meta">${ctx.escapeHtml(p.summary)}</div>` : '';
@@ -119,10 +138,11 @@
         return `<div class="et-transfer-card et-transfer-${state}${actionable ? ' et-transfer-actionable' : ''}"${actionAttrs}><div class="et-transfer-body"><div class="et-transfer-icon"><i class="fa-solid ${icon}"></i></div><div class="et-transfer-info"><div class="et-transfer-amount">${amountText}</div><div class="et-transfer-status">${label}</div></div></div><div class="et-transfer-footer">Transfer</div></div>`;
     }
 
-    /** Inner content of one bubble: formatted text, a photo card, a voice message, a file or link card, or a transfer card. */
+    /** Inner content of one bubble: formatted text, a photo card, a voice message, a place, a file or link card, or a transfer card. */
     function part(p, ctx) {
         if (p.type === 'photo') return photoCard(p.desc, ctx);
         if (p.type === 'voice') return voiceNote(p, ctx);
+        if (p.type === 'location') return locationCard(p, ctx);
         if (p.type === 'file') return fileCard(p, ctx);
         if (p.type === 'link') return linkCard(p, ctx);
         if (p.type === 'reaction_note') return reactionNote(p.reaction, ctx);
@@ -343,7 +363,7 @@
         id: 'echotext',
         name: 'Echogram',
         // Rich-message features this look supports (lib/features.js)
-        features: ['photo', 'voice', 'react', 'reply', 'transfer', 'file', 'link'],
+        features: ['photo', 'voice', 'location', 'react', 'reply', 'transfer', 'file', 'link'],
         templates: {
             message,
             part,

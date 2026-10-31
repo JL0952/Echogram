@@ -38,8 +38,8 @@ test('format rules list only the enabled features, in a fixed order', () => {
     assert.deepEqual(buildFeaturePrompts(['transfer', 'photo'], ctx).map(p => p.split(':')[0]), ['PHOTOS', 'TRANSFERS']);
     assert.match(buildFeaturePrompts(['react'], ctx)[0], /one of: heart, like\./);
     assert.deepEqual(buildFeaturePrompts(NONE, ctx), []);
-    assert.deepEqual(buildFeaturePrompts(['link', 'file', 'transfer', 'voice', 'reply', 'react', 'photo'], ctx).map(p => p.split(':')[0]),
-        ['PHOTOS', 'VOICE MESSAGES', 'REACTIONS', 'REPLIES', 'TRANSFERS', 'FILES AND LINKS']);
+    assert.deepEqual(buildFeaturePrompts(['link', 'file', 'transfer', 'location', 'voice', 'reply', 'react', 'photo'], ctx).map(p => p.split(':')[0]),
+        ['PHOTOS', 'VOICE MESSAGES', 'LOCATIONS', 'REACTIONS', 'REPLIES', 'TRANSFERS', 'FILES AND LINKS']);
 });
 
 test('the voice rule names the tag, when to use it, and how a character\'s temperament changes that', () => {
@@ -102,6 +102,18 @@ test('the file rule names both tags and keeps sharing to what the story calls fo
 test('files and links degrade to plain-text notes', () => {
     assert.equal(filterContextText('<file>a.pdf | notes</file>', ['photo']), '[File: a.pdf | notes]');
     assert.equal(filterContextText('<link>News | https://a.cn</link>', ['photo']), '[Link: News | https://a.cn]');
+});
+
+test('the location rule names the tag, what it is for, and that the story has to call for it', () => {
+    const [rule] = buildFeaturePrompts(['location'], { charName: 'Mira', userName: 'Me', reactionIds: REACTIONS });
+    assert.equal(rule, 'LOCATIONS: Mira can share a place as <location>place name | address</location> — where Mira is, or where to meet — only when the story calls for it. A <location> from Me is a place they shared: respond to it.');
+    // The "+" menu has it after voice, the way WeChat's panel orders 位置 after 照片
+    assert.deepEqual(Object.keys(getComposerModes(['transfer', 'location', 'photo', 'file'])), ['photo', 'location', 'transfer', 'file']);
+});
+
+test('places degrade to a plain-text note', () => {
+    assert.equal(filterContextText('<location>星巴克 | 建国门外大街1号</location>\n到了', ['photo']), '[Location: 星巴克 | 建国门外大街1号]\n到了');
+    assert.equal(filterContextText('<location>home</location>', ['location']), '<location>home</location>');
 });
 
 test('voice messages degrade to a plain-text note', () => {

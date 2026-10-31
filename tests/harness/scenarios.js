@@ -74,6 +74,16 @@
         { is_user: false, mes: '<quote>just words</quote> fine\n<react>like</react>', send_date: m(5) },
     ];
 
+    // Shared places (<location>, docs/platform-plan.md 11a): both sides, with and without an
+    // address, between texts, a long name, and one quoted
+    const places = () => [
+        { is_user: true, mes: 'where are you?', send_date: m(0) },
+        { is_user: false, mes: 'here\n<location>Andrea Hylton Home | 352 Browning Pl, Lexington, KY 40502</location>\ncome by', send_date: m(1) },
+        { is_user: true, mes: '<location>星巴克（国贸三期店）｜朝阳区建国门外大街1号国贸商城</location>', send_date: m(2) },
+        { is_user: false, mes: '<reply>我: [Location: 星巴克（国贸三期店） | 朝阳区建国门外大街1号国贸商城]</reply>\nok on my way\n<location>a very long place name that goes on and on past what one line can hold</location>', send_date: m(3) },
+        { is_user: true, mes: '<location>home</location>', send_date: m(4) },
+    ];
+
     const baseSettings = {
         showAvatar: true, swipedMessages: true, memoryEnabled: true, memoryAutoExtract: true,
         memoryHighlightStyle: 'underline', autoScroll: true, verbosityByCharacter: { 'mira.png': 'short' },
@@ -98,6 +108,7 @@
         { name: 'replies', history: replies(), settings: { ...baseSettings } },
         { name: 'empty', history: [], settings: { ...baseSettings } },
         { name: 'empty, no character', history: [], noChar: true, settings: { ...baseSettings } },
+        { name: 'places', history: places(), settings: { ...baseSettings } },
     ];
     window.EchoTextScenarioReactions = FA_REACTIONS;
 })();

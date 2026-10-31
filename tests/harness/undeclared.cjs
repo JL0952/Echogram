@@ -10,7 +10,7 @@ const ST_ROOT = process.env.ST_ROOT || path.resolve(REPO, '../../../..');
 const acorn = require(path.join(ST_ROOT, 'node_modules/acorn'));
 const REF = process.argv[2] || 'HEAD';
 // Browser built-ins Node doesn't have (so they'd look undeclared)
-const BROWSER_GLOBALS = new Set(['FileReader', 'Image', 'HTMLElement', 'HTMLImageElement', 'MutationObserver', 'ResizeObserver', 'IntersectionObserver', 'getComputedStyle', 'requestAnimationFrame', 'cancelAnimationFrame', 'matchMedia', 'localStorage', 'sessionStorage', 'navigator', 'location', 'innerWidth', 'innerHeight']);
+const BROWSER_GLOBALS = new Set(['FileReader', 'Image', 'HTMLElement', 'HTMLImageElement', 'MutationObserver', 'ResizeObserver', 'IntersectionObserver', 'NodeFilter', 'getComputedStyle', 'requestAnimationFrame', 'cancelAnimationFrame', 'matchMedia', 'localStorage', 'sessionStorage', 'navigator', 'location', 'innerWidth', 'innerHeight']);
 
 function undeclared(code) {
     const ast = acorn.parse(code, { ecmaVersion: 'latest', sourceType: 'module' });

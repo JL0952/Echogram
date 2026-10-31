@@ -69,6 +69,8 @@
         .replace(/ et-tapback-(arriving|new)/g, '')
         .replace(/ data-et-role="[^"]*"/g, '')
         .replace(/ data-et-refreshed=""/g, '')
+        // A text's bubble fitted to its longest line (index.js fitTexts): layout, not markup
+        .replace(/ style="width: [\d.]+px;"/g, '')
         .replace(/>\s+</g, '><')
         .replace(/\s+/g, ' ')
         .replace(/ data-et-action="[^"]*"/g, '')

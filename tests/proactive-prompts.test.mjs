@@ -6,8 +6,8 @@ import { readFileSync } from 'node:fs';
 globalThis.window = {};
 new Function(readFileSync(new URL('../lib/proactive-messaging.js', import.meta.url), 'utf8'))();
 
-const WECHAT = ['photo', 'voice', 'transfer', 'file', 'link'];
-const ECHOTEXT = ['photo', 'voice', 'react', 'transfer', 'file', 'link'];
+const WECHAT = ['photo', 'voice', 'location', 'transfer', 'file', 'link'];
+const ECHOTEXT = ['photo', 'voice', 'location', 'react', 'transfer', 'file', 'link'];
 
 function proactive(features) {
     return window.EchoTextProactiveMessaging.createProactiveMessaging({
@@ -58,14 +58,14 @@ test('a trigger turn offers its media when the platform has them', () => {
         '[Instruction for this turn — not a message from Me; never quote or answer it: '
         + 'It is {{time}} on {{weekday}} — morning or evening commute time. It has been {{timeSinceLast}} since {{user}} last messaged. Text them from the commute — traffic, transit, people-watching, or just boredom.'
         + ' If it feels natural, send a <photo> of the view on the way with it, or instead of text.'
-        + ' Reply only with what Mira sends now, in the usual format: text messages, plus a photo, a voice message, a file or a link when one fits.]');
+        + ' Reply only with what Mira sends now, in the usual format: text messages, plus a photo, a voice message, a location, a file or a link when one fits.]');
     assert.match(turn(ECHOTEXT, 'song_stuck'), /send a <voice> message humming or singing a bit of it with it/);
     assert.match(turn(WECHAT, 'random_thought'), /send a <photo> of what sparked it or a <link> with it/);
 });
 
 test('media the platform lacks are never offered', () => {
     const plain = turn(['transfer'], 'commute_ping');
-    assert.doesNotMatch(plain, /photo|voice|link|file/);
+    assert.doesNotMatch(plain, /photo|voice|location|link|file/);
     assert.match(plain, /Reply only with the text message\(s\) Mira sends now, in the usual format\.\]$/);
     assert.doesNotMatch(turn(['photo'], 'song_stuck'), /voice/);
     assert.match(turn(['photo'], 'random_thought'), /send a <photo> of what sparked it with it, or instead of text\. Reply only with what Mira sends now, in the usual format: text messages, plus a photo when one fits\.\]$/);
@@ -74,5 +74,5 @@ test('media the platform lacks are never offered', () => {
 test('triggers without a media idea still allow any media', () => {
     const text = turn(WECHAT, 'checkin');
     assert.doesNotMatch(text, /If it feels natural/);
-    assert.match(text, /plus a photo, a voice message, a file or a link when one fits/);
+    assert.match(text, /plus a photo, a voice message, a location, a file or a link when one fits/);
 });

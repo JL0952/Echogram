@@ -31,7 +31,7 @@ sed -i '' 's/^const Platforms = window\.EchoTextPlatforms;/const Platforms = { .
 
 node "$H/gen.cjs" "$REPO/index.js" new "$B/bundle-new.js"
 EXTRA=bindBubbleTouchSwipe,updateSwipeInPlace node "$H/gen.cjs" "$REPO/index.js" touch "$B/bundle-touch.js"
-CHROME=buildPanelHtml,modeMenuItemInner,toggleAttachMenu,toggleAttachPanel,bindAttachPanel,setComposeMode,isVoiceButtonMode,getChatCurrency,shareType,shareTypeLabel,renderShareTypeChip,toggleShareTypeMenu,getCharAvatarUrl,getCardAvatarUrl,getCustomCharAvatarUrl,openAvatarMenu,changeCharacterAvatar,setCustomCharAvatar,deleteUserImage,readFileAsDataUrl,shrinkImageDataUrl,openAvatarLightbox,AVATAR_SIZE
+CHROME=buildPanelHtml,modeMenuItemInner,toggleAttachMenu,toggleAttachPanel,bindAttachPanel,setComposeMode,isVoiceButtonMode,getChatCurrency,shareType,shareTypeLabel,shareTypes,renderShareTypeChip,toggleShareTypeMenu,getCharAvatarUrl,getCardAvatarUrl,getCustomCharAvatarUrl,openAvatarMenu,changeCharacterAvatar,setCustomCharAvatar,deleteUserImage,readFileAsDataUrl,shrinkImageDataUrl,openAvatarLightbox,AVATAR_SIZE
 EXTRA=$CHROME node "$H/gen.cjs" "$REPO/index.js" chrome "$B/bundle-chrome.js"
 # emotion.html: the panel plus how a reply lands (Auto mode's <mood> line), the model stubbed,
 # quoted replies (Reply in a bubble's menu, the draft, sending), per-bubble tapbacks, Add Memory

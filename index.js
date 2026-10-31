@@ -109,8 +109,8 @@
     let fabDragging = false;
     let loadedFontFamily = null;
     let showTypingIndicator = false;
-    // When set ('photo' | 'voice' | 'transfer' | 'file' | 'link'), the next message the user sends
-    // is that kind of content and the typed text is its description / words / amount
+    // When set ('photo' | 'voice' | 'location' | 'transfer' | 'file' | 'link'), the next message the user
+    // sends is that kind of content and the typed text is its description / words / place / amount
     let composeMode = null;
     // Replying (feature 'reply'): { charKey, name, text } of the bubble picked, until the next send
     let replyDraft = null;
@@ -1448,6 +1448,8 @@
         document.documentElement.style.setProperty('--et-fab-opacity', (settings.fabOpacity || 100) / 100);
         document.documentElement.style.setProperty('--et-line-spacing', (settings.lineSpacing || 1.3).toFixed(2));
         document.documentElement.style.setProperty('--et-paragraph-spacing', (settings.paragraphSpacing || 12) + 'px');
+        // The font and its size change where lines break
+        queueFitTexts();
 
         loadGoogleFont(settings.fontFamily);
 
@@ -5122,6 +5124,9 @@
             mes = `<photo>${text.replace(/\s*\n\s*/g, ' ')}</photo>`;
         } else if (mode === 'voice') {
             mes = `<voice>${text.replace(/\s*\n\s*/g, ' ')}</voice>`;
+        } else if (mode === 'location') {
+            // "place | address"
+            mes = `<location>${text.replace(/\s*\n\s*/g, ' ')}</location>`;
         } else if (mode === 'file') {
             // "title | description", as the kind picked on the chip
             mes = RichMessages.shareTag(text, shareType);
@@ -6380,10 +6385,83 @@
         if (window.ResizeObserver) new ResizeObserver(queueSharedFill).observe(list);
     }
 
+    // ── Bubbles hug their longest line ───────────────────────────────────────
+    // A box that wraps its text keeps the whole width it was allowed, so a text whose
+    // lines break early (before a long word) leaves a gap between its words and the
+    // bubble's right edge; messaging apps fit the bubble to the longest line instead.
+    // Every text in the list (data-et-role="text") gets that width whenever messages
+    // come, show or change, the list is resized or fonts change. A text being edited
+    // keeps the full width.
+    let fitTextsFrame = 0;
+
+    /** How far a text's longest line ends short of its box, in px (0 when it fills it or shows nothing). */
+    function textGap(el) {
+        let right = -Infinity;
+        const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+        const range = document.createRange();
+        for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+            range.selectNodeContents(node);
+            for (const rect of range.getClientRects()) right = Math.max(right, rect.right);
+        }
+        // Inline code's padding and border reach past its text
+        for (const code of el.querySelectorAll('code')) {
+            for (const rect of code.getClientRects()) right = Math.max(right, rect.right);
+        }
+        if (right === -Infinity) return 0;
+        const style = getComputedStyle(el);
+        const contentRight = el.getBoundingClientRect().right - parseFloat(style.paddingRight) - parseFloat(style.borderRightWidth);
+        return Math.max(0, Math.floor(contentRight - right));
+    }
+
+    function fitTexts() {
+        fitTextsFrame = 0;
+        const list = document.getElementById('et-messages');
+        if (!list) return;
+        const texts = [...list.querySelectorAll('[data-et-role~="text"]')];
+        // All cleared first, so a wider list lets them grow back; then measured, then set
+        for (const el of texts) el.style.width = '';
+        const widths = texts.map(el => {
+            if (el.isContentEditable) return null;
+            const gap = textGap(el);
+            return gap > 1 ? parseFloat(getComputedStyle(el).width) - gap : null;
+        });
+        texts.forEach((el, i) => {
+            if (widths[i] !== null) el.style.width = `${widths[i]}px`;
+        });
+    }
+
+    function queueFitTexts() {
+        if (!fitTextsFrame) fitTextsFrame = requestAnimationFrame(fitTexts);
+    }
+
+    /** Keeps the texts on the list now in the panel fitted (setting their widths isn't watched). */
+    function watchTextFit() {
+        const list = document.getElementById('et-messages');
+        if (!list || list.etTextFit) return;
+        list.etTextFit = true;
+        // Typing in a text being edited changes nothing to fit
+        const editing = node => !!(node.nodeType === 1 ? node : node.parentElement)?.isContentEditable;
+        new MutationObserver(records => {
+            if (records.some(r => !editing(r.target))) queueFitTexts();
+        }).observe(list, { childList: true, subtree: true, attributes: true,
+            attributeFilter: ['hidden', 'aria-expanded', 'data-et-arrive', 'contenteditable', 'data-platform'] });
+        let listWidth = 0;
+        if (window.ResizeObserver) {
+            new ResizeObserver(([entry]) => {
+                if (entry.contentRect.width === listWidth) return;
+                listWidth = entry.contentRect.width;
+                queueFitTexts();
+            }).observe(list);
+        }
+        document.fonts?.addEventListener?.('loadingdone', queueFitTexts);
+    }
+
     function syncPlatformChrome() {
         const platform = getActivePlatform();
         watchSharedFill();
         queueSharedFill();
+        watchTextFit();
+        queueFitTexts();
         jQuery('#et-panel').attr({
             'data-platform': platform.id,
             'data-et-scheme': getColorScheme(),

@@ -35,6 +35,9 @@
     const IMAGE_GLYPH = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M19 4H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2zm0 14H5l4.5-6 3.5 4.5 2.5-3L19 18zM8.5 10a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3z"/></svg>';
     const LINK_GLYPH = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 14a4 4 0 0 0 5.66 0l3.17-3.17a4 4 0 0 0-5.66-5.66L11.5 6.84M14 10a4 4 0 0 0-5.66 0l-3.17 3.17a4 4 0 0 0 5.66 5.66l1.67-1.67" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>';
 
+    // A location card's pin (from a WeChat screenshot): a green dot with a white centre on a short stem
+    const MAP_PIN = '<svg class="wx-map-pin" viewBox="0 0 26 42" aria-hidden="true"><circle cx="13" cy="13" r="12"/><circle class="wx-map-pin-dot" cx="13" cy="13" r="5"/><rect x="11.5" y="22" width="3" height="20" rx="1.5"/></svg>';
+
     const pad = n => String(n).padStart(2, '0');
 
     /** "17KB", "1.2MB": sizes the way WeChat writes them. */
@@ -128,6 +131,22 @@
         return `<div class="wx-file" data-side="${side}"${tap}><span class="wx-card-tail"></span><div class="wx-file-body"><div class="wx-file-text"><span class="wx-file-name">${ctx.escapeHtml(p.name || '文件')}</span><span class="wx-file-size">${formatSize(p.size)}</span></div><span class="wx-file-icon" data-kind="${p.kind}">${ctx.escapeHtml(icon)}</span></div></div>${summary}`;
     }
 
+    /**
+     * A shared place's made-up map (the view's `map`), cropped from its middle to the
+     * frame: houses along the streets (a verge of open ground between), the streets, a
+     * park, water, the main roads.
+     */
+    function mapArt(map) {
+        const layer = (name, d) => d ? `<path class="wx-map-${name}" d="${d}"/>` : '';
+        return `<svg class="wx-map-art" viewBox="0 0 ${map.width} ${map.height}" preserveAspectRatio="xMidYMid slice" aria-hidden="true">${layer('houses', map.streets)}${layer('verge', map.streets)}${layer('streets', map.streets)}${layer('park', map.park)}${layer('water', map.water)}${layer('roads', map.roads)}</svg>`;
+    }
+
+    /** A shared place, as WeChat's location card: the name and address over the map, the pin in its middle. */
+    function locationCard(p, ctx, side) {
+        const address = p.address ? `<div class="wx-location-address">${ctx.escapeHtml(p.address)}</div>` : '';
+        return `<div class="wx-location" data-side="${side}"><span class="wx-card-tail"></span><div class="wx-location-head"><div class="wx-location-name">${ctx.escapeHtml(p.name || '位置')}</div>${address}</div><div class="wx-location-map">${mapArt(p.map)}${MAP_PIN}</div></div>`;
+    }
+
     /** A shared web page (soloshow's link card): title, its line beside a picture, the site underneath. */
     function linkCard(p, ctx, side) {
         const title = ctx.escapeHtml(p.title || p.host || '链接');
@@ -142,11 +161,12 @@
         return `<div class="wx-quote"><span>${name ? `${ctx.escapeHtml(name)}：` : ''}${ctx.escapeHtml(text)}</span></div>`;
     }
 
-    /** Inner content of one row: a text bubble, a photo, a voice message, a file or link card, or a transfer card. */
+    /** Inner content of one row: a text bubble, a photo, a voice message, a place, a file or link card, or a transfer card. */
     function part(p, ctx, m) {
         const side = m.isUser ? 'right' : 'left';
         if (p.type === 'photo') return photo(p, ctx);
         if (p.type === 'voice') return voice(p, ctx, side);
+        if (p.type === 'location') return locationCard(p, ctx, side);
         if (p.type === 'file') return fileCard(p, ctx, side);
         if (p.type === 'link') return linkCard(p, ctx, side);
         if (p.type.startsWith('transfer')) return transferCard(p, m, ctx);
@@ -220,13 +240,14 @@
     window.EchoTextPlatforms.wechat = {
         id: 'wechat',
         name: 'WeChat',
-        features: ['photo', 'voice', 'reply', 'transfer', 'file', 'link'],
+        features: ['photo', 'voice', 'location', 'reply', 'transfer', 'file', 'link'],
         stylesheet: 'platform.css',
         // Voice messages are typed from the input bar's voice button, as WeChat records them
         voiceButton: { placeholder: '输入要说的话，作为语音发出' },
         // "+" raises a panel of these tiles (lib/features.js composer entries), labelled the WeChat way
         composerPanel: {
             photo: { label: '照片', icon: 'fa-image', placeholder: '描述你要发的照片' },
+            location: { label: '位置', icon: 'fa-location-dot', placeholder: '地点 | 地址' },
             transfer: { label: '转账', icon: 'fa-right-left', placeholder: '转账金额' },
             file: { label: '文件', icon: 'fa-folder', placeholder: '标题 | 描述', typeLabels: { link: '网页', other: '其他' } },
         },
