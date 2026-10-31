@@ -373,7 +373,7 @@ test('a place comes with a made-up map: the same for the same place, other place
 
 test('songs: title and artist read leniently, written back canonically', () => {
     const { normalizeMessageTags, parseMessageParts, serializeParts, toPlainText } = window.EchoTextRichMessages;
-    assert.deepEqual(parseMessageParts('<music>晴天 | 周杰伦</music>'), [{ type: 'music', title: '晴天', artist: '周杰伦' }]);
+    assert.deepEqual(parseMessageParts('<music>晴天 | 周杰伦</music>'), [{ type: 'music', title: '晴天', artist: '周杰伦', lyrics: [] }]);
     // Other tag names, a dash, title marks, "artist的《title》", quotes, attributes
     assert.equal(normalizeMessageTags('<song>Espresso - Sabrina Carpenter</song>'), '<music>Espresso | Sabrina Carpenter</music>');
     assert.equal(normalizeMessageTags('<歌>《起风了》买辣椒也用券</歌>'), '<music>起风了 | 买辣椒也用券</music>');
@@ -385,6 +385,23 @@ test('songs: title and artist read leniently, written back canonically', () => {
     assert.equal(normalizeMessageTags('<track>Stand by Me</track>'), '<music>Stand by Me</music>');
     for (const text of ['<music>a | b</music>', '<music>Lemon</music>']) assert.equal(serializeParts(parseMessageParts(text)), text);
     assert.equal(toPlainText('<music>Lemon | 米津玄師</music>'), '[Music: Lemon | 米津玄師]');
+});
+
+test('a song shared with some of its lines: the third field, one line per semicolon', () => {
+    const { normalizeMessageTags, parseMessageParts, serializeParts } = window.EchoTextRichMessages;
+    const song = text => parseMessageParts(text)[0];
+    assert.deepEqual(song('<music>Song A | Band B | a made-up line; another；third</music>').lyrics, ['a made-up line', 'another', 'third']);
+    assert.deepEqual(song('<music>Song A | Band B | only one line</music>').lyrics, ['only one line']);
+    // A field with a semicolon right after the title is the lines (no artist then)
+    assert.deepEqual([song('<music>Song A | one; two</music>').artist, song('<music>Song A | one; two</music>').lyrics], ['', ['one', 'two']]);
+    // Lines given as more fields or on lines of their own
+    assert.equal(normalizeMessageTags('<music>Song A | Band B | one | two</music>'), '<music>Song A | Band B | one; two</music>');
+    assert.equal(normalizeMessageTags('<music>Song A | Band B\none\ntwo</music>'), '<music>Song A | Band B | one; two</music>');
+    // Written back as they came, an empty artist keeping its place
+    for (const text of ['<music>Song A | Band B | one; two</music>', '<music>Song A | | one</music>', '<music>Song A | Band B</music>']) {
+        assert.equal(serializeParts(parseMessageParts(text)), text);
+    }
+    assert.deepEqual(song('<music>Song A | Band B |</music>').lyrics, []);
 });
 
 test('without places, a location card becomes the note the model sees', () => {

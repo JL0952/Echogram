@@ -168,6 +168,18 @@
         return `<div class="wx-music"><div class="wx-music-card"><span class="wx-music-cover">${NOTE_GLYPH}</span><div class="wx-music-text"><div class="wx-music-title">${ctx.escapeHtml(p.title || '音乐')}</div>${artist}</div><span class="wx-music-play">${PLAY_GLYPH}</span></div><div class="wx-music-app"><span class="wx-music-app-icon">${NOTE_GLYPH}</span>QQ音乐</div></div>`;
     }
 
+    /**
+     * A shared song with some of its lines. WeChat has no lyrics card of its own, so this
+     * one crosses its music card with Spotify's: the cover, title and artist and the play
+     * mark along the top, the lines large and bold below (core code fits their size to
+     * the card), white on the cover's colour; the app underneath.
+     */
+    function lyricsCard(p, ctx) {
+        const artist = p.artist ? `<div class="wx-music-artist">${ctx.escapeHtml(p.artist)}</div>` : '';
+        const lines = p.lyrics.map(line => `<div>${ctx.escapeHtml(line)}</div>`).join('');
+        return `<div class="wx-music wx-lyrics"><div class="wx-lyrics-card"><div class="wx-lyrics-head"><span class="wx-lyrics-cover">${NOTE_GLYPH}</span><div class="wx-music-text"><div class="wx-music-title">${ctx.escapeHtml(p.title || '音乐')}</div>${artist}</div><span class="wx-music-play">${PLAY_GLYPH}</span></div><div class="wx-lyrics-lines" data-et-role="lyrics">${lines}</div></div><div class="wx-music-app"><span class="wx-music-app-icon">${NOTE_GLYPH}</span>QQ音乐</div></div>`;
+    }
+
     /** The message a row answers (<reply>): WeChat's grey box under the bubble, "名字：内容". */
     function replyQuote(p, ctx) {
         if (!p.replyTo) return '';
@@ -183,7 +195,7 @@
         if (p.type === 'location') return locationCard(p, ctx, side);
         if (p.type === 'file') return fileCard(p, ctx, side);
         if (p.type === 'link') return linkCard(p, ctx, side);
-        if (p.type === 'music') return musicCard(p, ctx);
+        if (p.type === 'music') return p.lyrics?.length ? lyricsCard(p, ctx) : musicCard(p, ctx);
         if (p.type.startsWith('transfer')) return transferCard(p, m, ctx);
         if (p.type !== 'text') return '';
         return `<div class="wx-bubble wx-bubble-${side}"><div class="wx-text" data-et-role="text">${ctx.formatText(p.text)}</div></div>`;
@@ -265,7 +277,7 @@
             location: { label: '位置', icon: 'fa-location-dot', placeholder: '地点 | 地址' },
             transfer: { label: '转账', icon: 'fa-right-left', placeholder: '转账金额' },
             file: { label: '文件', icon: 'fa-folder', placeholder: '标题 | 描述', typeLabels: { link: '网页', other: '其他' } },
-            music: { label: '音乐', icon: 'fa-music', placeholder: '歌名 | 歌手' },
+            music: { label: '音乐', icon: 'fa-music', placeholder: '歌名 | 歌手 | 歌词' },
         },
         templates: {
             message,

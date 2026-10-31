@@ -129,6 +129,17 @@
         return `<div class="et-share-card et-music-card"><div class="et-share-body"><div class="et-music-cover"><i class="fa-solid fa-music"></i></div><div class="et-share-info"><div class="et-share-title">${ctx.escapeHtml(p.title || 'Music')}</div>${artist}</div><span class="et-music-play"><i class="fa-solid fa-play"></i></span></div><div class="et-share-footer"><i class="fa-solid fa-music"></i> Music</div></div>`;
     }
 
+    /**
+     * A shared song with some of its lines, on the transfer card's theme colour: the
+     * cover, title and artist and a play button along the top, the lines large and bold
+     * below (core code fits their size to the card), "Music" underneath.
+     */
+    function lyricsCard(p, ctx) {
+        const artist = p.artist ? `<div class="et-lyrics-artist">${ctx.escapeHtml(p.artist)}</div>` : '';
+        const lines = p.lyrics.map(line => `<div>${ctx.escapeHtml(line)}</div>`).join('');
+        return `<div class="et-lyrics-card"><div class="et-lyrics-head"><div class="et-music-cover"><i class="fa-solid fa-music"></i></div><div class="et-lyrics-song"><div class="et-lyrics-title">${ctx.escapeHtml(p.title || 'Music')}</div>${artist}</div><span class="et-music-play"><i class="fa-solid fa-play"></i></span></div><div class="et-lyrics-lines" data-et-role="lyrics">${lines}</div><div class="et-lyrics-footer"><i class="fa-solid fa-music"></i> Music</div></div>`;
+    }
+
     /** A transfer or transfer-response card, from a view-model part (its status and display amount). */
     function transferCard(part, ctx) {
         const { status: state, actionable } = part;
@@ -154,7 +165,7 @@
         if (p.type === 'location') return locationCard(p, ctx);
         if (p.type === 'file') return fileCard(p, ctx);
         if (p.type === 'link') return linkCard(p, ctx);
-        if (p.type === 'music') return musicCard(p, ctx);
+        if (p.type === 'music') return p.lyrics?.length ? lyricsCard(p, ctx) : musicCard(p, ctx);
         if (p.type === 'reaction_note') return reactionNote(p.reaction, ctx);
         if (p.type !== 'text') return transferCard(p, ctx);
         return `<div class="et-bubble-text" data-et-role="text">${ctx.formatText(p.text)}</div>`;

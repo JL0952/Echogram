@@ -93,6 +93,14 @@
         { is_user: false, mes: '<music>A Very Long Song Title That Goes On And On | Some Band With A Long Name</music>\n<music>Lemon</music>', send_date: m(3) },
     ];
 
+    // Songs with some of their lines (made-up words): one short line, a few lines in
+    // Chinese, and far too many to fit (only the first ones show, smaller)
+    const lyrics = () => [
+        { is_user: false, mes: '<music>Song A | Band B | we left the lights on</music>', send_date: m(0) },
+        { is_user: true, mes: '<music>雨后的街 | 某个乐队 | 路灯一盏一盏亮起来; 我站在你说过的路口; 等风把话吹回来</music>', send_date: m(1) },
+        { is_user: false, mes: '<music>Long One | Nobody In Particular | the first line goes here and keeps going; then a second one; a third that is a little longer than the others were; four; five comes next; six is here too; seven; eight and still more; nine; ten, the last</music>', send_date: m(2) },
+    ];
+
     const baseSettings = {
         showAvatar: true, swipedMessages: true, memoryEnabled: true, memoryAutoExtract: true,
         memoryHighlightStyle: 'underline', autoScroll: true, verbosityByCharacter: { 'mira.png': 'short' },
@@ -119,6 +127,7 @@
         { name: 'empty, no character', history: [], noChar: true, settings: { ...baseSettings } },
         { name: 'places', history: places(), settings: { ...baseSettings } },
         { name: 'songs', history: songs(), settings: { ...baseSettings } },
+        { name: 'lyrics', history: lyrics(), settings: { ...baseSettings } },
     ];
     window.EchoTextScenarioReactions = FA_REACTIONS;
 })();

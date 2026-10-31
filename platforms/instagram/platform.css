@@ -1185,6 +1185,100 @@
     opacity: 0.9;
 }
 
+/* ── A song with some of its lines, as Spotify's lyrics card (from a screenshot): the
+   cover, title and artist small at the top, the lines large, bold and black, Spotify's
+   mark at the foot, on a colour from the cover (Spotify's red until there is one).
+   Core code (fitLyrics) picks the lines' size between --et-lyrics-max and
+   --et-lyrics-min to fit the box's max-height ── */
+
+[data-platform="instagram"] .ig-lyrics {
+    width: 240px;
+    max-width: 100%;
+    box-sizing: border-box;
+    padding: 18px 18px 16px;
+    border-radius: 14px;
+    color: var(--ig-lyrics-ink, #121212);
+    background: var(--ig-lyrics-bg, #c45c5c);
+}
+
+[data-platform="instagram"] .ig-lyrics-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+[data-platform="instagram"] .ig-lyrics-cover {
+    flex: 0 0 30px;
+    display: grid;
+    place-items: center;
+    width: 30px;
+    height: 30px;
+    border-radius: 3px;
+    color: #ffffff;
+    background: rgba(0, 0, 0, 0.28);
+}
+
+[data-platform="instagram"] .ig-lyrics-cover > svg {
+    width: 16px;
+    height: 16px;
+}
+
+[data-platform="instagram"] .ig-lyrics-song {
+    min-width: 0;
+}
+
+[data-platform="instagram"] .ig-lyrics-title,
+[data-platform="instagram"] .ig-lyrics-artist {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+[data-platform="instagram"] .ig-lyrics-title {
+    font-size: 12px;
+    font-weight: 700;
+}
+
+[data-platform="instagram"] .ig-lyrics-artist {
+    font-size: 11px;
+    opacity: 0.8;
+}
+
+[data-platform="instagram"] .ig-lyrics-lines {
+    --et-lyrics-max: 22px;
+    --et-lyrics-min: 15px;
+    max-height: 168px;
+    overflow: hidden;
+    margin-top: 16px;
+    font-size: 18px;
+    font-weight: 800;
+    line-height: 1.15;
+    letter-spacing: -0.01em;
+    overflow-wrap: anywhere;
+}
+
+[data-platform="instagram"] .ig-lyrics-brand {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    margin-top: 18px;
+    font-size: 13px;
+    font-weight: 700;
+}
+
+[data-platform="instagram"] .ig-lyrics-mark {
+    width: 20px;
+    height: 20px;
+    fill: currentColor;
+}
+
+[data-platform="instagram"] .ig-lyrics-mark path {
+    fill: none;
+    stroke: var(--ig-lyrics-bg, #c45c5c);
+    stroke-width: 1.8;
+    stroke-linecap: round;
+}
+
 /* ── Voice: play, waveform, length; tapped, the words underneath ── */
 
 [data-platform="instagram"] .ig-voice {

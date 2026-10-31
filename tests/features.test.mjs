@@ -118,13 +118,14 @@ test('places degrade to a plain-text note', () => {
 
 test('the music rule asks for a real song, its title and artist as released', () => {
     const [rule] = buildFeaturePrompts(['music'], { charName: 'Mira', userName: 'Me', reactionIds: REACTIONS });
-    assert.equal(rule, 'MUSIC: Mira can share a song as <music>song title | artist</music> — a real song that exists, with its title and artist as released, never translated — now and then, when a song fits the moment or comes up. A <music> from Me is a song they shared: respond to it.');
+    assert.equal(rule, 'MUSIC: Mira can share a song as <music>song title | artist</music>, or with a few of its lines as <music>song title | artist | a line; the next line</music> — a real song that exists, with its title and artist as released, never translated — now and then, when a song fits the moment or comes up. A <music> from Me is a song they shared: respond to it.');
     // The "+" menu has it last, the way WeChat's panel ends with 音乐
     assert.deepEqual(Object.keys(getComposerModes(['music', 'file', 'location', 'photo', 'transfer'])), ['photo', 'location', 'transfer', 'file', 'music']);
 });
 
 test('songs degrade to a plain-text note', () => {
     assert.equal(filterContextText('<music>晴天 | 周杰伦</music>\n听这个', ['photo']), '[Music: 晴天 | 周杰伦]\n听这个');
+    assert.equal(filterContextText('<music>Song A | Band B | one line; two</music>', ['photo']), '[Music: Song A | Band B | one line; two]');
     assert.equal(filterContextText('<music>Lemon</music>', ['music']), '<music>Lemon</music>');
 });
 

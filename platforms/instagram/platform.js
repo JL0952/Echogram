@@ -24,6 +24,8 @@
     const EXTERNAL_GLYPH = '<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>';
     // lucide music, for a song without its cover
     const NOTE_GLYPH = '<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>';
+    // Spotify's mark, for a lyrics card: a disc with its waves cut out in the card's colour (platform.css)
+    const SPOTIFY_GLYPH = '<svg class="ig-lyrics-mark" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="12"/><path d="M6.2 9.3c3.9-1.2 8.3-.9 11.6 1.1M6.8 12.6c3.2-1 6.8-.7 9.6.9M7.4 15.6c2.6-.7 5.2-.5 7.4.7"/></svg>';
     const PLAY_GLYPH = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M8 5.5v13a1 1 0 0 0 1.5.86l10.5-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5z"/></svg>';
 
     const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -126,13 +128,24 @@
         return `<div class="ig-music"><span class="ig-music-disc"><span class="ig-music-label"></span></span><div class="ig-music-cover"><span class="ig-music-note">${NOTE_GLYPH}</span><span class="ig-music-play">${PLAY_GLYPH}</span><div class="ig-music-text"><div class="ig-music-title">${ctx.escapeHtml(p.title || 'Music')}</div>${artist}</div></div></div>`;
     }
 
+    /**
+     * A shared song with some of its lines, as the Spotify lyrics card people share to
+     * Instagram: the cover, title and artist small at the top, the lines large and bold
+     * (core code fits their size to the card), Spotify's mark at the foot.
+     */
+    function lyricsCard(p, ctx) {
+        const artist = p.artist ? `<div class="ig-lyrics-artist">${ctx.escapeHtml(p.artist)}</div>` : '';
+        const lines = p.lyrics.map(line => `<div>${ctx.escapeHtml(line)}</div>`).join('');
+        return `<div class="ig-lyrics"><div class="ig-lyrics-head"><span class="ig-lyrics-cover">${NOTE_GLYPH}</span><div class="ig-lyrics-song"><div class="ig-lyrics-title">${ctx.escapeHtml(p.title || 'Music')}</div>${artist}</div></div><div class="ig-lyrics-lines" data-et-role="lyrics">${lines}</div><div class="ig-lyrics-brand">${SPOTIFY_GLYPH}<span>Spotify</span></div></div>`;
+    }
+
     /** One bubble's content: text, a photo, a voice message, a place, a link card or a song. */
     function part(p, ctx) {
         if (p.type === 'photo') return photo(p, ctx);
         if (p.type === 'voice') return voice(p, ctx);
         if (p.type === 'location') return locationCard(p, ctx);
         if (p.type === 'link') return linkCard(p, ctx);
-        if (p.type === 'music') return musicCard(p, ctx);
+        if (p.type === 'music') return p.lyrics?.length ? lyricsCard(p, ctx) : musicCard(p, ctx);
         if (p.type !== 'text') return '';
         return `<div class="ig-bubble"><div class="ig-text" data-et-role="text">${ctx.formatText(p.text)}</div></div>`;
     }

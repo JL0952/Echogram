@@ -5128,7 +5128,7 @@
             // "place | address"
             mes = `<location>${text.replace(/\s*\n\s*/g, ' ')}</location>`;
         } else if (mode === 'music') {
-            // "song | artist"
+            // "song | artist", or "song | artist | a line; the next line"
             mes = `<music>${text.replace(/\s*\n\s*/g, ' ')}</music>`;
         } else if (mode === 'file') {
             // "title | description", as the kind picked on the chip
@@ -6394,7 +6394,8 @@
     // bubble's right edge; messaging apps fit the bubble to the longest line instead.
     // Every text in the list (data-et-role="text") gets that width whenever messages
     // come, show or change, the list is resized or fonts change. A text being edited
-    // keeps the full width.
+    // keeps the full width. A song's shared lines (data-et-role="lyrics") are fitted to
+    // their card in the same pass.
     let fitTextsFrame = 0;
 
     /** How far a text's longest line ends short of its box, in px (0 when it fills it or shows nothing). */
@@ -6431,6 +6432,27 @@
         texts.forEach((el, i) => {
             if (widths[i] !== null) el.style.width = `${widths[i]}px`;
         });
+        for (const el of list.querySelectorAll('[data-et-role~="lyrics"]')) fitLyrics(el);
+    }
+
+    /**
+     * Fits a song's shared lines to their box, whose height the platform's CSS caps
+     * (max-height): the largest font between its --et-lyrics-max and --et-lyrics-min
+     * (px) at which they all fit, and when even the smallest is too big, only as many
+     * lines from the first as fit. Never a box that scrolls or spills over.
+     */
+    function fitLyrics(el) {
+        const lines = [...el.children];
+        for (const line of lines) line.style.display = '';
+        el.style.fontSize = '';
+        const style = getComputedStyle(el);
+        const max = parseFloat(style.getPropertyValue('--et-lyrics-max')) || parseFloat(style.fontSize);
+        const min = Math.min(max, parseFloat(style.getPropertyValue('--et-lyrics-min')) || max);
+        const overflows = () => el.scrollHeight > el.clientHeight + 1;
+        let size = max;
+        el.style.fontSize = `${size}px`;
+        while (size > min && overflows()) el.style.fontSize = `${--size}px`;
+        for (let i = lines.length - 1; i > 0 && overflows(); i--) lines[i].style.display = 'none';
     }
 
     function queueFitTexts() {

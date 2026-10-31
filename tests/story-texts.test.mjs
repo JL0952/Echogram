@@ -83,8 +83,8 @@ test('a shared place is written out as its name and address', () => {
 
 test('a shared song is written out as its title and artist', () => {
     const chat = [story('开场', 0), story('next', 10, true)];
-    insertTexts(chat, [text('<music>晴天 | 周杰伦</music>', 1), text('<music>Lemon</music>', 2, true)], options);
-    assert.deepEqual(shape(chat), ['开场', '间谍: [Song: 晴天 — 周杰伦] | 齐宁: [Song: Lemon]', 'next']);
+    insertTexts(chat, [text('<music>晴天 | 周杰伦</music>', 1), text('<music>Lemon</music>', 2, true), text('<music>Song A | Band B | one; two</music>', 3)], options);
+    assert.deepEqual(shape(chat), ['开场', '间谍: [Song: 晴天 — 周杰伦] | 齐宁: [Song: Lemon] | 间谍: [Song: Song A — Band B: one / two]', 'next']);
 });
 
 test('nothing to add leaves the chat alone', () => {

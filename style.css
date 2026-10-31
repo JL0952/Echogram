@@ -11135,6 +11135,84 @@ html.et-bg-light .et-music-play {
     background: rgba(0, 0, 0, 0.08);
 }
 
+/* A song with some of its lines: the transfer card's theme-colour gradient, the song
+   along the top, the lines large and bold. Core code (fitLyrics) picks their size
+   between --et-lyrics-max and --et-lyrics-min to fit the box's max-height, and shows
+   only the first lines when even the smallest is too big */
+.et-lyrics-card {
+    width: min(240px, 64vw);
+    border-radius: 14px;
+    overflow: hidden;
+    color: #fff;
+    background: linear-gradient(135deg,
+        color-mix(in srgb, var(--et-theme-color) 88%, #fff) 0%,
+        var(--et-theme-color) 50%,
+        color-mix(in srgb, var(--et-theme-color) 70%, #000) 100%);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2);
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+.et-lyrics-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 14px 0;
+}
+
+.et-lyrics-head .et-music-cover {
+    width: 40px;
+    height: 40px;
+    font-size: 1rem;
+    background: rgba(255, 255, 255, 0.18);
+}
+
+.et-lyrics-song {
+    flex: 1;
+    min-width: 0;
+}
+
+.et-lyrics-title,
+.et-lyrics-artist {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.et-lyrics-title {
+    font-size: 0.88rem;
+    font-weight: 600;
+}
+
+.et-lyrics-artist {
+    font-size: 0.74rem;
+    opacity: 0.8;
+}
+
+.et-lyrics-head .et-music-play {
+    color: #fff;
+    background: rgba(255, 255, 255, 0.2);
+}
+
+.et-lyrics-lines {
+    --et-lyrics-max: 21px;
+    --et-lyrics-min: 14px;
+    max-height: 150px;
+    overflow: hidden;
+    margin: 12px 14px 14px;
+    font-size: 18px;
+    font-weight: 700;
+    line-height: 1.25;
+    overflow-wrap: anywhere;
+}
+
+.et-lyrics-footer {
+    padding: 5px 14px 6px;
+    font-size: 0.68rem;
+    opacity: 0.8;
+    border-top: 1px solid rgba(255, 255, 255, 0.22);
+}
+
 /* Settled transfers and responses fade, like a paid bill */
 .et-transfer-accepted,
 .et-transfer-declined {
