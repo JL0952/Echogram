@@ -4636,6 +4636,16 @@ html.et-bg-light {
     color: #f87171;
 }
 
+/* What the latest reply's <life> line touched, lit for a few seconds */
+.et-life-touched {
+    animation: et-life-touched 3.2s ease-out;
+}
+
+@keyframes et-life-touched {
+    0%, 30% { background: color-mix(in srgb, var(--et-theme-color) 24%, transparent); }
+    100% { background: transparent; }
+}
+
 /* What happened: room for "Last Wednesday" */
 .et-life-entry .et-sched-time {
     min-width: 100px;

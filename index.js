@@ -394,6 +394,9 @@
         if (!s.lifeState || typeof s.lifeState !== 'object' || Array.isArray(s.lifeState)) {
             s.lifeState = {};
         }
+        if (!s.pendingReplies || typeof s.pendingReplies !== 'object' || Array.isArray(s.pendingReplies)) {
+            s.pendingReplies = {};
+        }
         if (!s.proactiveCharacterConfig || typeof s.proactiveCharacterConfig !== 'object' || Array.isArray(s.proactiveCharacterConfig)) {
             s.proactiveCharacterConfig = {};
         }
@@ -505,6 +508,7 @@
         jQuery('#et_emotion_mode').val(settings.emotionMode || 'manual');
         jQuery('#et_nsfw_enabled').prop('checked', settings.nsfwEnabled === true);
         jQuery('#et_daily_life').prop('checked', settings.dailyLifeEnabled === true);
+        jQuery('#et_daily_life_made_up').prop('checked', settings.dailyLifeMadeUp === true);
         jQuery('#et_swiped_messages').prop('checked', settings.swipedMessages === true);
         jQuery('#et_fab_size').val(settings.fabSize);
         jQuery('#et_fab_size_val').text(settings.fabSize + 'px');
@@ -560,6 +564,7 @@
         jQuery('#et_emotion_mode_panel').val(settings.emotionMode || 'manual');
         jQuery('#et_nsfw_enabled_panel').prop('checked', settings.nsfwEnabled === true);
         jQuery('#et_daily_life_panel').prop('checked', settings.dailyLifeEnabled === true);
+        jQuery('#et_daily_life_made_up_panel').prop('checked', settings.dailyLifeMadeUp === true);
         jQuery('#et_swiped_messages_panel').prop('checked', settings.swipedMessages === true);
         jQuery('#et_verbosity_default_panel').val(settings.verbosityDefault || 'medium');
 
@@ -882,6 +887,12 @@
 
         jQuery('#et_daily_life_panel').off('change.panel').on('change.panel', function () {
             setDailyLifeEnabled(jQuery(this).is(':checked'));
+        });
+
+        jQuery('#et_daily_life_made_up_panel').off('change.panel').on('change.panel', function () {
+            settings.dailyLifeMadeUp = jQuery(this).is(':checked');
+            saveSettings();
+            jQuery('#et_daily_life_made_up').prop('checked', settings.dailyLifeMadeUp);
         });
 
         // Swiped messages toggle (panel)
@@ -2063,6 +2074,10 @@
         // After the format rules, the one line that isn't a text; readReply takes it out.
         prompt += buildMoodRules(char);
 
+        // ── 9. LIFE ──────────────────────────────────────────────────────────────
+        // Daily Life: the hidden <life> line the model reports changes to the errands in.
+        prompt += buildLifeRules(char);
+
         return prompt;
     }
 
@@ -2877,7 +2892,12 @@
         return { apiMessages, rawPrompt, systemPrompt };
     }
 
-    async function generateEchoText(history, backupHistory = null) {
+    /**
+     * @param {object} [options]
+     * @param {boolean} [options.noticed] the character has already seen the texts (a parked reply
+     *   resuming): with Daily Life, no roll on whether a busy or sleeping character notices them
+     */
+    async function generateEchoText(history, backupHistory = null, { noticed = false } = {}) {
         if (isGenerating) return;
 
         const char = getCurrentCharacter();
@@ -2918,6 +2938,10 @@
                 await sleepWithAbort(timing.deliveredDelayMs, abortController.signal);
                 markUnread('delivered', 'Delivered to character');
                 saveChatHistory(workingHistory);
+
+                // Daily Life: busy or asleep, the texts may wait unseen; the reply is parked
+                // until they look (resumePendingReply), or until another text gets through
+                if (!noticed && parkUnseenReply(unreadIdx.length)) return;
 
                 await sleepWithAbort(timing.readDelayMs, abortController.signal);
                 markUnread('read', 'Read by character');
@@ -2961,7 +2985,8 @@
                     is_user: false,
                     mes: reply.mes,
                     send_date: Date.now(),
-                    ...(reply.mood ? { mood: reply.mood } : {})
+                    ...(reply.mood ? { mood: reply.mood } : {}),
+                    ...(reply.life ? { life: reply.life } : {})
                 };
 
                 if (imageReply?.triggered) {
@@ -3009,7 +3034,7 @@
                 markProactiveCharacterActivity(getCharacterKey(), false, 'reply');
                 renderMessages(newHistory);
                 setFabUnreadIndicator(panelOpen ? false : true);
-                if (charReply.mood) noteMoodReport();
+                if (charReply.mood || charReply.life) noteMoodReport();
             }
 
         } catch (err) {
@@ -3077,6 +3102,7 @@
             send_date: msg.send_date || Date.now(),
             imageAttachment: msg.imageAttachment ?? null,
             ...(msg.mood ? { mood: msg.mood } : {}),
+            ...(msg.life ? { life: msg.life } : {}),
             ...(msg.bubbleReactions ? { bubbleReactions: { ...msg.bubbleReactions } } : {}),
         }];
         msg.swipeIndex = 0;
@@ -3084,7 +3110,7 @@
 
     /**
      * Syncs the parent message's top-level fields (mes, send_date, imageAttachment,
-     * Auto mode's mood, the user's per-bubble tapbacks) from the swipe slot at
+     * Auto mode's mood, Daily Life's changes, the user's per-bubble tapbacks) from the swipe slot at
      * `msg.swipeIndex`. The former whole-message reactions stay with the message.
      */
     function syncMsgFromSwipe(msg) {
@@ -3103,6 +3129,9 @@
         // Each version's report goes with it, so a swipe moves the feelings back and forth
         if (swipe.mood) msg.mood = swipe.mood;
         else delete msg.mood;
+        // and Daily Life's changes (lib/daily-life.js)
+        if (swipe.life) msg.life = swipe.life;
+        else delete msg.life;
         // The user's tapbacks are on this version's bubbles
         if (swipe.bubbleReactions) msg.bubbleReactions = swipe.bubbleReactions;
         else delete msg.bubbleReactions;
@@ -3225,7 +3254,8 @@
                 const newSwipe = {
                     mes: reply.mes,
                     send_date: Date.now(),
-                    ...(reply.mood ? { mood: reply.mood } : {})
+                    ...(reply.mood ? { mood: reply.mood } : {}),
+                    ...(reply.life ? { life: reply.life } : {})
                 };
 
                 if (imageReply?.triggered) {
@@ -3276,7 +3306,7 @@
                 markProactiveCharacterActivity(getCharacterKey(), false, 'reply');
                 renderMessages(workingHistory);
                 setFabUnreadIndicator(panelOpen ? false : true);
-                if (newSwipe.mood) noteMoodReport();
+                if (newSwipe.mood || newSwipe.life) noteMoodReport();
             }
 
         } catch (err) {
@@ -4696,6 +4726,7 @@
         // with a pinned character (CHAT_CHANGED is suppressed in that case, so without
         // this call the overflow items would remain hidden after every panel rebuild).
         applySelectedCharacterToPanel();
+        resumePendingReply();
 
         setTimeout(() => { if (!isMobileDevice()) jQuery('#et-input').focus(); }, 300);
     }
@@ -5826,14 +5857,16 @@
     }
 
     /**
-     * A generated reply as it is kept: { mes, mood } — the text without its <mood>
-     * line, and in Auto mode the feelings that line reports (stored as msg.mood).
+     * A generated reply as it is kept: { mes, mood, life } — the text without its <mood>
+     * and <life> lines, in Auto mode the feelings the first reports (stored as msg.mood),
+     * and with Daily Life the changes the second reports (msg.life).
      */
     function readReply(text) {
-        const mes = cleanGeneratedResponse(text);
-        if (!emotionSystem) return { mes, mood: null };
-        const reply = emotionSystem.readReply(mes);
-        return inGroupSession() ? { mes: reply.mes, mood: null } : reply;
+        const cleaned = cleanGeneratedResponse(text);
+        const reply = emotionSystem ? emotionSystem.readReply(cleaned) : { mes: cleaned, mood: null };
+        const { text: mes, life } = DailyLife.parseLifeTag(reply.mes, new Date());
+        if (inGroupSession()) return { mes, mood: null, life: null };
+        return { mes, mood: reply.mood, life: dailyLifeActive() ? life : null };
     }
 
     /** After a reply with a <mood> line for the open character: the values redrawn, the change shown. */
@@ -5881,9 +5914,20 @@
         return DailyLife.hasSchedule(schedule) ? schedule : null;
     }
 
-    /** The open chat's errands, what happened and today's change as they stand now, while Daily Life applies, else null. */
+    /**
+     * The open chat's errands, what happened and today's change as they stand now (the
+     * replies' <life> reports replayed), while Daily Life applies, else null.
+     */
     function activeLife() {
-        return dailyLifeActive() ? DailyLife.currentLife(settings.lifeState[getCharacterKey()], new Date()) : null;
+        if (!dailyLifeActive()) return null;
+        const key = getCharacterKey();
+        return DailyLife.currentLife(settings.lifeState[key], new Date(), getEmotionHistory(key));
+    }
+
+    /** The rule for the hidden <life> line while Daily Life applies (see buildSystemPrompt), else ''. */
+    function buildLifeRules(char) {
+        if (!dailyLifeActive()) return '';
+        return `\n\n${DailyLife.lifeRules({ charName: char.name || 'Character', userName: getUserName(), date: new Date(), madeUp: settings.dailyLifeMadeUp === true })}`;
     }
 
     /** The block of the week the character is in now ({ day, index, block }), or null. */
@@ -5899,14 +5943,61 @@
         return text ? `\n\n${text}` : '';
     }
 
-    /** The insights row: the block the character is in now. */
+    /** The insights row: the block the character is in now, and when they look at texts they haven't seen. */
     function scheduleInsight() {
         if (!activeSchedule()) return '—';
         const now = currentScheduleBlock();
-        if (!now) return 'Free';
+        const pending = settings.pendingReplies?.[getCharacterKey()];
+        const unseen = pending ? ` · reads at ${new Date(pending).toTimeString().slice(0, 5)}` : '';
+        if (!now) return `Free${unseen}`;
         const { block } = now;
         const phone = DailyLife.PHONES.find(p => p.id === block.phone).label;
-        return `${block.from}–${block.to} ${[block.doing, block.place].filter(Boolean).join(' · ')} (${phone})`;
+        return `${block.from}–${block.to} ${[block.doing, block.place].filter(Boolean).join(' · ')} (${phone})${unseen}`;
+    }
+
+    /**
+     * Whether a busy or sleeping character leaves `unread` texts unseen for now: if so, when
+     * they'll look is kept (settings.pendingReplies, by character) and true is returned. More
+     * unread texts make them likelier to notice; another text that gets through clears it.
+     */
+    function parkUnseenReply(unread) {
+        const key = getCharacterKey();
+        const schedule = activeSchedule();
+        const until = schedule ? DailyLife.unseenUntil({ schedule, date: new Date(), unread }) : null;
+        if (!until) {
+            if (key && settings.pendingReplies?.[key]) { delete settings.pendingReplies[key]; saveSettings(); }
+            refreshProactiveInsights();
+            return false;
+        }
+        // A later text never puts off the look already coming
+        if (!settings.pendingReplies) settings.pendingReplies = {};
+        const earlier = settings.pendingReplies[key];
+        settings.pendingReplies[key] = earlier ? Math.min(earlier, until) : until;
+        saveSettings();
+        refreshProactiveInsights();
+        return true;
+    }
+
+    /**
+     * A parked reply whose time has come: the character looks at the texts and answers.
+     * Checked every minute, when the panel opens and when the app comes back to the
+     * front. Gone without a word when the texts were answered or the chat cleared meanwhile;
+     * with Daily Life off it goes at once.
+     */
+    function resumePendingReply() {
+        const key = getCharacterKey();
+        const at = key ? settings.pendingReplies?.[key] : null;
+        if (!at || isGenerating || replyTimer || inGroupSession()) return;
+        const history = getChatHistory();
+        if (!getUnreadUserMessageIndices(history).length) {
+            delete settings.pendingReplies[key];
+            saveSettings();
+            return;
+        }
+        if (dailyLifeActive() && Date.now() < at) return;
+        delete settings.pendingReplies[key];
+        saveSettings();
+        generateEchoText(history, null, { noticed: true });
     }
 
     /**
@@ -8215,6 +8306,11 @@
         }
 
         startProactiveScheduler();
+
+        // Daily Life: replies parked while the character was busy or asleep go once they look;
+        // also when the app comes back to the front (a phone suspends the timer meanwhile)
+        setInterval(resumePendingReply, 60000);
+        document.addEventListener('visibilitychange', () => { if (!document.hidden) resumePendingReply(); });
 
         jQuery('body').append(buildFabHtml());
         positionFab();
