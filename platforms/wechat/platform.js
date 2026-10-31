@@ -38,6 +38,10 @@
     // A location card's pin (from a WeChat screenshot): a green dot with a white centre on a short stem
     const MAP_PIN = '<svg class="wx-map-pin" viewBox="0 0 26 42" aria-hidden="true"><circle cx="13" cy="13" r="12"/><circle class="wx-map-pin-dot" cx="13" cy="13" r="5"/><rect x="11.5" y="22" width="3" height="20" rx="1.5"/></svg>';
 
+    // A music card's placeholder cover and the mark of the app it came from, and its play mark
+    const NOTE_GLYPH = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 3v10.55A4 4 0 1 0 14 17V7h4V3h-6z"/></svg>';
+    const PLAY_GLYPH = '<svg viewBox="0 0 12 14" aria-hidden="true"><path fill="currentColor" d="M1 1.2v11.6a.8.8 0 0 0 1.2.7l9.4-5.8a.8.8 0 0 0 0-1.4L2.2.5A.8.8 0 0 0 1 1.2z"/></svg>';
+
     const pad = n => String(n).padStart(2, '0');
 
     /** "17KB", "1.2MB": sizes the way WeChat writes them. */
@@ -154,6 +158,16 @@
         return `<div class="wx-link" data-side="${side}"><span class="wx-card-tail"></span><div class="wx-link-title">${title}</div><div class="wx-link-row"><p class="wx-link-desc">${ctx.escapeHtml(p.summary)}</p><span class="wx-link-thumb">${IMAGE_GLYPH}</span></div>${site}</div>`;
     }
 
+    /**
+     * A shared song, as WeChat's music card: the cover, title and artist and a play
+     * mark (only drawn) on a colour drawn from the cover, the app it came from
+     * underneath.
+     */
+    function musicCard(p, ctx) {
+        const artist = p.artist ? `<div class="wx-music-artist">${ctx.escapeHtml(p.artist)}</div>` : '';
+        return `<div class="wx-music"><div class="wx-music-card"><span class="wx-music-cover">${NOTE_GLYPH}</span><div class="wx-music-text"><div class="wx-music-title">${ctx.escapeHtml(p.title || '音乐')}</div>${artist}</div><span class="wx-music-play">${PLAY_GLYPH}</span></div><div class="wx-music-app"><span class="wx-music-app-icon">${NOTE_GLYPH}</span>QQ音乐</div></div>`;
+    }
+
     /** The message a row answers (<reply>): WeChat's grey box under the bubble, "名字：内容". */
     function replyQuote(p, ctx) {
         if (!p.replyTo) return '';
@@ -161,7 +175,7 @@
         return `<div class="wx-quote"><span>${name ? `${ctx.escapeHtml(name)}：` : ''}${ctx.escapeHtml(text)}</span></div>`;
     }
 
-    /** Inner content of one row: a text bubble, a photo, a voice message, a place, a file or link card, or a transfer card. */
+    /** Inner content of one row: a text bubble, a photo, a voice message, a place, a file, link or song card, or a transfer card. */
     function part(p, ctx, m) {
         const side = m.isUser ? 'right' : 'left';
         if (p.type === 'photo') return photo(p, ctx);
@@ -169,6 +183,7 @@
         if (p.type === 'location') return locationCard(p, ctx, side);
         if (p.type === 'file') return fileCard(p, ctx, side);
         if (p.type === 'link') return linkCard(p, ctx, side);
+        if (p.type === 'music') return musicCard(p, ctx);
         if (p.type.startsWith('transfer')) return transferCard(p, m, ctx);
         if (p.type !== 'text') return '';
         return `<div class="wx-bubble wx-bubble-${side}"><div class="wx-text" data-et-role="text">${ctx.formatText(p.text)}</div></div>`;
@@ -240,7 +255,7 @@
     window.EchoTextPlatforms.wechat = {
         id: 'wechat',
         name: 'WeChat',
-        features: ['photo', 'voice', 'location', 'reply', 'transfer', 'file', 'link'],
+        features: ['photo', 'voice', 'location', 'reply', 'transfer', 'file', 'link', 'music'],
         stylesheet: 'platform.css',
         // Voice messages are typed from the input bar's voice button, as WeChat records them
         voiceButton: { placeholder: '输入要说的话，作为语音发出' },
@@ -250,6 +265,7 @@
             location: { label: '位置', icon: 'fa-location-dot', placeholder: '地点 | 地址' },
             transfer: { label: '转账', icon: 'fa-right-left', placeholder: '转账金额' },
             file: { label: '文件', icon: 'fa-folder', placeholder: '标题 | 描述', typeLabels: { link: '网页', other: '其他' } },
+            music: { label: '音乐', icon: 'fa-music', placeholder: '歌名 | 歌手' },
         },
         templates: {
             message,

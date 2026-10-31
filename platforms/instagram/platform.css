@@ -1072,6 +1072,119 @@
     font-weight: 600;
 }
 
+/* ── A shared song (from an Instagram screenshot): the cover square with a record
+   sliding out to its right, title and artist over the cover's foot, a play mark at
+   its top. The cover is Instagram's gradient with a note until there is one ── */
+
+[data-platform="instagram"] .ig-music {
+    position: relative;
+    width: 233px;
+    max-width: 100%;
+    height: 150px;
+    flex-shrink: 0;
+}
+
+[data-platform="instagram"] .ig-music-disc {
+    position: absolute;
+    top: 0;
+    left: 83px;
+    width: 150px;
+    height: 150px;
+    border-radius: 50%;
+    background:
+        conic-gradient(from 20deg, transparent 0 10%, rgba(255, 255, 255, 0.10) 15%, transparent 22% 55%, rgba(255, 255, 255, 0.07) 62%, transparent 70%),
+        repeating-radial-gradient(circle, #0d0d0d 0 1.5px, #1e1e1e 1.5px 3px);
+}
+
+[data-platform="instagram"] .ig-music-label {
+    position: absolute;
+    inset: 0;
+    margin: auto;
+    width: 34%;
+    height: 34%;
+    border-radius: 50%;
+    background: var(--ig-accent);
+}
+
+[data-platform="instagram"] .ig-music-label::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    margin: auto;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #000000;
+}
+
+[data-platform="instagram"] .ig-music-cover {
+    position: relative;
+    display: grid;
+    place-items: center;
+    width: 150px;
+    height: 150px;
+    overflow: hidden;
+    border-radius: 6px;
+    color: #ffffff;
+    background: var(--ig-accent);
+    box-shadow: 3px 0 10px rgba(0, 0, 0, 0.35);
+}
+
+/* The title and artist read over the cover's foot */
+[data-platform="instagram"] .ig-music-cover::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(to bottom, transparent 45%, rgba(0, 0, 0, 0.5));
+}
+
+[data-platform="instagram"] .ig-music-note > svg {
+    display: block;
+    width: 42px;
+    height: 42px;
+    opacity: 0.85;
+}
+
+[data-platform="instagram"] .ig-music-play {
+    position: absolute;
+    top: 9px;
+    left: 8px;
+    z-index: 1;
+    width: 16px;
+    height: 16px;
+}
+
+[data-platform="instagram"] .ig-music-play > svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+
+[data-platform="instagram"] .ig-music-text {
+    position: absolute;
+    left: 10px;
+    right: 10px;
+    bottom: 9px;
+    z-index: 1;
+    font-size: 12px;
+    line-height: 1.3;
+}
+
+[data-platform="instagram"] .ig-music-title,
+[data-platform="instagram"] .ig-music-artist {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+[data-platform="instagram"] .ig-music-title {
+    font-weight: 600;
+}
+
+[data-platform="instagram"] .ig-music-artist {
+    opacity: 0.9;
+}
+
 /* ── Voice: play, waveform, length; tapped, the words underneath ── */
 
 [data-platform="instagram"] .ig-voice {

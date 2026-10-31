@@ -11094,6 +11094,47 @@ html.et-bg-light .et-location-map {
     padding: 10px 14px;
 }
 
+/* A shared song: the share card with the cover on the left (a note on the theme colour
+   until there is one) and a play button on the right */
+.et-music-cover {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 48px;
+    height: 48px;
+    overflow: hidden;
+    border-radius: 8px;
+    font-size: 1.2rem;
+    color: #fff;
+    background: linear-gradient(135deg,
+        color-mix(in srgb, var(--et-theme-color) 85%, #fff) 0%,
+        color-mix(in srgb, var(--et-theme-color) 70%, #000) 100%);
+}
+
+.et-music-card .et-share-info {
+    flex: 1;
+}
+
+.et-music-play {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    padding-left: 2px;
+    box-sizing: border-box;
+    border-radius: 50%;
+    font-size: 0.72rem;
+    color: var(--et-text);
+    background: rgba(255, 255, 255, 0.12);
+}
+
+html.et-bg-light .et-music-play {
+    background: rgba(0, 0, 0, 0.08);
+}
+
 /* Settled transfers and responses fade, like a paid bill */
 .et-transfer-accepted,
 .et-transfer-declined {

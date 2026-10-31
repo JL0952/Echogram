@@ -1017,6 +1017,96 @@
     fill: #ffffff;
 }
 
+/* A shared song (WeChat's music card, sized from a screenshot): 296 × 88, the cover
+   square on the left, title and artist in white on a colour from the cover (a warm
+   grey until there is one), a play mark; the app's name underneath. No tail */
+[data-platform="wechat"] .wx-music {
+    width: 296px;
+    max-width: 100%;
+}
+
+[data-platform="wechat"] .wx-music-card {
+    display: flex;
+    align-items: center;
+    height: 88px;
+    overflow: hidden;
+    border-radius: 4px;
+    color: #ffffff;
+    background: var(--wx-music-bg, #8a8580);
+}
+
+[data-platform="wechat"] .wx-music-cover {
+    flex: 0 0 88px;
+    display: grid;
+    place-items: center;
+    width: 88px;
+    height: 88px;
+    color: rgba(255, 255, 255, 0.75);
+    background: rgba(0, 0, 0, 0.16);
+}
+
+[data-platform="wechat"] .wx-music-cover > svg {
+    width: 32px;
+    height: 32px;
+}
+
+[data-platform="wechat"] .wx-music-text {
+    flex: 1;
+    min-width: 0;
+    padding: 0 10px;
+}
+
+[data-platform="wechat"] .wx-music-title,
+[data-platform="wechat"] .wx-music-artist {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    font-size: calc(var(--et-font-size, 15px) + 2px);
+    line-height: 20px;
+}
+
+[data-platform="wechat"] .wx-music-artist {
+    color: rgba(255, 255, 255, 0.6);
+}
+
+[data-platform="wechat"] .wx-music-play {
+    flex: 0 0 12px;
+    width: 12px;
+    height: 14px;
+    margin-right: 18px;
+}
+
+[data-platform="wechat"] .wx-music-play > svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+
+[data-platform="wechat"] .wx-music-app {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-top: 6px;
+    color: var(--wx-muted);
+    font-size: 13px;
+    line-height: 18px;
+}
+
+[data-platform="wechat"] .wx-music-app-icon {
+    display: grid;
+    place-items: center;
+    width: 14px;
+    height: 14px;
+    border-radius: 3px;
+    color: #31c27c;
+    background: #ffffff;
+}
+
+[data-platform="wechat"] .wx-music-app-icon > svg {
+    width: 10px;
+    height: 10px;
+}
+
 [data-platform="wechat"] .wx-text[contenteditable="true"] {
     min-height: 21px;
     white-space: pre-wrap;

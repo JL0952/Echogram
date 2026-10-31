@@ -38,8 +38,8 @@ test('format rules list only the enabled features, in a fixed order', () => {
     assert.deepEqual(buildFeaturePrompts(['transfer', 'photo'], ctx).map(p => p.split(':')[0]), ['PHOTOS', 'TRANSFERS']);
     assert.match(buildFeaturePrompts(['react'], ctx)[0], /one of: heart, like\./);
     assert.deepEqual(buildFeaturePrompts(NONE, ctx), []);
-    assert.deepEqual(buildFeaturePrompts(['link', 'file', 'transfer', 'location', 'voice', 'reply', 'react', 'photo'], ctx).map(p => p.split(':')[0]),
-        ['PHOTOS', 'VOICE MESSAGES', 'LOCATIONS', 'REACTIONS', 'REPLIES', 'TRANSFERS', 'FILES AND LINKS']);
+    assert.deepEqual(buildFeaturePrompts(['music', 'link', 'file', 'transfer', 'location', 'voice', 'reply', 'react', 'photo'], ctx).map(p => p.split(':')[0]),
+        ['PHOTOS', 'VOICE MESSAGES', 'LOCATIONS', 'REACTIONS', 'REPLIES', 'TRANSFERS', 'FILES AND LINKS', 'MUSIC']);
 });
 
 test('the voice rule names the tag, when to use it, and how a character\'s temperament changes that', () => {
@@ -114,6 +114,18 @@ test('the location rule names the tag, what it is for, and that the story has to
 test('places degrade to a plain-text note', () => {
     assert.equal(filterContextText('<location>星巴克 | 建国门外大街1号</location>\n到了', ['photo']), '[Location: 星巴克 | 建国门外大街1号]\n到了');
     assert.equal(filterContextText('<location>home</location>', ['location']), '<location>home</location>');
+});
+
+test('the music rule asks for a real song, its title and artist as released', () => {
+    const [rule] = buildFeaturePrompts(['music'], { charName: 'Mira', userName: 'Me', reactionIds: REACTIONS });
+    assert.equal(rule, 'MUSIC: Mira can share a song as <music>song title | artist</music> — a real song that exists, with its title and artist as released, never translated — now and then, when a song fits the moment or comes up. A <music> from Me is a song they shared: respond to it.');
+    // The "+" menu has it last, the way WeChat's panel ends with 音乐
+    assert.deepEqual(Object.keys(getComposerModes(['music', 'file', 'location', 'photo', 'transfer'])), ['photo', 'location', 'transfer', 'file', 'music']);
+});
+
+test('songs degrade to a plain-text note', () => {
+    assert.equal(filterContextText('<music>晴天 | 周杰伦</music>\n听这个', ['photo']), '[Music: 晴天 | 周杰伦]\n听这个');
+    assert.equal(filterContextText('<music>Lemon</music>', ['music']), '<music>Lemon</music>');
 });
 
 test('voice messages degrade to a plain-text note', () => {

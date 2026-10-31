@@ -22,6 +22,8 @@
     // lucide link and external-link, for a shared page's card
     const LINK_GLYPH = '<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>';
     const EXTERNAL_GLYPH = '<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>';
+    // lucide music, for a song without its cover
+    const NOTE_GLYPH = '<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>';
     const PLAY_GLYPH = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M8 5.5v13a1 1 0 0 0 1.5.86l10.5-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5z"/></svg>';
 
     const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -114,12 +116,23 @@
         return `<div class="ig-location"><div class="ig-location-map">${mapArt(p.map)}<span class="ig-map-pin"></span></div><div class="ig-location-body"><div class="ig-location-name">${ctx.escapeHtml(p.name || 'Location')}</div>${address}<div class="ig-location-view">View</div></div></div>`;
     }
 
-    /** One bubble's content: text, a photo, a voice message, a place or a link card. */
+    /**
+     * A shared song, as Instagram shows one: the cover with a record sliding out from
+     * behind it, the title and artist over the cover's foot and a play mark at its top
+     * (only drawn).
+     */
+    function musicCard(p, ctx) {
+        const artist = p.artist ? `<div class="ig-music-artist">${ctx.escapeHtml(p.artist)}</div>` : '';
+        return `<div class="ig-music"><span class="ig-music-disc"><span class="ig-music-label"></span></span><div class="ig-music-cover"><span class="ig-music-note">${NOTE_GLYPH}</span><span class="ig-music-play">${PLAY_GLYPH}</span><div class="ig-music-text"><div class="ig-music-title">${ctx.escapeHtml(p.title || 'Music')}</div>${artist}</div></div></div>`;
+    }
+
+    /** One bubble's content: text, a photo, a voice message, a place, a link card or a song. */
     function part(p, ctx) {
         if (p.type === 'photo') return photo(p, ctx);
         if (p.type === 'voice') return voice(p, ctx);
         if (p.type === 'location') return locationCard(p, ctx);
         if (p.type === 'link') return linkCard(p, ctx);
+        if (p.type === 'music') return musicCard(p, ctx);
         if (p.type !== 'text') return '';
         return `<div class="ig-bubble"><div class="ig-text" data-et-role="text">${ctx.formatText(p.text)}</div></div>`;
     }
@@ -258,7 +271,7 @@
         id: 'instagram',
         name: 'Instagram',
         // Links show as a preview card; Instagram has no files or transfers
-        features: ['photo', 'voice', 'location', 'react', 'reply', 'link'],
+        features: ['photo', 'voice', 'location', 'react', 'reply', 'link', 'music'],
         stylesheet: 'platform.css',
         // Your bubbles share one gradient across the visible list (index.js updateSharedFill)
         sharedFill: '.ig-row-me .ig-bubble',

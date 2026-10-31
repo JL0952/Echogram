@@ -109,8 +109,8 @@
     let fabDragging = false;
     let loadedFontFamily = null;
     let showTypingIndicator = false;
-    // When set ('photo' | 'voice' | 'location' | 'transfer' | 'file' | 'link'), the next message the user
-    // sends is that kind of content and the typed text is its description / words / place / amount
+    // When set ('photo' | 'voice' | 'location' | 'transfer' | 'file' | 'link' | 'music'), the next message
+    // the user sends is that kind of content and the typed text is its description / words / place / amount / song
     let composeMode = null;
     // Replying (feature 'reply'): { charKey, name, text } of the bubble picked, until the next send
     let replyDraft = null;
@@ -5127,6 +5127,9 @@
         } else if (mode === 'location') {
             // "place | address"
             mes = `<location>${text.replace(/\s*\n\s*/g, ' ')}</location>`;
+        } else if (mode === 'music') {
+            // "song | artist"
+            mes = `<music>${text.replace(/\s*\n\s*/g, ' ')}</music>`;
         } else if (mode === 'file') {
             // "title | description", as the kind picked on the chip
             mes = RichMessages.shareTag(text, shareType);

@@ -371,6 +371,22 @@ test('a place comes with a made-up map: the same for the same place, other place
     }
 });
 
+test('songs: title and artist read leniently, written back canonically', () => {
+    const { normalizeMessageTags, parseMessageParts, serializeParts, toPlainText } = window.EchoTextRichMessages;
+    assert.deepEqual(parseMessageParts('<music>晴天 | 周杰伦</music>'), [{ type: 'music', title: '晴天', artist: '周杰伦' }]);
+    // Other tag names, a dash, title marks, "artist的《title》", quotes, attributes
+    assert.equal(normalizeMessageTags('<song>Espresso - Sabrina Carpenter</song>'), '<music>Espresso | Sabrina Carpenter</music>');
+    assert.equal(normalizeMessageTags('<歌>《起风了》买辣椒也用券</歌>'), '<music>起风了 | 买辣椒也用券</music>');
+    assert.equal(normalizeMessageTags('<music>周杰伦的《晴天》</music>'), '<music>晴天 | 周杰伦</music>');
+    assert.equal(normalizeMessageTags('<music>“孤勇者” ｜ 陈奕迅</music>'), '<music>孤勇者 | 陈奕迅</music>');
+    assert.equal(normalizeMessageTags('<music title="ur name" artist="i9bonsai"/>'), '<music>ur name | i9bonsai</music>');
+    // Titles keep their own dashes and "by"; no artist is fine
+    assert.equal(normalizeMessageTags('<music>Anti-Hero</music>'), '<music>Anti-Hero</music>');
+    assert.equal(normalizeMessageTags('<track>Stand by Me</track>'), '<music>Stand by Me</music>');
+    for (const text of ['<music>a | b</music>', '<music>Lemon</music>']) assert.equal(serializeParts(parseMessageParts(text)), text);
+    assert.equal(toPlainText('<music>Lemon | 米津玄師</music>'), '[Music: Lemon | 米津玄師]');
+});
+
 test('without places, a location card becomes the note the model sees', () => {
     const [m] = build([char('<location>home | 1 Main St</location>', 0)], { features: ['photo'] });
     assert.deepEqual(m.parts, [{ type: 'text', text: '[Location: home | 1 Main St]' }]);

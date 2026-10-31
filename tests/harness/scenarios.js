@@ -84,6 +84,15 @@
         { is_user: true, mes: '<location>home</location>', send_date: m(4) },
     ];
 
+    // Shared songs (<music>, docs/platform-plan.md 11b): both sides, with and without an
+    // artist, between texts, a long title
+    const songs = () => [
+        { is_user: true, mes: 'what are you listening to', send_date: m(0) },
+        { is_user: false, mes: 'this\n<music>ur name | i9bonsai</music>\nlisten to it', send_date: m(1) },
+        { is_user: true, mes: '<music>晴天 | 周杰伦</music>', send_date: m(2) },
+        { is_user: false, mes: '<music>A Very Long Song Title That Goes On And On | Some Band With A Long Name</music>\n<music>Lemon</music>', send_date: m(3) },
+    ];
+
     const baseSettings = {
         showAvatar: true, swipedMessages: true, memoryEnabled: true, memoryAutoExtract: true,
         memoryHighlightStyle: 'underline', autoScroll: true, verbosityByCharacter: { 'mira.png': 'short' },
@@ -109,6 +118,7 @@
         { name: 'empty', history: [], settings: { ...baseSettings } },
         { name: 'empty, no character', history: [], noChar: true, settings: { ...baseSettings } },
         { name: 'places', history: places(), settings: { ...baseSettings } },
+        { name: 'songs', history: songs(), settings: { ...baseSettings } },
     ];
     window.EchoTextScenarioReactions = FA_REACTIONS;
 })();

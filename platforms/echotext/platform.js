@@ -120,6 +120,15 @@
         return `<div class="et-share-card et-link-card"><div class="et-share-body"><div class="et-share-icon"><i class="fa-solid fa-link"></i></div><div class="et-share-info"><div class="et-share-title">${ctx.escapeHtml(p.title || p.host || 'Link')}</div>${line}</div></div><div class="et-share-footer"><i class="fa-solid fa-globe"></i> ${ctx.escapeHtml(p.host || 'Web page')}</div></div>`;
     }
 
+    /**
+     * A shared song, the same card as a file: the cover (a note until there is one), the
+     * title and artist, a play button (only drawn), "Music" underneath.
+     */
+    function musicCard(p, ctx) {
+        const artist = p.artist ? `<div class="et-share-meta">${ctx.escapeHtml(p.artist)}</div>` : '';
+        return `<div class="et-share-card et-music-card"><div class="et-share-body"><div class="et-music-cover"><i class="fa-solid fa-music"></i></div><div class="et-share-info"><div class="et-share-title">${ctx.escapeHtml(p.title || 'Music')}</div>${artist}</div><span class="et-music-play"><i class="fa-solid fa-play"></i></span></div><div class="et-share-footer"><i class="fa-solid fa-music"></i> Music</div></div>`;
+    }
+
     /** A transfer or transfer-response card, from a view-model part (its status and display amount). */
     function transferCard(part, ctx) {
         const { status: state, actionable } = part;
@@ -138,13 +147,14 @@
         return `<div class="et-transfer-card et-transfer-${state}${actionable ? ' et-transfer-actionable' : ''}"${actionAttrs}><div class="et-transfer-body"><div class="et-transfer-icon"><i class="fa-solid ${icon}"></i></div><div class="et-transfer-info"><div class="et-transfer-amount">${amountText}</div><div class="et-transfer-status">${label}</div></div></div><div class="et-transfer-footer">Transfer</div></div>`;
     }
 
-    /** Inner content of one bubble: formatted text, a photo card, a voice message, a place, a file or link card, or a transfer card. */
+    /** Inner content of one bubble: formatted text, a photo card, a voice message, a place, a file, link or song card, or a transfer card. */
     function part(p, ctx) {
         if (p.type === 'photo') return photoCard(p.desc, ctx);
         if (p.type === 'voice') return voiceNote(p, ctx);
         if (p.type === 'location') return locationCard(p, ctx);
         if (p.type === 'file') return fileCard(p, ctx);
         if (p.type === 'link') return linkCard(p, ctx);
+        if (p.type === 'music') return musicCard(p, ctx);
         if (p.type === 'reaction_note') return reactionNote(p.reaction, ctx);
         if (p.type !== 'text') return transferCard(p, ctx);
         return `<div class="et-bubble-text" data-et-role="text">${ctx.formatText(p.text)}</div>`;
@@ -363,7 +373,7 @@
         id: 'echotext',
         name: 'Echogram',
         // Rich-message features this look supports (lib/features.js)
-        features: ['photo', 'voice', 'location', 'react', 'reply', 'transfer', 'file', 'link'],
+        features: ['photo', 'voice', 'location', 'react', 'reply', 'transfer', 'file', 'link', 'music'],
         templates: {
             message,
             part,

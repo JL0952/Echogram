@@ -21,7 +21,7 @@ Text your SillyTavern characters like they're on your phone.
 - Echogram, WeChat or Instagram look, chosen per character.
 - Characters know the opening message and what's happening in your story.
 - Replies come as several short texts, at the length you pick.
-- Photos, voice messages, locations, money transfers, files and links.
+- Photos, voice messages, locations, songs, money transfers, files and links.
 - Tapbacks and quoted replies, from you and the character.
 - Rapport, Romance, Desire, moods, Big Five, Morality and texting style, set by hand or left to change on their own.
 - Characters text you first, sometimes with a photo or voice message.
