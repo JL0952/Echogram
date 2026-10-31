@@ -4397,10 +4397,18 @@ html.et-bg-light {
     color: var(--et-text);
 }
 
-/* Tabs: Emotions | Personality (.et-uc-tabs-row / .et-uc-tab-btn) */
+/* Regenerate, waiting for its second click */
+.et-emo-reset.et-emo-reset-armed {
+    background: rgba(248, 113, 113, 0.14);
+    border-color: rgba(248, 113, 113, 0.5);
+    color: #fca5a5;
+}
+
+/* Tabs: Emotions | Personality | Schedule (.et-uc-tabs-row / .et-uc-tab-btn) */
 .et-emo-tabs {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(0, 1fr);
     gap: 8px;
     margin-bottom: 12px;
 }
@@ -4502,6 +4510,111 @@ html.et-bg-light {
     margin: 10px 0 4px;
     padding-bottom: 4px;
     border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+/* Daily Life's Schedule tab: a block a row (time, what and where, phone), the one
+   the character is in now lit; Generate while there is no schedule */
+.et-sched-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 8px;
+    border: 1px solid transparent;
+    border-radius: 10px;
+}
+
+.et-sched-row + .et-sched-row {
+    margin-top: 2px;
+}
+
+.et-sched-row.et-sched-now {
+    background: color-mix(in srgb, var(--et-theme-color) 12%, transparent);
+    border-color: color-mix(in srgb, var(--et-theme-color) 40%, transparent);
+}
+
+.et-sched-time {
+    flex: 0 0 auto;
+    min-width: 82px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    color: var(--et-text-muted);
+}
+
+.et-sched-now .et-sched-time {
+    color: var(--et-theme-color);
+}
+
+.et-sched-what {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+}
+
+.et-sched-doing {
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--et-text);
+    overflow-wrap: anywhere;
+}
+
+.et-sched-place {
+    font-size: 0.68rem;
+    color: var(--et-text-muted);
+    overflow-wrap: anywhere;
+}
+
+.et-sched-phone {
+    flex: 0 0 20px;
+    text-align: center;
+    font-size: 0.82rem;
+}
+
+.et-sched-free {
+    color: #4ade80;
+}
+
+.et-sched-busy {
+    color: #fb923c;
+}
+
+.et-sched-asleep {
+    color: #a78bfa;
+}
+
+.et-sched-empty {
+    display: flex;
+    justify-content: center;
+    padding: 28px 0;
+    font-size: 1.1rem;
+    color: var(--et-text-muted);
+}
+
+.et-sched-generate {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 9px 18px;
+    border: 1px solid color-mix(in srgb, var(--et-theme-color) 60%, transparent);
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--et-theme-color) 18%, transparent);
+    color: var(--et-text);
+    font-family: var(--et-font-family);
+    font-size: 0.8rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.16s, transform 0.16s;
+}
+
+.et-sched-generate:hover {
+    background: color-mix(in srgb, var(--et-theme-color) 30%, transparent);
+    transform: translateY(-1px);
+}
+
+.et-sched-generate i {
+    color: var(--et-theme-color);
 }
 
 /* One feeling or trait: icon, name, slider or levels, value, lock */

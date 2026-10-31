@@ -24,6 +24,7 @@
 <script src="../../platforms/wechat/platform.js"></script>
 <script src="../../platforms/instagram/platform.js"></script>
 <script src="scenarios.js"></script>
+<script src="../../lib/daily-life.js"></script>
 <script src="build/bundle-reply.js"></script>
 <script src="../../lib/emotion-model.js"></script>
 <script src="../../lib/emotion-icons.js"></script>
@@ -38,11 +39,12 @@
 // how a reply lands in Auto mode (index.js's generateEchoText / generateEchoTextSwipe,
 // with the model stubbed).
 //   ?platform=echotext|wechat|instagram  ?scheme=dark|light  ?width=320  ?desire  ?scenario=N (tests/harness/scenarios.js; default 0)
-//   ?tab=emotions|personality  the popup as a screenshot shows it (filled-in example values; Desire and Morality with ?desire;
-//                              &auto: in Auto mode, the last reply's changes beside the values for a few seconds)
+//   ?tab=emotions|personality|schedule  the popup as a screenshot shows it (filled-in example values; Desire and Morality with ?desire;
+//                              &auto: in Auto mode, the last reply's changes beside the values for a few seconds;
+//                              schedule: Daily Life on and a week; &empty: no week yet, Generate)
 //   ?auto                      a reply in Auto mode arriving with the popup closed: the chips under the header
-//   ?report                    runs runEmotionTest(), runAutoTest(), runReplyTest(), runTapbackTest(), runMemoryTest(), runSummaryTest()
-//                              and runInstagramTest() and posts their results
+//   ?report                    runs runEmotionTest(), runAutoTest(), runReplyTest(), runTapbackTest(), runMemoryTest(), runSummaryTest(),
+//                              runInstagramTest() and runScheduleTest() and posts their results
 //   ?draft=N                   Reply picked on message N: the quote waiting above the input bar
 //   ?memory                    Add Memory open on a bubble, and the settings panel's memory list and summaries beside the panel
 //   ?art                       Songs' covers looked up on iTunes for real (lib/music-lookup.js; kept in window.__songArt
@@ -68,6 +70,7 @@
         getSettings: () => settings, saveSettings: () => { saves++; },
         getCharacterKey: () => 'mira.png', getCharacterName: () => 'Mira', isPanelOpen: () => true,
         getChatHistory: key => r.getEmotionHistory(key),
+        generateSchedule: () => r.generateSchedule(),
         onEmotionStateUpdated: () => { statusRow().innerHTML = emo.buildStatusHtml(); },
     });
     // What a failed generation reports
@@ -928,12 +931,113 @@
         return res;
     };
 
+    // Daily Life (docs/platform-plan.md 12a-1): the switch, the Schedule tab, and index.js's real
+    // setDailyLifeEnabled and generateSchedule with the model stubbed
+    const WEEK = '```\nweekday 07:00-08:30 | 家 | 起床 | free\nweekday 09:00-18:00 | 医院 | 上班 | busy\nweekday 23:00-07:00 | 家 | 睡觉 | asleep\n'
+        + 'saturday 10:00-23:00 | 商场 | 逛街 | free\nsunday 00:00-10:00 | 家 | 睡懒觉\n```';
+    window.runScheduleTest = async function () {
+        const res = {};
+        errors.length = 0;
+        const asked = [];
+        let answer = async () => WEEK;
+        env.sendCompletionRequest = async req => { asked.push(req); return answer(req); };
+        env.replaceMacros = t => t.replace(/\{\{user\}\}/g, '我');
+        env.getEchoTextFirstMessage = () => 'Mira 在医院值夜班。';
+        const charBefore = env.getCurrentCharacter;
+        env.getCurrentCharacter = () => ({ name: 'Mira', avatar: 'mira.png', description: 'a nurse who likes {{user}}', personality: 'dry', data: {} });
+        // index.js's settings and the popup's are one object in the extension, two here: tie what this uses together
+        env.settings.characterSchedules = {};
+        settings.characterSchedules = env.settings.characterSchedules;
+        Object.defineProperty(settings, 'dailyLifeEnabled', { get: () => env.settings.dailyLifeEnabled === true, configurable: true });
+        env.settings.dailyLifeEnabled = false;
+        document.getElementById('et-emotion-popup')?.remove();
+        open();
+        const tabs = () => $p('[data-emo-tab]').toArray().map(b => b.dataset.emoTab).join(',');
+        res.hiddenWhenOff = tabs() === 'emotions,personality';
+
+        // On: the open popup gains the tab; no week yet, so Generate
+        r.setDailyLifeEnabled(true);
+        res.shownWhenOn = env.settings.dailyLifeEnabled === true && tabs() === 'emotions,personality,schedule';
+        click('[data-emo-tab="schedule"]');
+        res.emptyGenerate = $p('[data-emo-action="generate-schedule"]').length === 1 && !$p('[data-emo-action="regenerate-schedule"]').length;
+
+        // Generate: a spinner meanwhile, then today's day with the block the character is in lit
+        let release;
+        answer = () => new Promise(resolve => { release = () => resolve(WEEK); });
+        click('[data-emo-action="generate-schedule"]');
+        await sleep(0);
+        res.spinner = $p('.et-sched-empty .fa-spinner').length === 1 && !$p('[data-emo-action="generate-schedule"]').length;
+        release();
+        await sleep(10);
+        const req = asked[0];
+        const user = req?.apiMessages?.[1]?.content || '';
+        res.asked = asked.length === 1 && /Mira's typical week/.test(req.systemPrompt) && req.apiMessages[0].content === req.systemPrompt
+            && user.includes("Mira's description: a nurse who likes 我") && user.includes("Mira's personality: dry")
+            && user.includes('How the story began: Mira 在医院值夜班。') && req.rawPrompt === user;
+        const kept = env.settings.characterSchedules['mira.png'];
+        res.kept = kept?.weekday.length === 3 && kept.saturday.length === 1 && kept.sunday[0].phone === 'asleep';
+        const Life = window.EchoTextDailyLife;
+        const today = Life.dayOf(new Date());
+        res.today = $p('.et-emo-seg-on').attr('data-emo-day') === today;
+        const current = Life.blockAt(kept, new Date());
+        res.nowLit = $p('.et-sched-now').length === (current && current.day === today ? 1 : 0);
+        click('[data-emo-day="weekday"]');
+        res.rows = $p('.et-sched-row').toArray().map(row => [row.querySelector('.et-sched-time').textContent, row.querySelector('.et-sched-doing').textContent,
+            row.querySelector('.et-sched-place').textContent, row.querySelector('.et-sched-phone').className.split(' ').pop()].join(' ')).join('|')
+            === '07:00–08:30 起床 家 et-sched-free|09:00–18:00 上班 医院 et-sched-busy|23:00–07:00 睡觉 家 et-sched-asleep';
+
+        // Regenerate: the first click asks, the second replaces the week
+        click('[data-emo-action="regenerate-schedule"]');
+        res.armed = $p('[data-emo-action="regenerate-schedule"]').text() === 'Replace?' && asked.length === 1;
+        answer = async () => 'weekday 08:00-17:00 | 学校 | 上课 | busy';
+        click('[data-emo-action="regenerate-schedule"]');
+        await sleep(10);
+        res.replaced = asked.length === 2 && env.settings.characterSchedules['mira.png'].weekday.length === 1 && $p('.et-sched-row').length === 1
+            && $p('[data-emo-action="regenerate-schedule"]').text() === 'Regenerate';
+        // Asking, then not clicking again: it calms down by itself
+        click('[data-emo-action="regenerate-schedule"]');
+        await sleep(3100);
+        res.disarms = $p('[data-emo-action="regenerate-schedule"]').text() === 'Regenerate' && asked.length === 2;
+
+        // A failure: the week kept, the error shown
+        answer = async () => 'Sorry, I cannot help with that.';
+        click('[data-emo-action="regenerate-schedule"]');
+        click('[data-emo-action="regenerate-schedule"]');
+        await sleep(10);
+        res.failure = errors.length === 1 && /^Could not make a schedule: the model sent back no schedule/.test(errors[0])
+            && env.settings.characterSchedules['mira.png'].weekday.length === 1 && $p('.et-sched-row').length === 1;
+        errors.length = 0;
+
+        // Off again: the tab goes and the popup is back on Emotions; the week stays
+        r.setDailyLifeEnabled(false);
+        res.offAgain = tabs() === 'emotions,personality' && $p('.et-emo-tab-active').attr('data-emo-tab') === 'emotions'
+            && !!env.settings.characterSchedules['mira.png'];
+
+        env.getCurrentCharacter = charBefore;
+        delete settings.dailyLifeEnabled;
+        document.getElementById('et-emotion-popup')?.remove();
+        res.errors = errors.slice();
+        res.ok = Object.values(res).filter(v => typeof v === 'boolean').every(Boolean) && !errors.length;
+        return res;
+    };
+
     // A screenshot: example values, a lock, Desire with ?nsfw
     const tab = params.get('tab');
     if (tab || params.has('auto')) {
         settings.emotionState['mira.png'] = { start: { ...window.EchoTextEmotionModel.zeroValues(), rapport: -40, joy: 35, anticipation: 55, shock: 10, desire: 30 }, startAt: Date.now() };
         settings.characterProfiles['mira.png'] = { bigFive: { E: 'high', A: 'low', C: 'mid', O: 'mid', N: 'high' }, morality: 'high', locks: { romance: 95 },
             textingStyle: { type: 'instruction', text: 'all lowercase, dry, never uses exclamation marks' } };
+        if (tab === 'schedule') {
+            settings.dailyLifeEnabled = true;
+            if (!params.has('empty')) settings.characterSchedules = { 'mira.png': window.EchoTextDailyLife.parseSchedule([
+                'weekday 07:00-07:40 | 家 | 起床，冲咖啡 | free', 'weekday 08:00-08:40 | 地铁 | 通勤 | free',
+                'weekday 09:00-12:00 | 事务所 | 整理案卷 | busy', 'weekday 12:00-13:00 | 楼下面馆 | 午饭 | free',
+                'weekday 13:00-18:30 | 事务所 | 见客户 | busy', 'weekday 19:00-20:30 | 健身房 | 拳击课 | busy',
+                'weekday 20:30-23:30 | 家 | 追剧、回消息 | free', 'weekday 23:30-07:00 | 家 | 睡觉 | asleep',
+                'saturday 00:30-10:30 | 家 | 睡懒觉 | asleep', 'saturday 11:00-18:00 | 城里 | 逛街、喝咖啡 | free',
+                'sunday 01:00-09:30 | 家 | 睡觉 | asleep', 'sunday 10:00-12:00 | 公园 | 跑步 | busy',
+            ].join('\n')) };
+        }
         if (params.has('auto')) {
             // The last reply reported more anticipation and less joy
             settings.emotionMode = 'auto';
@@ -945,7 +1049,7 @@
         // ?auto without a tab: the reply arriving with the popup closed (the chips under the header)
         if (!tab) emo.noteReport();
         else open();
-        if (tab === 'personality') $p('[data-emo-tab="personality"]')[0].click();
+        if (tab === 'personality' || tab === 'schedule') $p(`[data-emo-tab="${tab}"]`)[0].click();
     } else if (params.has('report')) {
         const result = await window.runEmotionTest();
         const auto = await window.runAutoTest();
@@ -954,7 +1058,8 @@
         const memory = await window.runMemoryTest();
         const summary = await window.runSummaryTest();
         const instagram = await window.runInstagramTest();
-        fetch('/__log', { method: 'POST', body: JSON.stringify({ runEmotionTest: result, runAutoTest: auto, runReplyTest: reply, runTapbackTest: tapback, runMemoryTest: memory, runSummaryTest: summary, runInstagramTest: instagram }) }).catch(() => {});
+        const schedule = await window.runScheduleTest();
+        fetch('/__log', { method: 'POST', body: JSON.stringify({ runEmotionTest: result, runAutoTest: auto, runReplyTest: reply, runTapbackTest: tapback, runMemoryTest: memory, runSummaryTest: summary, runInstagramTest: instagram, runScheduleTest: schedule }) }).catch(() => {});
     } else if (params.has('memory')) {
         // Two memories, one pinned, the other in the last prompt; Add Memory open on a bubble
         env.settings.characterMemories = { 'mira.png': [

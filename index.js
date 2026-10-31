@@ -46,6 +46,7 @@
     loadEchoTextModule('lib/emotion-model.js', 'EchoTextEmotionModel');
     loadEchoTextModule('lib/emotion-icons.js', 'EchoTextEmotionIcons');
     loadEchoTextModule('lib/texting-behavior.js', 'EchoTextTextingBehavior');
+    loadEchoTextModule('lib/daily-life.js', 'EchoTextDailyLife');
     loadEchoTextModule('lib/emotion-system.js', 'EchoTextEmotionSystem');
     loadEchoTextModule('lib/proactive-messaging.js', 'EchoTextProactiveMessaging');
     loadEchoTextModule('lib/settings-modal.js', 'EchoTextSettingsModal');
@@ -387,6 +388,9 @@
         if (!s.emotionState || typeof s.emotionState !== 'object' || Array.isArray(s.emotionState)) {
             s.emotionState = {};
         }
+        if (!s.characterSchedules || typeof s.characterSchedules !== 'object' || Array.isArray(s.characterSchedules)) {
+            s.characterSchedules = {};
+        }
         if (!s.proactiveCharacterConfig || typeof s.proactiveCharacterConfig !== 'object' || Array.isArray(s.proactiveCharacterConfig)) {
             s.proactiveCharacterConfig = {};
         }
@@ -497,6 +501,7 @@
 
         jQuery('#et_emotion_mode').val(settings.emotionMode || 'manual');
         jQuery('#et_nsfw_enabled').prop('checked', settings.nsfwEnabled === true);
+        jQuery('#et_daily_life').prop('checked', settings.dailyLifeEnabled === true);
         jQuery('#et_swiped_messages').prop('checked', settings.swipedMessages === true);
         jQuery('#et_fab_size').val(settings.fabSize);
         jQuery('#et_fab_size_val').text(settings.fabSize + 'px');
@@ -551,6 +556,7 @@
         jQuery('#et_auto_scroll_panel').prop('checked', settings.autoScroll);
         jQuery('#et_emotion_mode_panel').val(settings.emotionMode || 'manual');
         jQuery('#et_nsfw_enabled_panel').prop('checked', settings.nsfwEnabled === true);
+        jQuery('#et_daily_life_panel').prop('checked', settings.dailyLifeEnabled === true);
         jQuery('#et_swiped_messages_panel').prop('checked', settings.swipedMessages === true);
         jQuery('#et_verbosity_default_panel').val(settings.verbosityDefault || 'medium');
 
@@ -869,6 +875,10 @@
             // Sync with modal
             jQuery('#et_nsfw_enabled').prop('checked', settings.nsfwEnabled);
             updatePanelStatusRow();
+        });
+
+        jQuery('#et_daily_life_panel').off('change.panel').on('change.panel', function () {
+            setDailyLifeEnabled(jQuery(this).is(':checked'));
         });
 
         // Swiped messages toggle (panel)
@@ -5818,6 +5828,61 @@
     }
 
     // ============================================================
+    // DAILY LIFE (docs/platform-plan.md 12; the data is lib/daily-life.js)
+    // ============================================================
+
+    const DailyLife = window.EchoTextDailyLife;
+    // The characters whose week is being drafted
+    const schedulesDrafting = new Set();
+
+    /** Daily Life on or off: both settings' switches and the popup's Schedule tab follow. */
+    function setDailyLifeEnabled(on) {
+        settings.dailyLifeEnabled = on === true;
+        saveSettings();
+        jQuery('#et_daily_life, #et_daily_life_panel').prop('checked', settings.dailyLifeEnabled);
+        if (emotionSystem) emotionSystem.refresh();
+    }
+
+    /**
+     * Drafts the character's week from their card and the user's persona (one request,
+     * without the chat) and keeps it in place of the one they had. Throws when the
+     * model sends back no schedule.
+     */
+    async function generateSchedule() {
+        const char = getCurrentCharacter();
+        const key = getCharacterKey();
+        if (!char || !key || schedulesDrafting.has(key)) return;
+        schedulesDrafting.add(key);
+        try {
+            const name = char.name || 'Character';
+            const card = [['description', `${name}'s description`], ['personality', `${name}'s personality`], ['scenario', 'Scenario']]
+                .flatMap(([field, label]) => {
+                    const text = String(char[field] || char.data?.[field] || '').trim();
+                    return text ? [`${label}: ${replaceMacros(text)}`] : [];
+                });
+            const opening = getEchoTextFirstMessage(char);
+            if (opening) card.push(`How the story began: ${opening.length > 3000 ? `${opening.slice(0, 3000)}…` : opening}`);
+            let persona = '';
+            try { persona = String(SillyTavern.getContext().powerUserSettings?.persona_description || '').trim(); } catch (e) { /* none */ }
+            const request = DailyLife.buildScheduleRequest({ charName: name, userName: getUserName(), card, persona: persona ? replaceMacros(persona) : '' });
+            // The same framing as the replies get, when it's on
+            const frame = settings.antiRefusal === true
+                ? replaceMacros(settings.promptAntiRefusalFrame || window.EchoTextConfig?.defaultSettings?.promptAntiRefusalFrame || '') : '';
+            const systemPrompt = frame ? `${request.systemPrompt}\n\n${frame}` : request.systemPrompt;
+            const raw = await sendCompletionRequest({
+                apiMessages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: request.prompt }],
+                rawPrompt: request.prompt, systemPrompt, signal: new AbortController().signal,
+            });
+            const schedule = DailyLife.parseSchedule(stripThinkingTags(String(raw ?? '')));
+            if (!DailyLife.hasSchedule(schedule)) throw new Error('the model sent back no schedule');
+            settings.characterSchedules[key] = schedule;
+            saveSettings();
+        } finally {
+            schedulesDrafting.delete(key);
+        }
+    }
+
+    // ============================================================
     // AI CHARACTER REACTIONS TO USER MESSAGES
     // ============================================================
     // The model reacts by writing <react>name</react> in its reply; the reaction shows
@@ -7907,6 +7972,7 @@
             getCharacterKey,
             getCharacterName,
             getChatHistory: getEmotionHistory,
+            generateSchedule,
             isPanelOpen,
             isMobileDevice,
             onEmotionStateUpdated: ({ dominant, dominantChanged }) => {
@@ -7944,6 +8010,7 @@
             renderMessages,
             isPanelOpen,
             setEmotionMode,
+            setDailyLifeEnabled,
             refreshProactiveInsights,
             updateProactiveToggleButtons,
             startProactiveScheduler,
