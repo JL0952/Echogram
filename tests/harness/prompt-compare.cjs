@@ -23,7 +23,7 @@ for (const f of ['lib/config.js', 'lib/rich-messages.js', 'lib/features.js', 'li
 new Function(fs.readFileSync(`${__dirname}/scenarios.js`, 'utf8'))();
 
 // Real index.js code: the prompt builder and the helpers it uses
-const NAMES = ['buildSystemPrompt', 'getVerbosityPrompt', 'getEchoTextFirstMessage', 'getSTStoryContext', 'findSTOpeningIndex',
+const NAMES = ['buildSystemPrompt', 'getVerbosityPrompt', 'getCharacterVerbosity', 'getEchoTextFirstMessage', 'getSTStoryContext', 'findSTOpeningIndex',
     'isCharInCurrentSTChat', 'cleanSTMessageText', 'ST_STORY_MAX_MESSAGES', 'ST_STORY_MAX_CHARS', 'replaceMacros', 'buildMessageFormatPrompt',
     'RichMessages', 'Features', 'Platforms', 'activePlatformMemo', 'getActivePlatform', 'getActiveFeatures', 'platformHas', 'getReactionIds', 'isTetheredMode',
     'DailyLife', 'dailyLifeActive', 'activeSchedule', 'activeLife', 'buildDailyLifeContext'];
@@ -80,6 +80,9 @@ const CASES = {
     noStoryOpen: { settings: { ctxDescription: false, verbosityByCharacter: { 'mira.png': 'short' } }, chat: [], extra: { characterId: undefined } },
     customPrompts: { settings: { promptSystemBase: 'Custom base for {{char}}.', promptTetheredNoFrame: 'Custom closing.', promptTextingFormat: 'Custom format.' }, chat: stChat },
     noCharacter: { settings: {}, chat: [], char: null },
+    // No length of the character's own: the default in the settings (refs before the Personality tab's
+    // reply length ignored it and wrote medium)
+    verbosityDefault: { settings: { verbosityDefault: 'short' }, chat: stChat },
     // Daily Life on, a week whose blocks cover every hour (differs from refs before step 12a-2, and by the time it runs)
     dailyLife: { settings: { dailyLifeEnabled: true, characterSchedules: { 'mira.png': Object.fromEntries(['weekday', 'saturday', 'sunday'].map(day => [day, [
         { from: '07:00', to: '19:00', place: 'the safehouse', doing: 'watching the street', phone: 'busy' },

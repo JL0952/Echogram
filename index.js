@@ -1828,7 +1828,7 @@
 
         // Verbosity
         const charKey = char?.avatar || char?.name || '';
-        const verbosity = charKey && settings.verbosityByCharacter ? settings.verbosityByCharacter[charKey] : null;
+        const verbosity = getCharacterVerbosity(charKey);
         finalUserParts.push(getVerbosityPrompt(verbosity));
 
         const finalUserContent = finalUserParts.filter(Boolean).join('\n\n');
@@ -1858,6 +1858,11 @@
      */
     async function buildCombinedSystemPrompt(targetChar, history = []) {
         return buildGroupSharedSystemPrompt();
+    }
+
+    /** A character's reply length: their own (Personality tab), else the default in the settings. */
+    function getCharacterVerbosity(charKey) {
+        return (charKey && settings.verbosityByCharacter?.[charKey]) || settings.verbosityDefault || 'medium';
     }
 
     /**
@@ -2035,7 +2040,7 @@
         // (Personality tab), and how the Big Five and current feelings make them text
         // (lib/texting-behavior.js), which also moves the reply length a step.
         const charKey = getCharacterKey();
-        const behavior = buildBehaviorContext(char, charKey && settings.verbosityByCharacter ? settings.verbosityByCharacter[charKey] : null);
+        const behavior = buildBehaviorContext(char, getCharacterVerbosity(charKey));
         prompt += behavior.nsfw;
         prompt += buildTextingStyleContext(char);
         prompt += behavior.text;
@@ -3541,7 +3546,7 @@
         if (charCardParts.length > 0) finalUserParts.push(`<character_reference>\n${charCardParts.join('\n\n')}\n</character_reference>`);
 
         const charKey = char?.avatar || char?.name || '';
-        const verbosity = charKey && settings.verbosityByCharacter ? settings.verbosityByCharacter[charKey] : null;
+        const verbosity = getCharacterVerbosity(charKey);
 
         // Stance hint — the randomly chosen nudge instruction that tells the model
         // how to engage with the live conversation (react to others, address the user,
@@ -6748,9 +6753,7 @@
     /** What platform templates get besides a message's own view (see platforms/echotext/platform.js). */
     function getMessageRenderContext() {
         const { DOMPurify } = SillyTavern.libs;
-        const charKey = getCharacterKey();
         return {
-            verbosity: charKey && settings.verbosityByCharacter ? settings.verbosityByCharacter[charKey] : null,
             charName: getCharacterName(),
             // Bubbles whose tapback is new: they make room for it and it pops in (replaceMessageElement)
             arrivingTapbacks: [],
@@ -6855,7 +6858,7 @@
     let renderedFrame = null;
 
     function getRenderFrame(platform, ctx) {
-        return JSON.stringify([platform.id, platform.features, getCharacterKey(), ctx.charName, ctx.verbosity, ctx.groupChat,
+        return JSON.stringify([platform.id, platform.features, getCharacterKey(), ctx.charName, ctx.groupChat,
             getUserAvatarUrl(), getCharAvatarUrl()]);
     }
 
@@ -7047,7 +7050,6 @@
         if (partIndex === null) {
             items.push({ id: 'edit', icon: 'fa-pen', label: 'Edit', cls: '' });
             items.push({ id: 'regen', icon: 'fa-rotate-right', label: 'Regenerate', cls: '' });
-            if (!isUser) items.push({ id: 'verbosity', icon: 'fa-align-left', label: 'Verbosity', cls: 'et-dots-item-submenu' });
             items.push({ id: 'delete', icon: 'fa-trash', label: partCount > 1 ? 'Delete this' : 'Delete', cls: 'et-dots-item-delete' });
             if (partCount > 1) items.push({ id: 'delete_all', icon: 'fa-trash-can', label: deleteAllLabel, cls: 'et-dots-item-delete' });
         } else {
@@ -7056,12 +7058,9 @@
         // The footer menu's "Delete this" removes the main (last) bubble
         const targetPart = partIndex !== null ? partIndex : (partCount > 1 ? partCount - 1 : null);
 
-        const itemsHtml = items.map(item => {
-            const hasSubmenu = item.id === 'verbosity';
-            return `<button class="et-dots-item ${item.cls}" data-action="${item.id}">
-                <i class="fa-solid ${item.icon}"></i><span>${item.label}</span>${hasSubmenu ? '<i class="fa-solid fa-chevron-left et-dots-submenu-arrow"></i>' : ''}
-            </button>`;
-        }).join('');
+        const itemsHtml = items.map(item => `<button class="et-dots-item ${item.cls}" data-action="${item.id}">
+                <i class="fa-solid ${item.icon}"></i><span>${item.label}</span>
+            </button>`).join('');
 
         const menu = jQuery(`
             <div class="et-dots-menu" data-for="${msgIndex}" data-is-user="${isUser ? 1 : 0}" data-part="${partKey}">
@@ -7313,71 +7312,6 @@
         if (action === 'edit') {
             closeAllDotMenus();
             startInlineEdit(history, msgIndex);
-            return;
-        }
-
-        if (action === 'verbosity') {
-            // Show verbosity submenu
-            const charKey = getCharacterKey();
-            const currentVerbosity = (charKey && settings.verbosityByCharacter && settings.verbosityByCharacter[charKey]) || 'medium';
-            const dotsMenu = jQuery(`.et-dots-menu[data-for="${msgIndex}"]`);
-
-            // Remove any existing verbosity submenu
-            jQuery('.et-dots-submenu').remove();
-
-            const options = [
-                { id: 'short', label: 'Short', icon: 'fa-compress' },
-                { id: 'medium', label: 'Medium', icon: 'fa-align-center' },
-                { id: 'long', label: 'Long', icon: 'fa-expand' }
-            ];
-
-            const optionsHtml = options.map(o => {
-                const selected = o.id === currentVerbosity ? ' et-dots-item-selected' : '';
-                const check = o.id === currentVerbosity ? '<i class="fa-solid fa-check et-dots-check"></i>' : '';
-                return `<button class="et-dots-item${selected}" data-verbosity="${o.id}">
-                    <i class="fa-solid ${o.icon}"></i><span>${o.label}</span>${check}
-                </button>`;
-            }).join('');
-
-            const submenu = jQuery(`<div class="et-dots-menu et-dots-submenu">${optionsHtml}</div>`);
-            jQuery('#et-panel').append(submenu);
-
-            // Position submenu to the left of the main menu
-            const menuEl = dotsMenu[0];
-            const panelRect = document.getElementById('et-panel').getBoundingClientRect();
-            if (menuEl) {
-                const subMenuH = submenu.outerHeight() || 120;
-                const menuRect = menuEl.getBoundingClientRect();
-
-                let subLeft = menuRect.left - panelRect.left - 164;
-                let subTop = menuRect.top - panelRect.top;
-
-                subLeft = Math.max(8, subLeft);
-
-                if (subTop + subMenuH > panelRect.height) {
-                    subTop = menuRect.bottom - panelRect.top - subMenuH;
-                    submenu.css('transform-origin', 'bottom right');
-                } else {
-                    submenu.css('transform-origin', 'top right');
-                }
-
-                subTop = Math.max(8, subTop);
-
-                submenu.css({ left: subLeft + 'px', top: subTop + 'px' });
-            }
-
-            requestAnimationFrame(() => submenu.addClass('et-dots-menu-open'));
-
-            submenu.find('.et-dots-item').on('click', function (e) {
-                e.stopPropagation();
-                const v = jQuery(this).data('verbosity');
-                if (!settings.verbosityByCharacter) settings.verbosityByCharacter = {};
-                settings.verbosityByCharacter[charKey] = v;
-                saveSettings();
-                closeAllDotMenus();
-                const label = v.charAt(0).toUpperCase() + v.slice(1);
-                toastr.info(`Verbosity set to <b>${label}</b> for ${getCharacterName()}.`, '', { timeOut: 2500 });
-            });
             return;
         }
 

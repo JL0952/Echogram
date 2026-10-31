@@ -45,7 +45,7 @@
 //                              life: the week, errands and what happened)
 //   ?auto                      a reply in Auto mode arriving with the popup closed: the chips under the header
 //   ?report                    runs runEmotionTest(), runAutoTest(), runReplyTest(), runTapbackTest(), runMemoryTest(), runSummaryTest(),
-//                              runInstagramTest(), runScheduleTest() and runLifeTest() and posts their results
+//                              runInstagramTest(), runScheduleTest(), runLifeTest() and runReplyLengthTest() and posts their results
 //   ?draft=N                   Reply picked on message N: the quote waiting above the input bar
 //   ?memory                    Add Memory open on a bubble, and the settings panel's memory list and summaries beside the panel
 //   ?art                       Songs' covers looked up on iTunes for real (lib/music-lookup.js; kept in window.__songArt
@@ -1078,6 +1078,37 @@
         return res;
     };
 
+    // Reply length on the Personality tab: the character's own, else the default in the settings
+    window.runReplyLengthTest = async function () {
+        const res = {};
+        errors.length = 0;
+        settings.verbosityDefault = 'long';
+        settings.verbosityByCharacter = {};
+        document.getElementById('et-emotion-popup')?.remove();
+        open();
+        click('[data-emo-tab="personality"]');
+        const on = () => $p('[data-emo-verbosity].et-emo-seg-on').attr('data-emo-verbosity');
+        res.labels = $p('[data-emo-verbosity]').toArray().map(b => b.textContent).join(',') === 'Short,Medium,Long';
+        res.followsDefault = on() === 'long';
+        click('[data-emo-verbosity="short"]');
+        res.ownKept = settings.verbosityByCharacter['mira.png'] === 'short' && on() === 'short' && $p('.et-emo-tab-active').attr('data-emo-tab') === 'personality';
+        settings.verbosityDefault = 'medium';
+        emo.refreshEmotionPopup();
+        click('[data-emo-tab="personality"]');
+        res.ownOverDefault = on() === 'short';
+        // The bubble menu no longer has it: the character's last message's menu, as it is now
+        r.renderMessages(env.settings.chatHistory['mira.png']);
+        const actions = bubbleMenu('[data-et-action="menu"][data-index="1"]', 1, false, null).map(i => i.dataset.action);
+        res.notInMenu = actions.includes('regen') && !actions.includes('verbosity');
+        document.querySelectorAll('.et-dots-menu').forEach(m => m.remove());
+        document.getElementById('et-emotion-popup')?.remove();
+        delete settings.verbosityDefault;
+        delete settings.verbosityByCharacter;
+        res.errors = errors.slice();
+        res.ok = Object.values(res).filter(v => typeof v === 'boolean').every(Boolean) && !errors.length;
+        return res;
+    };
+
     // Daily Life's Life tab (docs/platform-plan.md 12b-1): today's change, errands and what happened, by hand
     window.runLifeTest = async function () {
         const res = {};
@@ -1224,7 +1255,8 @@
         const instagram = await window.runInstagramTest();
         const schedule = await window.runScheduleTest();
         const life = await window.runLifeTest();
-        fetch('/__log', { method: 'POST', body: JSON.stringify({ runEmotionTest: result, runAutoTest: auto, runReplyTest: reply, runTapbackTest: tapback, runMemoryTest: memory, runSummaryTest: summary, runInstagramTest: instagram, runScheduleTest: schedule, runLifeTest: life }) }).catch(() => {});
+        const replyLength = await window.runReplyLengthTest();
+        fetch('/__log', { method: 'POST', body: JSON.stringify({ runReplyLengthTest: replyLength, runEmotionTest: result, runAutoTest: auto, runReplyTest: reply, runTapbackTest: tapback, runMemoryTest: memory, runSummaryTest: summary, runInstagramTest: instagram, runScheduleTest: schedule, runLifeTest: life }) }).catch(() => {});
     } else if (params.has('memory')) {
         // Two memories, one pinned, the other in the last prompt; Add Memory open on a bubble
         env.settings.characterMemories = { 'mira.png': [

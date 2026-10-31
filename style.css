@@ -5243,36 +5243,6 @@ html.et-bg-light {
     flex-shrink: 0;
 }
 
-/* Verbosity submenu — same glass style as dots menu */
-.et-dots-submenu {
-    z-index: 2020;
-}
-
-/* Submenu arrow on verbosity item */
-.et-dots-submenu-arrow {
-    margin-left: auto;
-    font-size: 0.64rem;
-    opacity: 0.6;
-}
-
-/* Currently selected verbosity option */
-.et-dots-item-selected {
-    background: rgba(255, 255, 255, 0.06);
-}
-
-.et-dots-item-selected .et-dots-check,
-.et-dots-check {
-    margin-left: auto;
-    font-size: 0.72rem;
-    color: var(--et-theme-color);
-}
-
-/* Verbosity submenu item */
-.et-dots-item-submenu {
-    border-top: 1px solid rgba(255, 255, 255, 0.06);
-    margin-top: 2px;
-}
-
 /* ============================================================
    HEADER STATUS ROW
    ============================================================ */
