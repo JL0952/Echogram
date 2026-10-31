@@ -41,10 +41,11 @@
 //   ?platform=echotext|wechat|instagram  ?scheme=dark|light  ?width=320  ?desire  ?scenario=N (tests/harness/scenarios.js; default 0)
 //   ?tab=emotions|personality|schedule  the popup as a screenshot shows it (filled-in example values; Desire and Morality with ?desire;
 //                              &auto: in Auto mode, the last reply's changes beside the values for a few seconds;
-//                              schedule: Daily Life on and a week; &empty: no week yet, Generate; &edit: a block's editor open)
+//                              schedule: Daily Life on and a week; &empty: no week yet, Generate; &edit: a block's editor open;
+//                              life: the week, errands and what happened)
 //   ?auto                      a reply in Auto mode arriving with the popup closed: the chips under the header
 //   ?report                    runs runEmotionTest(), runAutoTest(), runReplyTest(), runTapbackTest(), runMemoryTest(), runSummaryTest(),
-//                              runInstagramTest() and runScheduleTest() and posts their results
+//                              runInstagramTest(), runScheduleTest() and runLifeTest() and posts their results
 //   ?draft=N                   Reply picked on message N: the quote waiting above the input bar
 //   ?memory                    Add Memory open on a bubble, and the settings panel's memory list and summaries beside the panel
 //   ?art                       Songs' covers looked up on iTunes for real (lib/music-lookup.js; kept in window.__songArt
@@ -958,7 +959,7 @@
 
         // On: the open popup gains the tab; no week yet, so Generate
         r.setDailyLifeEnabled(true);
-        res.shownWhenOn = env.settings.dailyLifeEnabled === true && tabs() === 'emotions,personality,schedule';
+        res.shownWhenOn = env.settings.dailyLifeEnabled === true && tabs() === 'emotions,personality,schedule,life';
         click('[data-emo-tab="schedule"]');
         res.emptyGenerate = $p('[data-emo-action="generate-schedule"]').length === 1 && !$p('[data-emo-action="regenerate-schedule"]').length
             && $p('[data-emo-action="add-block"]').length === 1;
@@ -1077,13 +1078,111 @@
         return res;
     };
 
+    // Daily Life's Life tab (docs/platform-plan.md 12b-1): today's change, errands and what happened, by hand
+    window.runLifeTest = async function () {
+        const res = {};
+        errors.length = 0;
+        const Life = window.EchoTextDailyLife;
+        const dayFromToday = n => Life.dateKey(new Date(Date.now() + n * 86400000));
+        settings.dailyLifeEnabled = true;
+        settings.characterSchedules = {};
+        settings.lifeState = { 'mira.png': { startAt: 1, start: {
+            errands: [{ id: 'e1', text: '周六搬家', progress: '打包了一半', due: dayFromToday(2), feeling: '嫌麻烦', from: 'chat' }],
+            log: [{ id: 'old', date: dayFromToday(-10), text: '太久以前' }, { id: 'l1', date: dayFromToday(-1), text: '和小雨和好了' }],
+            today: { date: dayFromToday(-1), text: '昨天的变动' },
+        } } };
+        const state = () => settings.lifeState['mira.png'];
+        document.getElementById('et-emotion-popup')?.remove();
+        open();
+        res.tabs = $p('[data-emo-tab]').toArray().map(b => b.dataset.emoTab).join(',') === 'emotions,personality,schedule,life';
+        click('[data-emo-tab="life"]');
+        // A week of what happened, yesterday's change gone
+        res.shown = $p('[data-emo-errand]').length === 1 && $p('[data-emo-errand="0"] .et-sched-doing').text() === '周六搬家'
+            && $p('[data-emo-errand="0"] .et-sched-place').text() === '打包了一半 · 嫌麻烦'
+            && $p('[data-emo-entry]').length === 1 && $p('[data-emo-entry="0"] .et-sched-time').text() === 'Yesterday'
+            && $p('[data-emo-life-today]').val() === '';
+
+        // Today's change saves as it's typed
+        const today = $p('[data-emo-life-today]')[0];
+        today.value = '今晚和你吃饭';
+        today.dispatchEvent(new Event('input', { bubbles: true }));
+        await sleep(450);
+        res.todaySaved = state().start.today?.text === '今晚和你吃饭' && state().start.today.date === dayFromToday(0)
+            && !state().start.log.some(e => e.id === 'old') && state().startAt > 1;
+
+        // An errand: edit keeps who wrote it; a missing due day is marked and not kept
+        const field = name => $p(`.et-sched-edit [data-emo-field="${name}"]`);
+        click('[data-emo-errand="0"]');
+        res.errandEditor = field('text').val() === '周六搬家' && field('due').val() === dayFromToday(2) && $p('.et-sched-delete').length === 1;
+        field('progress').val('打包完了');
+        field('due').val('');
+        click('[data-emo-action="save-errand"]');
+        res.errandBad = $p('.et-sched-in-bad').length === 1 && state().start.errands[0].progress === '打包了一半';
+        field('due').val(dayFromToday(3));
+        click('[data-emo-action="save-errand"]');
+        const e0 = state().start.errands[0];
+        res.errandSaved = e0.progress === '打包完了' && e0.due === dayFromToday(3) && e0.from === 'chat' && e0.id === 'e1' && !$p('.et-sched-edit').length;
+        // Adding up to three, a week out by default; then no Add
+        for (const text of ['体检', '交房租']) {
+            click('[data-emo-action="add-errand"]');
+            if (text === '体检') res.errandDefaultDue = field('due').val() === dayFromToday(7) && !$p('.et-sched-delete').length;
+            field('text').val(text);
+            click('[data-emo-action="save-errand"]');
+        }
+        res.errandsFull = state().start.errands.map(e => e.text).join(',') === '周六搬家,体检,交房租' && state().start.errands[1].from === 'you'
+            && !$p('[data-emo-action="add-errand"]').length;
+        click('[data-emo-errand="1"]');
+        click('[data-emo-action="delete-errand"]');
+        res.errandDeleted = state().start.errands.map(e => e.text).join(',') === '周六搬家,交房租' && $p('[data-emo-action="add-errand"]').length === 1;
+        // A late one is marked
+        click('[data-emo-errand="1"]');
+        field('due').val(dayFromToday(-2));
+        click('[data-emo-action="save-errand"]');
+        res.late = $p('[data-emo-errand="1"] .et-life-due').hasClass('et-life-late') && !$p('[data-emo-errand="0"] .et-life-due').hasClass('et-life-late');
+
+        // What happened: added today by default, kept in date order
+        click('[data-emo-action="add-entry"]');
+        res.entryDefault = field('date').val() === dayFromToday(0) && field('date').attr('min') === dayFromToday(-6) && field('date').attr('max') === dayFromToday(0);
+        // Only the last week: older or later days are marked and not kept
+        field('text').val('太早了');
+        for (const n of [-7, 1]) {
+            field('date').val(dayFromToday(n));
+            click('[data-emo-action="save-entry"]');
+        }
+        res.entryOutOfWeek = $p('.et-sched-in-bad').length === 1 && $p('.et-sched-in-bad').attr('data-emo-field') === 'date'
+            && $p('.et-sched-edit').length === 1 && state().start.log.length === 1;
+        field('text').val('加班到十点');
+        field('date').val(dayFromToday(-3));
+        click('[data-emo-action="save-entry"]');
+        res.entryOrder = state().start.log.map(e => e.text).join(',') === '加班到十点,和小雨和好了'
+            && $p('[data-emo-entry] .et-sched-doing').toArray().map(el => el.textContent).join(',') === '加班到十点,和小雨和好了';
+        click('[data-emo-entry="1"]');
+        field('text').val('');
+        click('[data-emo-action="save-entry"]');
+        res.entryBad = $p('.et-sched-in-bad').length === 1 && state().start.log[1].text === '和小雨和好了';
+        click('[data-emo-action="cancel-entry"]');
+        click('[data-emo-entry="0"]');
+        click('[data-emo-action="delete-entry"]');
+        res.entryDeleted = state().start.log.map(e => e.text).join(',') === '和小雨和好了';
+
+        // Off: both tabs go; the life stays
+        settings.dailyLifeEnabled = false;
+        emo.refresh();
+        res.offAgain = $p('[data-emo-tab]').length === 2 && $p('.et-emo-tab-active').attr('data-emo-tab') === 'emotions' && state().start.errands.length === 2;
+        document.getElementById('et-emotion-popup')?.remove();
+        delete settings.lifeState;
+        res.errors = errors.slice();
+        res.ok = Object.values(res).filter(v => typeof v === 'boolean').every(Boolean) && !errors.length;
+        return res;
+    };
+
     // A screenshot: example values, a lock, Desire with ?nsfw
     const tab = params.get('tab');
     if (tab || params.has('auto')) {
         settings.emotionState['mira.png'] = { start: { ...window.EchoTextEmotionModel.zeroValues(), rapport: -40, joy: 35, anticipation: 55, shock: 10, desire: 30 }, startAt: Date.now() };
         settings.characterProfiles['mira.png'] = { bigFive: { E: 'high', A: 'low', C: 'mid', O: 'mid', N: 'high' }, morality: 'high', locks: { romance: 95 },
             textingStyle: { type: 'instruction', text: 'all lowercase, dry, never uses exclamation marks' } };
-        if (tab === 'schedule') {
+        if (tab === 'schedule' || tab === 'life') {
             settings.dailyLifeEnabled = true;
             if (!params.has('empty')) settings.characterSchedules = { 'mira.png': window.EchoTextDailyLife.parseSchedule([
                 'weekday 07:00-07:40 | 家 | 起床，冲咖啡 | free', 'weekday 08:00-08:40 | 地铁 | 通勤 | free',
@@ -1105,7 +1204,15 @@
         // ?auto without a tab: the reply arriving with the popup closed (the chips under the header)
         if (!tab) emo.noteReport();
         else open();
-        if (tab === 'personality' || tab === 'schedule') $p(`[data-emo-tab="${tab}"]`)[0].click();
+        if (tab === 'life') {
+            const day = n => window.EchoTextDailyLife.dateKey(new Date(Date.now() + n * 86400000));
+            settings.lifeState = { 'mira.png': { startAt: 1, start: {
+                errands: [{ text: '周六搬家', progress: '打包了一半', due: day(2), feeling: '嫌麻烦' }, { text: '交论文', progress: '还差结论', due: day(-1) }],
+                log: [{ date: day(-3), text: '加班到十点' }, { date: day(-1), text: '中午和小雨和好了' }],
+                today: { date: day(0), text: '今晚和你吃饭，不去健身' },
+            } } };
+        }
+        if (tab === 'personality' || tab === 'schedule' || tab === 'life') $p(`[data-emo-tab="${tab}"]`)[0].click();
         if (tab === 'schedule' && params.has('edit')) $p('[data-emo-block]')[1]?.click();
     } else if (params.has('report')) {
         const result = await window.runEmotionTest();
@@ -1116,7 +1223,8 @@
         const summary = await window.runSummaryTest();
         const instagram = await window.runInstagramTest();
         const schedule = await window.runScheduleTest();
-        fetch('/__log', { method: 'POST', body: JSON.stringify({ runEmotionTest: result, runAutoTest: auto, runReplyTest: reply, runTapbackTest: tapback, runMemoryTest: memory, runSummaryTest: summary, runInstagramTest: instagram, runScheduleTest: schedule }) }).catch(() => {});
+        const life = await window.runLifeTest();
+        fetch('/__log', { method: 'POST', body: JSON.stringify({ runEmotionTest: result, runAutoTest: auto, runReplyTest: reply, runTapbackTest: tapback, runMemoryTest: memory, runSummaryTest: summary, runInstagramTest: instagram, runScheduleTest: schedule, runLifeTest: life }) }).catch(() => {});
     } else if (params.has('memory')) {
         // Two memories, one pinned, the other in the last prompt; Add Memory open on a bubble
         env.settings.characterMemories = { 'mira.png': [

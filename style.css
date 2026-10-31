@@ -4617,6 +4617,41 @@ html.et-bg-light {
     color: var(--et-theme-color);
 }
 
+/* The Life tab: today's change, an errand's due day (red once it's passed) */
+.et-life-today {
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
+    margin-top: 4px;
+}
+
+.et-life-due {
+    flex: 0 0 auto;
+    font-size: 0.68rem;
+    font-weight: 600;
+    color: var(--et-theme-color);
+}
+
+.et-life-due.et-life-late {
+    color: #f87171;
+}
+
+/* What happened: room for "Last Wednesday" */
+.et-life-entry .et-sched-time {
+    min-width: 100px;
+}
+
+.et-sched-row[data-emo-errand],
+.et-sched-row[data-emo-entry] {
+    cursor: pointer;
+    transition: background 0.15s;
+}
+
+.et-sched-row[data-emo-errand]:hover,
+.et-sched-row[data-emo-entry]:hover {
+    background: rgba(255, 255, 255, 0.05);
+}
+
 /* While drafting: the spinner and Cancel */
 .et-sched-drafting {
     align-items: center;

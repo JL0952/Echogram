@@ -174,7 +174,7 @@ test('where the character is now, for the prompt', () => {
         'Right now (09:00–18:00): 上班, at 公司.',
         'Mira is busy and can only glance at the phone now and then: replies are short or late, and Mira may say so.',
         'Next (from 23:30): 睡觉, at 家.',
-        'This is where Mira is in their day: treat it as true and let it show when it fits, without reciting it.',
+        'This is where Mira is in their life: treat it as true and let it show when it fits, without reciting it.',
         '</daily_life>',
     ].join('\n'));
     // Between blocks, and asleep (last night's sleep, nothing next today)
@@ -187,4 +187,95 @@ test('where the character is now, for the prompt', () => {
     const placeOnly = Life.normalizeSchedule({ saturday: [{ from: '10:00', to: '12:00', place: '健身房', phone: 'free' }] });
     assert.match(Life.describeNow({ schedule: placeOnly, date: at(31, 11), charName: 'Mira' }), /Right now \(10:00–12:00\): 健身房\.\nMira is free/);
     assert.equal(Life.describeNow({ schedule: Life.normalizeSchedule(null), date: at(26, 10) }), '');
+});
+
+const LIFE = {
+    start: {
+        errands: [
+            { id: 'e1', text: '周六搬家', progress: '打包了一半', due: '2026-10-31', feeling: '嫌麻烦', from: 'you' },
+            { id: 'e2', text: '期中考试', due: '2026-10-20' },
+            { text: 'no due date' },
+            { text: '', due: '2026-10-30' },
+        ],
+        log: [
+            { id: 'l2', date: '2026-10-27', text: '中午和小雨和好了' },
+            { id: 'l1', date: '2026-10-15', text: 'too old' },
+            { date: '2026-10-26', text: '加班到十点' },
+            { date: 'yesterday', text: 'bad date' },
+        ],
+        today: { date: '2026-10-28', text: '今晚和你吃饭，不去健身' },
+    },
+    startAt: 1,
+};
+
+test('a life is filled in and cleaned up', () => {
+    const fresh = Life.normalizeLife(undefined, 5);
+    assert.deepEqual(fresh, { start: { errands: [], log: [], today: null }, startAt: 5 });
+    const { start } = Life.normalizeLife(LIFE, 5);
+    assert.deepEqual(start.errands.map(e => e.text), ['周六搬家', '期中考试']);
+    assert.equal(start.errands[1].from, 'you');
+    assert.ok(start.errands[1].id);
+    // Oldest first
+    assert.deepEqual(start.log.map(e => e.date), ['2026-10-15', '2026-10-26', '2026-10-27']);
+    assert.equal(Life.normalizeLife({ start: { errands: Array.from({ length: 5 }, (_, i) => ({ text: `e${i}`, due: '2026-11-01' })) } }, 0).start.errands.length, 3);
+    assert.equal(Life.normalizeLife({ start: { log: Array.from({ length: 30 }, (_, i) => ({ text: `l${i}`, date: '2026-10-28' })) } }, 0).start.log.at(-1).text, 'l29');
+});
+
+test('the life as it stands: a week of what happened, today\'s change on its day', () => {
+    const life = Life.currentLife(LIFE, at(28, 12));
+    assert.deepEqual(life.log.map(e => e.text), ['加班到十点', '中午和小雨和好了']);
+    assert.equal(life.today.text, '今晚和你吃饭，不去健身');
+    assert.equal(Life.currentLife(LIFE, at(29, 12)).today, null);
+    assert.equal(Life.hasLife(life), true);
+    assert.equal(Life.hasLife(Life.currentLife(null, at(28, 12))), false);
+});
+
+test('editing a life', () => {
+    const parts = Life.normalizeLife(LIFE, 0).start;
+    const edited = Life.withErrand(parts, 0, { ...parts.errands[0], progress: '打包完了' });
+    assert.equal(edited.errands[0].progress, '打包完了');
+    assert.equal(edited.errands[0].id, 'e1');
+    const added = Life.withErrand(parts, -1, { text: '体检', due: '2026-11-03' });
+    assert.deepEqual(added.errands.map(e => e.text), ['周六搬家', '期中考试', '体检']);
+    // No room for a fourth; not an errand without a due date
+    assert.equal(Life.withErrand(added, -1, { text: 'x', due: '2026-11-03' }).errands.length, 3);
+    assert.deepEqual(Life.withErrand(parts, 0, { text: 'x' }).errands, parts.errands);
+    assert.deepEqual(Life.withoutErrand(parts, 0).errands.map(e => e.text), ['期中考试']);
+    // What happened falls into date order
+    const logged = Life.withEntry(parts, -1, { date: '2026-10-16', text: '看了电影' });
+    assert.deepEqual(logged.log.map(e => e.text), ['too old', '看了电影', '加班到十点', '中午和小雨和好了']);
+    assert.deepEqual(Life.withoutEntry(logged, 0).log.map(e => e.text), ['看了电影', '加班到十点', '中午和小雨和好了']);
+    assert.deepEqual(Life.withToday(parts, at(29, 9), '  去医院  ').today, { date: '2026-10-29', text: '去医院' });
+    assert.equal(Life.withToday(parts, at(29, 9), '   ').today, null);
+});
+
+test('days said from today', () => {
+    const today = '2026-10-28';
+    assert.deepEqual(['2026-10-28', '2026-10-27', '2026-10-29', '2026-10-31', '2026-10-24', '2026-11-07', '2026-10-01'].map(d => Life.sayDay(d, today)),
+        ['today', 'yesterday', 'tomorrow', 'Saturday', 'last Saturday', 'Nov 7', 'Oct 1']);
+});
+
+test('where the character is in their life, for the prompt', () => {
+    const s = Life.parseSchedule(STANDARD);
+    const life = Life.currentLife(LIFE, at(28, 10));
+    assert.equal(Life.describeNow({ schedule: s, life, date: at(28, 10), charName: 'Mira' }), [
+        '<daily_life>',
+        'It is Wednesday, morning.',
+        'Right now (09:00–18:00): 上班, at 公司.',
+        'Mira is busy and can only glance at the phone now and then: replies are short or late, and Mira may say so.',
+        'Next (from 23:30): 睡觉, at 家.',
+        'Today, unlike usual (this wins over the plan above): 今晚和你吃饭，不去健身.',
+        "On Mira's mind lately:",
+        '- 周六搬家 (打包了一半; due Saturday; 嫌麻烦)',
+        '- 期中考试 (was due Oct 20)',
+        'What happened lately, oldest first:',
+        '- last Monday: 加班到十点',
+        '- yesterday: 中午和小雨和好了',
+        'This is where Mira is in their life: treat it as true and let it show when it fits, without reciting it.',
+        '</daily_life>',
+    ].join('\n'));
+    // Without a schedule: the life alone
+    assert.equal(Life.describeNow({ schedule: Life.normalizeSchedule(null), life, date: at(28, 10), charName: 'Mira' }).split('\n').slice(1, 4).join('\n'),
+        "It is Wednesday, morning.\nToday, for a change: 今晚和你吃饭，不去健身.\nOn Mira's mind lately:");
+    assert.equal(Life.describeNow({ schedule: Life.normalizeSchedule(null), life: Life.currentLife(null, at(28, 10)), date: at(28, 10) }), '');
 });

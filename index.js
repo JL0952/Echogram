@@ -391,6 +391,9 @@
         if (!s.characterSchedules || typeof s.characterSchedules !== 'object' || Array.isArray(s.characterSchedules)) {
             s.characterSchedules = {};
         }
+        if (!s.lifeState || typeof s.lifeState !== 'object' || Array.isArray(s.lifeState)) {
+            s.lifeState = {};
+        }
         if (!s.proactiveCharacterConfig || typeof s.proactiveCharacterConfig !== 'object' || Array.isArray(s.proactiveCharacterConfig)) {
             s.proactiveCharacterConfig = {};
         }
@@ -2490,8 +2493,9 @@
         const key = getCharacterKey();
         if (!key) return;
         settings.chatHistory[key] = [];
-        // Also reset emotion state when clearing history
+        // Also reset emotion state and Daily Life's errands and what happened when clearing history
         clearEmotionState();
+        delete settings.lifeState[key];
         saveSettings();
     }
 
@@ -5787,6 +5791,13 @@
         return emotionSystem ? emotionSystem.getEmotionSnapshot() : null;
     }
 
+    /** The chat's Daily Life state (errands, what happened) as an archive saves it, or null when there's none. */
+    function getLifeSnapshot() {
+        const key = getCharacterKey();
+        const state = key ? settings.lifeState[key] : null;
+        return state ? JSON.parse(JSON.stringify(state)) : null;
+    }
+
     /** A character's texting style (emotion popup, Personality tab) for its system prompt. */
     function buildTextingStyleContext(char) {
         return emotionSystem ? emotionSystem.buildTextingStyleContext(char.avatar || char.name, char.name || 'Character') : '';
@@ -5853,12 +5864,21 @@
         refreshProactiveInsights();
     }
 
-    /** The current character's week while Daily Life is on (not in group chats), else null. */
+    /** Whether Daily Life applies to the open chat: switched on, and not a group chat. */
+    function dailyLifeActive() {
+        return settings.dailyLifeEnabled === true && !inGroupSession() && !!getCharacterKey();
+    }
+
+    /** The current character's week while Daily Life applies, else null. */
     function activeSchedule() {
-        if (settings.dailyLifeEnabled !== true || inGroupSession()) return null;
-        const key = getCharacterKey();
-        const schedule = DailyLife.normalizeSchedule(key ? settings.characterSchedules[key] : null);
+        if (!dailyLifeActive()) return null;
+        const schedule = DailyLife.normalizeSchedule(settings.characterSchedules[getCharacterKey()]);
         return DailyLife.hasSchedule(schedule) ? schedule : null;
+    }
+
+    /** The open chat's errands, what happened and today's change as they stand now, while Daily Life applies, else null. */
+    function activeLife() {
+        return dailyLifeActive() ? DailyLife.currentLife(settings.lifeState[getCharacterKey()], new Date()) : null;
     }
 
     /** The block of the week the character is in now ({ day, index, block }), or null. */
@@ -5867,10 +5887,11 @@
         return schedule ? DailyLife.blockAt(schedule, new Date()) : null;
     }
 
-    /** Where the character is in their day, for the system prompt; '' without Daily Life or a week. */
+    /** Where the character is in their life, for the system prompt; '' without Daily Life, or with nothing to say. */
     function buildDailyLifeContext(charName) {
-        const schedule = activeSchedule();
-        return schedule ? `\n\n${DailyLife.describeNow({ schedule, date: new Date(), charName })}` : '';
+        if (!dailyLifeActive()) return '';
+        const text = DailyLife.describeNow({ schedule: activeSchedule(), life: activeLife(), date: new Date(), charName });
+        return text ? `\n\n${text}` : '';
     }
 
     /** The insights row: the block the character is in now. */
@@ -8124,6 +8145,7 @@
             saveChatHistory,
             renderMessages,
             getEmotionSnapshot,
+            getLifeSnapshot,
             isPanelOpen,
             isGroupSession: () => groupManager ? groupManager.isGroupSession() : false,
             captureGroupSnapshot: () => groupManager ? groupManager.captureGroupSnapshot(settings) : null,

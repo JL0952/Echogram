@@ -26,7 +26,7 @@ new Function(fs.readFileSync(`${__dirname}/scenarios.js`, 'utf8'))();
 const NAMES = ['buildSystemPrompt', 'getVerbosityPrompt', 'getEchoTextFirstMessage', 'getSTStoryContext', 'findSTOpeningIndex',
     'isCharInCurrentSTChat', 'cleanSTMessageText', 'ST_STORY_MAX_MESSAGES', 'ST_STORY_MAX_CHARS', 'replaceMacros', 'buildMessageFormatPrompt',
     'RichMessages', 'Features', 'Platforms', 'activePlatformMemo', 'getActivePlatform', 'getActiveFeatures', 'platformHas', 'getReactionIds', 'isTetheredMode',
-    'DailyLife', 'activeSchedule', 'buildDailyLifeContext'];
+    'DailyLife', 'dailyLifeActive', 'activeSchedule', 'activeLife', 'buildDailyLifeContext'];
 // Stubbed: SillyTavern state and the parts with their own data
 const STUBS = `
     const FA_REACTIONS = env.FA_REACTIONS; const settings = env.settings; const SillyTavern = env.SillyTavern;
@@ -73,6 +73,7 @@ const context = (chat, extra = {}) => ({
     extensionSettings: { note: { chara: [{ name: 'mira', prompt: 'Mira hates being called sweet.' }] } },
     ...extra,
 });
+const dayFromToday = n => window.EchoTextDailyLife.dateKey(new Date(Date.now() + n * 86400000));
 const CASES = {
     full: { settings: { ctxPersona: true, ctxWorldInfo: true, ctxAuthorsNote: true, verbosityByCharacter: { 'mira.png': 'long' }, platformByCharacter: { 'mira.png': 'wechat' } }, chat: stChat },
     antiRefusal: { settings: { antiRefusal: true, ctxScenario: false }, chat: stChat },
@@ -83,6 +84,12 @@ const CASES = {
     dailyLife: { settings: { dailyLifeEnabled: true, characterSchedules: { 'mira.png': Object.fromEntries(['weekday', 'saturday', 'sunday'].map(day => [day, [
         { from: '07:00', to: '19:00', place: 'the safehouse', doing: 'watching the street', phone: 'busy' },
         { from: '19:00', to: '07:00', place: 'the safehouse', doing: 'off watch', phone: 'free' }]])) } }, chat: stChat },
+    // And the chat's errands, what happened and today's change (12b), dated from today
+    dailyLifeErrands: { settings: { dailyLifeEnabled: true, characterSchedules: {}, lifeState: { 'mira.png': { startAt: 0, start: {
+        errands: [{ text: 'Find the leak', progress: 'two names left', due: dayFromToday(3), feeling: 'tired of waiting' }],
+        log: [{ date: dayFromToday(-1), text: 'Burned the old passports' }],
+        today: { date: dayFromToday(0), text: 'meeting the contact at the docks tonight' },
+    } } } }, chat: stChat },
 };
 
 async function run(api) {
