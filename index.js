@@ -5178,8 +5178,7 @@
      */
     function quoteForBubble(msg, partIndex) {
         const parts = getMessageDisplayParts(msg);
-        const { replyTo, ...part } = parts[partIndex ?? parts.length - 1] || { type: 'text', text: '' };
-        const words = part.type === 'text' ? part.text : RichMessages.toPlainText(RichMessages.serializeParts([part]));
+        const words = RichMessages.partWords(parts[partIndex ?? parts.length - 1] || { type: 'text', text: '' });
         const chars = Array.from(words.replace(/<[^>]*>/g, '').replace(/[<>]/g, '').replace(/\s+/g, ' ').trim());
         const text = chars.length > 80 ? `${chars.slice(0, 80).join('').trimEnd()}…` : chars.join('');
         const name = msg.is_user ? getUserName() : (msg.charName || getCharacterName());
@@ -5821,11 +5820,12 @@
     // ============================================================
     // AI CHARACTER REACTIONS TO USER MESSAGES
     // ============================================================
-    // The model reacts by writing <react>name</react> in its reply; the reaction
-    // shows on the user's latest message before that reply (charReaction in
-    // lib/chat-view-model.js; the platform's message template draws it).
-    // Older chats may still carry a stored msg.charReaction from the former
-    // keyword-based auto-reaction, which is shown the same way.
+    // The model reacts by writing <react>name</react> in its reply; the reaction shows
+    // on the user's bubble a <reply> right before it quotes, else on the last bubble of
+    // the user's latest message before that reply (a part's tapbacks in
+    // lib/chat-view-model.js; the platform's message template draws it). Older chats
+    // may still carry a stored msg.charReaction from the former keyword-based
+    // auto-reaction, which shows on the message's last bubble.
 
     function updateEmotionIndicator() {
         if (emotionSystem) emotionSystem.updateEmotionIndicator();
@@ -6577,13 +6577,9 @@
         return { signature, timestamp: m.timestamp, tapbacks: tapbackMarks(m) };
     }
 
-    /**
-     * For each bubble, whether a tapback sits on its corner: the user's on a
-     * character bubble, the character's on the user's last bubble.
-     */
+    /** Which of a message's bubbles show a tapback (the user's on a character's, the character's on the user's). */
     function tapbackMarks(m) {
-        const last = m.parts.length - 1;
-        return m.parts.map((p, j) => !!(p.tapbacks?.length || (m.isUser && j === last && m.charReaction)));
+        return m.parts.map(p => !!p.tapbacks?.length);
     }
 
     /** View-model options for the chat on screen. */

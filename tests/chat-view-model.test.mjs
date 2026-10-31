@@ -81,6 +81,9 @@ test('a user transfer is never actionable', () => {
     assert.equal(u.parts[0].actionable, false);
 });
 
+// The character's tapbacks on each user message's bubbles (null for its own messages)
+const charTapbacks = view => view.map(m => (m.isUser ? m.parts.map(p => p.tapbacks?.[0] ?? null) : null));
+
 test("a character's <react> lands on the user's latest message before the reply", () => {
     const view = build([
         user('one', 0),
@@ -90,9 +93,41 @@ test("a character's <react> lands on the user's latest message before the reply"
         user('three', 4, { charReaction: 'like' }),
         user('four', 5, { charReaction: 'not-a-reaction' }),
     ]);
-    assert.deepEqual(view.map(m => m.charReaction), [null, 'wow', null, null, 'like', null]);
+    assert.deepEqual(charTapbacks(view), [[null], ['wow'], null, null, ['like'], [null]]);
     // <react> is not a bubble
     assert.deepEqual(view[2].parts, [{ type: 'text', text: 'lol' }]);
+});
+
+test("a character's <react> with a <reply> before it lands on the bubble the quote names", () => {
+    const history = [
+        user('<photo>my lunch</photo>\nlook at this', 0),
+        user('also I finally finished the book you lent me last month', 1),
+        // The photo by its note, by its description alone, or as "the photo"
+        char('<reply>Me: [Photo: my lunch]</reply>\n<react>heart</react>\nyum', 2),
+    ];
+    assert.deepEqual(charTapbacks(build(history)), [['heart', null], [null], null]);
+    history[2].mes = '<reply>Me: my lunch</reply>\n<react>fire</react>';
+    assert.deepEqual(charTapbacks(build(history))[0], ['fire', null]);
+    history[2].mes = '<reply>Me: 你的照片</reply>\n<react>wow</react>';
+    assert.deepEqual(charTapbacks(build(history))[0], ['wow', null]);
+    // A quote cut short with "…"; text matched before photos
+    history[2].mes = '<reply>Me: also I finally finished the book…</reply>\n<react>like</react>';
+    assert.deepEqual(charTapbacks(build(history)), [[null, null], ['like'], null]);
+    history[2].mes = '<reply>Me: look at this</reply>\n<react>haha</react>';
+    assert.deepEqual(charTapbacks(build(history))[0], [null, 'haha']);
+    // Two tapbacks in one reply, each on its own bubble
+    history[2].mes = '<reply>Me: [Photo: my lunch]</reply>\n<react>heart</react>\n<react>like</react>';
+    assert.deepEqual(charTapbacks(build(history)), [['heart', null], ['like'], null]);
+    // A quote that names nothing of the user's: the latest message, as without one
+    history[2].mes = '<reply>Me: something never said</reply>\n<react>sad</react>';
+    assert.deepEqual(charTapbacks(build(history)), [[null, null], ['sad'], null]);
+    // The photo's tag copied into the quote (a real reply): on the photo, and no photo of the character's
+    history[2].mes = '<reply>Me: <photo>my lunch</photo></reply>\n<react>like</react>\n\nThere.';
+    assert.deepEqual(charTapbacks(build(history)), [['like', null], [null], null]);
+    assert.deepEqual(build(history)[2].parts, [{ type: 'text', text: 'There.' }]);
+    // The quote belongs to the tapback, not to the text after it
+    history[2].mes = '<reply>Me: my lunch</reply>\n<react>heart</react>\nyum';
+    assert.deepEqual(build(history)[2].parts, [{ type: 'text', text: 'yum' }]);
 });
 
 test('reactions outside the screen\'s reaction set are dropped everywhere', () => {
@@ -100,7 +135,7 @@ test('reactions outside the screen\'s reaction set are dropped everywhere', () =
         user('hi', 0, { charReaction: 'like' }),
         char('<react>heart</react>\nok', 1, { reactions: { heart: { count: 1, mine: true } } }),
     ], { reactionIds: [] });
-    assert.equal(view[0].charReaction, null);
+    assert.deepEqual(charTapbacks(view)[0], [null]);
     assert.equal(view[1].parts[0].tapbacks, undefined);
 });
 
@@ -215,13 +250,13 @@ test('without reactions: reaction-only replies, tapbacks and character reactions
     ];
     const view = build(history, { features: ['photo', 'transfer'] });
     assert.deepEqual(view.map(m => m.index), [0, 2, 3, 4]);
-    assert.deepEqual(view.map(m => m.charReaction), [null, null, null, null]);
+    assert.deepEqual(charTapbacks(view), [[null], [null], null, null]);
     assert.deepEqual(view[2].parts, [{ type: 'text', text: 'ok' }]);
     // A reply that was only a reaction still shows its image
     assert.deepEqual(view[3].parts, [{ type: 'text', text: '' }]);
     // The history keeps everything, and all features show it again
     assert.deepEqual(build(history).map(m => m.index), [0, 1, 2, 3, 4]);
-    assert.equal(build(history)[0].charReaction, 'heart');
+    assert.deepEqual(charTapbacks(build(history))[0], ['heart']);
 });
 
 test('hidden messages do not split groups or time dividers', () => {

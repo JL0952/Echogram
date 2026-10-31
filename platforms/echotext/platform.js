@@ -216,7 +216,7 @@
      */
     function leadingBubbles(m, sideClass, ctx) {
         return m.parts.slice(0, -1).map((p, j) =>
-            `${replyQuote(p, ctx)}<div class="et-bubble ${sideClass} et-bubble-part${partBubbleClass(p)}${tapbackClass(m, p, j, ctx)}" data-et-role="bubble">${part(p, ctx)}${tapbackBadge(bubbleTapbacks(m, p, j), m, j, ctx)}${bubbleTools(m, j, false, ctx)}</div>`
+            `${replyQuote(p, ctx)}<div class="et-bubble ${sideClass} et-bubble-part${partBubbleClass(p)}${tapbackClass(m, p, j, ctx)}" data-et-role="bubble">${part(p, ctx)}${tapbackBadge(bubbleTapbacks(p), m, j, ctx)}${bubbleTools(m, j, false, ctx)}</div>`
         ).join('');
     }
 
@@ -262,15 +262,14 @@
         return `<div class="et-tapback${isNew}" data-et-role="tapback" title="${label}" style="--react-color:${defs[0].color}"${action}>${icons}</div>`;
     }
 
-    /** A bubble's tapback ids: the user's on a character bubble, the character's on the user's last. */
-    function bubbleTapbacks(m, p, j) {
-        if (!m.isUser) return p.tapbacks || [];
-        return j === m.parts.length - 1 && m.charReaction ? [m.charReaction] : [];
+    /** A bubble's tapback ids: the user's on a character bubble, the character's on the user's. */
+    function bubbleTapbacks(p) {
+        return p.tapbacks || [];
     }
 
     /** Classes for a bubble with a tapback: room above for it, and the room opening when it's new. */
     function tapbackClass(m, p, j, ctx) {
-        if (!bubbleTapbacks(m, p, j).length) return '';
+        if (!bubbleTapbacks(p).length) return '';
         return ` et-bubble-tapped${(ctx.arrivingTapbacks || []).includes(j) ? ' et-tapback-arriving' : ''}`;
     }
 
@@ -280,7 +279,7 @@
         const last = m.parts.length - 1;
         const mainPart = m.parts[last];
         const mainCardClass = partBubbleClass(mainPart) + tapbackClass(m, mainPart, last, ctx);
-        const mainTapback = tapbackBadge(bubbleTapbacks(m, mainPart, last), m, last, ctx);
+        const mainTapback = tapbackBadge(bubbleTapbacks(mainPart), m, last, ctx);
         const msgDate = new Date(m.timestamp || Date.now());
         const time = msgDate.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
         const fullDateToolip = msgDate.toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });

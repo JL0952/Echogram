@@ -18,7 +18,7 @@ const REACTIONS = ['heart', 'haha', 'wow', 'sad', 'fire', 'like', 'star', 'bolt'
 // and the language are said once, in index.js's MESSAGES line
 const FORMAT_RULES = [
     "PHOTOS: Mira can send photos as <photo>what the photo shows</photo> — a short, concrete description of the picture — and Me sees it as an actual picture. Write the description as a neutral caption of what is visible, with no first- or second-person pronouns: refer to people by name (Mira, Me) instead of I/me/my/you. Send one whenever Mira naturally would, such as when asked for a picture, but never use it to describe Mira's own actions. A <photo> from Me is a picture they sent: react to what it shows.",
-    "REACTIONS: Mira can react to Me's latest message with a tapback as <react>name</react>, where name is one of: heart, haha, wow, sad, fire, like, star, bolt. Use one only now and then, when a quick reaction genuinely fits — most replies need none. A reaction usually comes with text messages, but occasionally it can be the whole reply. A <react> from Me is their tapback on Mira's message just before it, or on the text a <reply> right before the <react> quotes — Mira may notice it, but it doesn't need an answer of its own.",
+    "REACTIONS: Mira can react to Me's latest message with a tapback as <react>name</react>, where name is one of: heart, haha, wow, sad, fire, like, star, bolt. To react to an earlier message of Me's instead — a photo they sent, say — put a <reply> quoting it right before the <react> (for a photo: <reply>Me: [Photo: what it shows]</reply>). Use one only now and then, when a quick reaction genuinely fits — most replies need none. A reaction usually comes with text messages, but occasionally it can be the whole reply. A <react> from Me is their tapback on Mira's message just before it, or on the text a <reply> right before the <react> quotes — Mira may notice it, but it doesn't need an answer of its own.",
     "TRANSFERS: Mira can send Me money as <transfer>amount</transfer>, with the amount as a plain number. When Me sends Mira a <transfer>, Mira can accept it with <transfer_accept/> or decline it with <transfer_decline/>, or leave it pending for now. A <transfer_accept> or <transfer_decline> from Me means they accepted or declined Mira's transfer. Only send or answer transfers when it fits the story.",
 ];
 
@@ -66,6 +66,16 @@ test('reactions are stripped: their lines go, inline gaps close up', () => {
     assert.equal(filterContextText('nice <react>fire</react> one', NO_REACT), 'nice one');
     // Lines without a stripped tag keep their spacing
     assert.equal(filterContextText('```\n  code\n```\n<react>like</react>', NO_REACT), '```\n  code\n```');
+});
+
+test('without reactions, a quote saying which message a tapback is on goes with it', () => {
+    // WeChat: replies, no reactions
+    const wechat = ['photo', 'voice', 'reply', 'transfer'];
+    assert.equal(filterContextText('<reply>Me: [Photo: lunch]</reply>\n<react>heart</react>\nlooks good', wechat), 'looks good');
+    assert.equal(filterContextText('looks good\n<reply>Me: look</reply>\n<react>heart</react>', wechat), 'looks good');
+    // A quote answered by text stays
+    assert.equal(filterContextText('<reply>Me: look</reply>\nnice', wechat), '<reply>Me: look</reply>\nnice');
+    assert.equal(filterContextText('<reply>Me: look</reply>\n<react>heart</react>', wechat), null);
 });
 
 test('a message that was only unsupported content is left out (null)', () => {
@@ -173,6 +183,21 @@ test('a <reply> quotes for the bubble after it, read leniently and written back 
     assert.equal(Rich.toPlainText('<reply>Qi: hey</reply>\nok'), '[Replying to Qi: hey]\nok');
 });
 
+test('a tag inside a quote is quoted by its note; a quote with no words is dropped', () => {
+    // The model copied the user's photo tag into its quote, to react to the photo
+    const mes = '<reply>齐宁: <photo>selfie</photo></reply>\n<react>like</react>\n\nThere.';
+    assert.equal(Rich.normalizeMessageTags(mes), '<reply>齐宁: [Photo: selfie]</reply>\n<react>like</react>\n\nThere.');
+    assert.deepEqual(Rich.parseMessageParts(mes, { splitLines: true }), [
+        { type: 'react', reaction: 'like', replyTo: { name: '齐宁', text: '[Photo: selfie]' } },
+        { type: 'text', text: 'There.' },
+    ]);
+    // Unclosed inside, other tag names
+    assert.equal(Rich.normalizeMessageTags('<reply>Qi: <photo>selfie</reply>'), '<reply>Qi: [Photo: selfie]</reply>');
+    assert.equal(Rich.normalizeMessageTags('<回复>齐宁：<照片>自拍</照片></回复>\n好看'), '<reply>齐宁: [Photo: 自拍]</reply>\n好看');
+    // A quote of nothing: the bubble after it is just itself
+    assert.deepEqual(Rich.parseMessageParts('<reply>齐宁: </reply>\nhi', { splitLines: true }), [{ type: 'text', text: 'hi' }]);
+});
+
 test('the model sees replies as they are; without them, as a plain note', () => {
     const text = '<reply>Mira: [Photo: a ticket]</reply>\nfor us?';
     assert.equal(filterContextText(text, ALL), text);
@@ -184,5 +209,6 @@ test('the reply rule names the tag, who the name is, and that most replies need 
     assert.match(rule, /^REPLIES: /);
     assert.match(rule, /<reply>name: the quoted words<\/reply>/);
     assert.match(rule, /whoever sent it \(Me or Mira\)/);
+    assert.match(rule, /quoted by its note in square brackets, as \[Photo: what it shows\], never with its tag/);
     assert.match(rule, /most replies need none/);
 });

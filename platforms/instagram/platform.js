@@ -173,10 +173,9 @@
         return `<div class="ig-quote">${label}<div class="ig-quote-text">${ctx.escapeHtml(text)}</div></div>`;
     }
 
-    /** A bubble's tapback ids: the user's on a character bubble, the character's on the user's last. */
-    function bubbleTapbacks(m, p, j) {
-        if (!m.isUser) return p.tapbacks || [];
-        return j === m.parts.length - 1 && m.charReaction ? [m.charReaction] : [];
+    /** A bubble's tapback ids: the user's on a character bubble, the character's on the user's. */
+    function bubbleTapbacks(p) {
+        return p.tapbacks || [];
     }
 
     /**
@@ -236,7 +235,7 @@
 
         const rows = m.parts.map((p, j) => {
             const main = j === last;
-            const ids = bubbleTapbacks(m, p, j);
+            const ids = bubbleTapbacks(p);
             const reacted = ids.some(id => EMOJI[id]) ? ' ig-row-reacted' : '';
             const face = m.isUser ? '' : `<div class="ig-avatar-slot">${main ? avatar(m, ctx) : ''}</div>`;
             const kind = p.type === 'photo' ? ' ig-col-photo' : '';

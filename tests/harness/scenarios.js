@@ -101,6 +101,14 @@
         { is_user: false, mes: '<music>Long One | Nobody In Particular | the first line goes here and keeps going; then a second one; a third that is a little longer than the others were; four; five comes next; six is here too; seven; eight and still more; nine; ten, the last</music>', send_date: m(2) },
     ];
 
+    // The character's tapback on an earlier message of the user's, named by a quote: on the
+    // photo of a photo-and-text message, then on a message before the latest
+    const quotedTapbacks = () => [
+        { is_user: true, mes: '<photo>my lunch</photo>\nlook at this', send_date: m(0) },
+        { is_user: true, mes: 'also I finished the book', send_date: m(1) },
+        { is_user: false, mes: '<reply>我: [Photo: my lunch]</reply>\n<react>heart</react>\nyum\n<reply>我: also I finished the book</reply>\n<react>like</react>', send_date: m(2) },
+    ];
+
     const baseSettings = {
         showAvatar: true, swipedMessages: true, memoryEnabled: true, memoryAutoExtract: true,
         memoryHighlightStyle: 'underline', autoScroll: true, verbosityByCharacter: { 'mira.png': 'short' },
@@ -128,6 +136,7 @@
         { name: 'places', history: places(), settings: { ...baseSettings } },
         { name: 'songs', history: songs(), settings: { ...baseSettings } },
         { name: 'lyrics', history: lyrics(), settings: { ...baseSettings } },
+        { name: 'quoted tapbacks', history: quotedTapbacks(), settings: { ...baseSettings } },
     ];
     window.EchoTextScenarioReactions = FA_REACTIONS;
 })();
