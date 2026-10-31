@@ -1106,6 +1106,26 @@
     background: var(--ig-accent);
 }
 
+/* The cover image, once found: on the cover, the record's label and the lyrics card */
+[data-platform="instagram"] .ig-music-label,
+[data-platform="instagram"] .ig-lyrics-cover {
+    overflow: hidden;
+}
+
+[data-platform="instagram"] .ig-lyrics-cover {
+    position: relative;
+}
+
+[data-platform="instagram"] .ig-music-cover > img,
+[data-platform="instagram"] .ig-music-label > img,
+[data-platform="instagram"] .ig-lyrics-cover > img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
 [data-platform="instagram"] .ig-music-label::after {
     content: "";
     position: absolute;

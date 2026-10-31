@@ -19,6 +19,7 @@
 <script src="../../lib/rich-messages.js"></script>
 <script src="../../lib/features.js"></script>
 <script src="../../lib/chat-view-model.js"></script>
+<script src="../../lib/music-lookup.js"></script>
 <script src="../../platforms/echotext/platform.js"></script>
 <script src="../../platforms/wechat/platform.js"></script>
 <script src="../../platforms/instagram/platform.js"></script>
@@ -44,6 +45,8 @@
 //                              and runInstagramTest() and posts their results
 //   ?draft=N                   Reply picked on message N: the quote waiting above the input bar
 //   ?memory                    Add Memory open on a bubble, and the settings panel's memory list and summaries beside the panel
+//   ?art                       Songs' covers looked up on iTunes for real (lib/music-lookup.js; kept in window.__songArt
+//                              for the page's life); ?art=offline: a network that never answers, to watch the timeouts
 (async function () {
     const sleep = ms => new Promise(r => setTimeout(r, ms));
     const params = new URLSearchParams(location.search);
@@ -80,6 +83,19 @@
         getEmotionReplyTimingModel: () => ({ deliveredDelayMs: 0, readDelayMs: 0, ghostDelayMs: 0, typingLeadMs: 0, replyDelayMs: 0 }),
         sleepWithAbort: async () => {}, error: (...a) => errors.push(a.join(' ')), stripThinkingTags: t => t };
     env.memorySystem = window.EchoTextMemorySystem.createMemorySystem({ getSettings: () => env.settings, saveSettings: () => {}, getCharacterKey: () => 'mira.png' });
+    if (params.has('art')) {
+        window.__songArt = { cache: {}, requests: [] };
+        const offline = params.get('art') === 'offline';
+        env.songArt = window.EchoTextMusicLookup.createMusicLookup({
+            getCache: () => window.__songArt.cache,
+            saveCache: () => {},
+            fetch: (url, options) => {
+                window.__songArt.requests.push({ url, at: Date.now() });
+                return offline ? new Promise((resolve, reject) => options.signal.addEventListener('abort', () => reject(new Error('aborted')))) : fetch(url, options);
+            },
+        });
+        env.getChatHistory = () => history;
+    }
     r = window.EchoTextHarness.reply(env);
     // For poking at from the console
     window.__harness = { r, env };

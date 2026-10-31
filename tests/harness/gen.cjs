@@ -24,7 +24,7 @@ const body = (iife.expression.callee || iife.expression.expression.callee).body.
 const WANT = [
     // data / view model
     'RichMessages', 'Features', 'ChatViewModel', 'Platform', 'Platforms', 'PLATFORM_IDS', 'activePlatformMemo', 'getActivePlatform',
-    'syncPlatformChrome', 'sharedFillFrame', 'updateSharedFill', 'queueSharedFill', 'watchSharedFill', 'fitTextsFrame', 'textGap', 'fitTexts', 'fitLyrics', 'queueFitTexts', 'watchTextFit', 'populatePlatformSelects', 'bindPlatformSelects', 'onPlatformChoiceChanged', 'getColorScheme', 'getReactionIds', 'startInlineEdit', 'getActiveFeatures', 'platformHas',
+    'syncPlatformChrome', 'sharedFillFrame', 'updateSharedFill', 'queueSharedFill', 'watchSharedFill', 'fitTextsFrame', 'textGap', 'fitTexts', 'fitLyrics', 'queueFitTexts', 'watchTextFit', 'songArtTimer', 'requestSongArt', 'queueSongArtRefresh', 'populatePlatformSelects', 'bindPlatformSelects', 'onPlatformChoiceChanged', 'getColorScheme', 'getReactionIds', 'startInlineEdit', 'getActiveFeatures', 'platformHas',
     'getMessageDisplayParts', 'getMessageReactions', 'staggeredMessageKeys', 'shouldStaggerReveal', 'staggerRevealParts',
     // html
     'escapeHtml', 'convertEmoticonsToEmojis', 'formatMessageText', 'buildAvatarHtml', 'applyMemoryHighlights', '_highlightTextNode',
@@ -41,7 +41,7 @@ const WANT = [
     'buildTransferCardHtml', 'buildPartContentHtml', 'partBubbleClass', 'buildLeadingPartBubblesHtml', 'buildImageAttachmentHtml',
     'buildReceiptHtml', 'RECEIPT_STATES', 'buildReactionPillsHtml', 'renderStoredReactions', 'renderCharacterReaction', 'buildMessageHtml',
 ];
-const VALUE_STUBS = ['settings', 'groupManager', 'FA_REACTIONS', 'showTypingIndicator', 'isGenerating', 'BASE_URL', 'VERSION_QUERY', 'composeMode', 'replyDraft', 'panelOpen'];
+const VALUE_STUBS = ['songArt', 'settings', 'groupManager', 'FA_REACTIONS', 'showTypingIndicator', 'isGenerating', 'BASE_URL', 'VERSION_QUERY', 'composeMode', 'replyDraft', 'panelOpen'];
 const FUNC_STUBS = [
     'getCurrentCharacter', 'showNoCharacterMessage', 'getCharacterName', 'isTetheredMode', 'getUserName',
     'getCharacterKey', 'getCharAvatarUrl', '_pickerAvatarBg', '_fingerprintAvatarImg', 'isMobileDevice',

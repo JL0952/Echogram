@@ -158,6 +158,16 @@
         return `<div class="wx-link" data-side="${side}"><span class="wx-card-tail"></span><div class="wx-link-title">${title}</div><div class="wx-link-row"><p class="wx-link-desc">${ctx.escapeHtml(p.summary)}</p><span class="wx-link-thumb">${IMAGE_GLYPH}</span></div>${site}</div>`;
     }
 
+    /** A song's cover image over its note, once it's found; an image that fails to load goes. */
+    function songCover(p, ctx) {
+        return NOTE_GLYPH + (p.cover ? `<img src="${ctx.escapeHtml(p.cover)}" alt="" onerror="this.remove()">` : '');
+    }
+
+    /** A song card's colour, from its cover once found (white text reads on it). */
+    function songTint(p) {
+        return p.shade ? ` style="--wx-music-bg:${p.shade}"` : '';
+    }
+
     /**
      * A shared song, as WeChat's music card: the cover, title and artist and a play
      * mark (only drawn) on a colour drawn from the cover, the app it came from
@@ -165,7 +175,7 @@
      */
     function musicCard(p, ctx) {
         const artist = p.artist ? `<div class="wx-music-artist">${ctx.escapeHtml(p.artist)}</div>` : '';
-        return `<div class="wx-music"><div class="wx-music-card"><span class="wx-music-cover">${NOTE_GLYPH}</span><div class="wx-music-text"><div class="wx-music-title">${ctx.escapeHtml(p.title || '音乐')}</div>${artist}</div><span class="wx-music-play">${PLAY_GLYPH}</span></div><div class="wx-music-app"><span class="wx-music-app-icon">${NOTE_GLYPH}</span>QQ音乐</div></div>`;
+        return `<div class="wx-music"><div class="wx-music-card"${songTint(p)}><span class="wx-music-cover">${songCover(p, ctx)}</span><div class="wx-music-text"><div class="wx-music-title">${ctx.escapeHtml(p.title || '音乐')}</div>${artist}</div><span class="wx-music-play">${PLAY_GLYPH}</span></div><div class="wx-music-app"><span class="wx-music-app-icon">${NOTE_GLYPH}</span>QQ音乐</div></div>`;
     }
 
     /**
@@ -177,7 +187,7 @@
     function lyricsCard(p, ctx) {
         const artist = p.artist ? `<div class="wx-music-artist">${ctx.escapeHtml(p.artist)}</div>` : '';
         const lines = p.lyrics.map(line => `<div>${ctx.escapeHtml(line)}</div>`).join('');
-        return `<div class="wx-music wx-lyrics"><div class="wx-lyrics-card"><div class="wx-lyrics-head"><span class="wx-lyrics-cover">${NOTE_GLYPH}</span><div class="wx-music-text"><div class="wx-music-title">${ctx.escapeHtml(p.title || '音乐')}</div>${artist}</div><span class="wx-music-play">${PLAY_GLYPH}</span></div><div class="wx-lyrics-lines" data-et-role="lyrics">${lines}</div></div><div class="wx-music-app"><span class="wx-music-app-icon">${NOTE_GLYPH}</span>QQ音乐</div></div>`;
+        return `<div class="wx-music wx-lyrics"><div class="wx-lyrics-card"${songTint(p)}><div class="wx-lyrics-head"><span class="wx-lyrics-cover">${songCover(p, ctx)}</span><div class="wx-music-text"><div class="wx-music-title">${ctx.escapeHtml(p.title || '音乐')}</div>${artist}</div><span class="wx-music-play">${PLAY_GLYPH}</span></div><div class="wx-lyrics-lines" data-et-role="lyrics">${lines}</div></div><div class="wx-music-app"><span class="wx-music-app-icon">${NOTE_GLYPH}</span>QQ音乐</div></div>`;
     }
 
     /** The message a row answers (<reply>): WeChat's grey box under the bubble, "名字：内容". */

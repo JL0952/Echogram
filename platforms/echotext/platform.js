@@ -120,13 +120,19 @@
         return `<div class="et-share-card et-link-card"><div class="et-share-body"><div class="et-share-icon"><i class="fa-solid fa-link"></i></div><div class="et-share-info"><div class="et-share-title">${ctx.escapeHtml(p.title || p.host || 'Link')}</div>${line}</div></div><div class="et-share-footer"><i class="fa-solid fa-globe"></i> ${ctx.escapeHtml(p.host || 'Web page')}</div></div>`;
     }
 
+    /** A song's cover image over its note, once it's found; an image that fails to load goes. */
+    function songCover(p, ctx) {
+        const img = p.cover ? `<img src="${ctx.escapeHtml(p.cover)}" alt="" onerror="this.remove()">` : '';
+        return `<div class="et-music-cover"><i class="fa-solid fa-music"></i>${img}</div>`;
+    }
+
     /**
      * A shared song, the same card as a file: the cover (a note until there is one), the
      * title and artist, a play button (only drawn), "Music" underneath.
      */
     function musicCard(p, ctx) {
         const artist = p.artist ? `<div class="et-share-meta">${ctx.escapeHtml(p.artist)}</div>` : '';
-        return `<div class="et-share-card et-music-card"><div class="et-share-body"><div class="et-music-cover"><i class="fa-solid fa-music"></i></div><div class="et-share-info"><div class="et-share-title">${ctx.escapeHtml(p.title || 'Music')}</div>${artist}</div><span class="et-music-play"><i class="fa-solid fa-play"></i></span></div><div class="et-share-footer"><i class="fa-solid fa-music"></i> Music</div></div>`;
+        return `<div class="et-share-card et-music-card"><div class="et-share-body">${songCover(p, ctx)}<div class="et-share-info"><div class="et-share-title">${ctx.escapeHtml(p.title || 'Music')}</div>${artist}</div><span class="et-music-play"><i class="fa-solid fa-play"></i></span></div><div class="et-share-footer"><i class="fa-solid fa-music"></i> Music</div></div>`;
     }
 
     /**
@@ -137,7 +143,7 @@
     function lyricsCard(p, ctx) {
         const artist = p.artist ? `<div class="et-lyrics-artist">${ctx.escapeHtml(p.artist)}</div>` : '';
         const lines = p.lyrics.map(line => `<div>${ctx.escapeHtml(line)}</div>`).join('');
-        return `<div class="et-lyrics-card"><div class="et-lyrics-head"><div class="et-music-cover"><i class="fa-solid fa-music"></i></div><div class="et-lyrics-song"><div class="et-lyrics-title">${ctx.escapeHtml(p.title || 'Music')}</div>${artist}</div><span class="et-music-play"><i class="fa-solid fa-play"></i></span></div><div class="et-lyrics-lines" data-et-role="lyrics">${lines}</div><div class="et-lyrics-footer"><i class="fa-solid fa-music"></i> Music</div></div>`;
+        return `<div class="et-lyrics-card"><div class="et-lyrics-head">${songCover(p, ctx)}<div class="et-lyrics-song"><div class="et-lyrics-title">${ctx.escapeHtml(p.title || 'Music')}</div>${artist}</div><span class="et-music-play"><i class="fa-solid fa-play"></i></span></div><div class="et-lyrics-lines" data-et-role="lyrics">${lines}</div><div class="et-lyrics-footer"><i class="fa-solid fa-music"></i> Music</div></div>`;
     }
 
     /** A transfer or transfer-response card, from a view-model part (its status and display amount). */

@@ -61,6 +61,7 @@
     loadEchoTextModule('lib/rich-messages.js', 'EchoTextRichMessages');
     loadEchoTextModule('lib/features.js', 'EchoTextFeatures');
     loadEchoTextModule('lib/chat-view-model.js', 'EchoTextChatViewModel');
+    loadEchoTextModule('lib/music-lookup.js', 'EchoTextMusicLookup');
     loadEchoTextModule('lib/story-texts.js', 'EchoTextStoryTexts');
 
     // Platform packs (platforms/<id>/platform.js), in menu order. Their scripts are
@@ -129,6 +130,8 @@
     let proactiveMessaging = null;
     let settingsModal = null;
     let memorySystem = null;
+    // Shared songs' covers, looked up on iTunes (lib/music-lookup.js)
+    let songArt = null;
     let saveLoadModal = null;
     let groupManager = null;
     let imageGeneration = null;
@@ -6592,7 +6595,35 @@
             features: getActiveFeatures(),
             combineMode: !!(groupManager && groupManager.isGroupSession() && groupManager.isCombineMode()),
             swipes: !!settings.swipedMessages,
+            songArt: (title, artist) => songArt?.cached(title, artist) ?? null,
         };
+    }
+
+    // ── Song covers ──────────────────────────────────────────────────────────
+    // The songs on screen without a cover are looked up after each render
+    // (lib/music-lookup.js); the messages whose covers came in are drawn again. A slow
+    // or blocked network only leaves the placeholders.
+    let songArtTimer = 0;
+
+    function requestSongArt(view) {
+        if (!songArt) return;
+        for (const m of view.messages) {
+            for (const p of m.parts) {
+                if (p.type === 'music' && !p.cover) songArt.request(p.title, p.artist).then(found => found && queueSongArtRefresh());
+            }
+        }
+    }
+
+    function queueSongArtRefresh() {
+        clearTimeout(songArtTimer);
+        songArtTimer = setTimeout(() => {
+            // A reply still arriving bubble by bubble would show whole when redrawn: wait for it
+            if (document.querySelector('#et-messages-inner [data-et-role~="bubble"][style*="display: none"]')) {
+                queueSongArtRefresh();
+                return;
+            }
+            if (panelOpen) refreshMessages(getChatHistory());
+        }, 300);
     }
 
     /** What platform templates get besides a message's own view (see platforms/echotext/platform.js). */
@@ -6644,6 +6675,7 @@
         if (!inner.length) return;
 
         const view = ChatViewModel.buildChatViewModel(history, getChatViewOptions());
+        requestSongArt(view);
         let ctx = null;
         for (const m of view.messages) {
             const signature = JSON.stringify(m);
@@ -6797,6 +6829,7 @@
 
         const platform = getActivePlatform();
         const view = ChatViewModel.buildChatViewModel(history, getChatViewOptions());
+        requestSongArt(view);
         const ctx = getMessageRenderContext();
         const frame = getRenderFrame(platform, ctx);
 
@@ -7967,6 +8000,11 @@
             getSettings: () => settings,
             saveSettings,
             getCharacterKey
+        });
+
+        songArt = window.EchoTextMusicLookup.createMusicLookup({
+            getCache: () => (settings.songArt ||= {}),
+            saveCache: saveSettings,
         });
 
         // Expose character accessor helpers for the settings-modal memory UI

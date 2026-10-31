@@ -118,6 +118,11 @@
         return `<div class="ig-location"><div class="ig-location-map">${mapArt(p.map)}<span class="ig-map-pin"></span></div><div class="ig-location-body"><div class="ig-location-name">${ctx.escapeHtml(p.name || 'Location')}</div>${address}<div class="ig-location-view">View</div></div></div>`;
     }
 
+    /** A song's cover image, once it's found; an image that fails to load goes. */
+    function coverImage(p, ctx) {
+        return p.cover ? `<img src="${ctx.escapeHtml(p.cover)}" alt="" onerror="this.remove()">` : '';
+    }
+
     /**
      * A shared song, as Instagram shows one: the cover with a record sliding out from
      * behind it, the title and artist over the cover's foot and a play mark at its top
@@ -125,7 +130,7 @@
      */
     function musicCard(p, ctx) {
         const artist = p.artist ? `<div class="ig-music-artist">${ctx.escapeHtml(p.artist)}</div>` : '';
-        return `<div class="ig-music"><span class="ig-music-disc"><span class="ig-music-label"></span></span><div class="ig-music-cover"><span class="ig-music-note">${NOTE_GLYPH}</span><span class="ig-music-play">${PLAY_GLYPH}</span><div class="ig-music-text"><div class="ig-music-title">${ctx.escapeHtml(p.title || 'Music')}</div>${artist}</div></div></div>`;
+        return `<div class="ig-music"><span class="ig-music-disc"><span class="ig-music-label">${coverImage(p, ctx)}</span></span><div class="ig-music-cover"><span class="ig-music-note">${NOTE_GLYPH}</span>${coverImage(p, ctx)}<span class="ig-music-play">${PLAY_GLYPH}</span><div class="ig-music-text"><div class="ig-music-title">${ctx.escapeHtml(p.title || 'Music')}</div>${artist}</div></div></div>`;
     }
 
     /**
@@ -136,7 +141,9 @@
     function lyricsCard(p, ctx) {
         const artist = p.artist ? `<div class="ig-lyrics-artist">${ctx.escapeHtml(p.artist)}</div>` : '';
         const lines = p.lyrics.map(line => `<div>${ctx.escapeHtml(line)}</div>`).join('');
-        return `<div class="ig-lyrics"><div class="ig-lyrics-head"><span class="ig-lyrics-cover">${NOTE_GLYPH}</span><div class="ig-lyrics-song"><div class="ig-lyrics-title">${ctx.escapeHtml(p.title || 'Music')}</div>${artist}</div></div><div class="ig-lyrics-lines" data-et-role="lyrics">${lines}</div><div class="ig-lyrics-brand">${SPOTIFY_GLYPH}<span>Spotify</span></div></div>`;
+        // The card takes its cover's colour, with the ink that reads on it (Spotify's red and black until then)
+        const tint = p.color ? ` style="--ig-lyrics-bg:${p.color};--ig-lyrics-ink:${p.ink || '#121212'}"` : '';
+        return `<div class="ig-lyrics"${tint}><div class="ig-lyrics-head"><span class="ig-lyrics-cover">${NOTE_GLYPH}${coverImage(p, ctx)}</span><div class="ig-lyrics-song"><div class="ig-lyrics-title">${ctx.escapeHtml(p.title || 'Music')}</div>${artist}</div></div><div class="ig-lyrics-lines" data-et-role="lyrics">${lines}</div><div class="ig-lyrics-brand">${SPOTIFY_GLYPH}<span>Spotify</span></div></div>`;
     }
 
     /** One bubble's content: text, a photo, a voice message, a place, a link card or a song. */

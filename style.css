@@ -11112,6 +11112,18 @@ html.et-bg-light .et-location-map {
         color-mix(in srgb, var(--et-theme-color) 70%, #000) 100%);
 }
 
+.et-music-cover {
+    position: relative;
+}
+
+.et-music-cover > img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
 .et-music-card .et-share-info {
     flex: 1;
 }
