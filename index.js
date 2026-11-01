@@ -8169,6 +8169,19 @@
             getProactivePace: () => (emotionSystem ? emotionSystem.getProactivePace() : 1),
             // How the character follows up when ignored (Personality tab; lib/proactive-rounds.js)
             getTemperament: key => (emotionSystem ? emotionSystem.getTemperament(key) : 'normal'),
+            // Daily Life, the open character with a schedule: where they are in their day and
+            // their errands and news, for new topics (lib/proactive-rounds.js lifeTopics); else null
+            getDailyLife: () => {
+                const schedule = activeSchedule();
+                if (!schedule) return null;
+                const date = new Date();
+                const { block, since, prev } = DailyLife.currentStretch(schedule, date);
+                return {
+                    phone: block ? block.phone : 'free', block, since: since ? since.getTime() : null,
+                    prevPhone: prev ? prev.phone : 'free', prevDoing: prev ? prev.doing : '',
+                    life: activeLife(), today: DailyLife.dateKey(date),
+                };
+            },
             // Daily Life: the open character's block now ({ phone, endsAt }), or null
             getScheduleNow: () => {
                 const now = currentScheduleBlock();

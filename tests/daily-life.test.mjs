@@ -466,3 +466,21 @@ test('waking up ends where the next block begins, across lists too', () => {
     assert.equal(Life.blockEndAt(s, at(31, 3)).getTime(), at(31, 6).getTime());
     assert.equal(Life.blockAt(s, at(31, 6, 30)).block.doing, '钓鱼');
 });
+
+test('where a time sits in the week: the stretch since when, and what came before', () => {
+    const s = Life.parseSchedule(STANDARD);
+    const at2 = (d, h, m = 0) => at(d, h, m).getTime();
+    // At work since 09:00, after the morning
+    let r = Life.blockAt(s, at(26, 10)) && Life.currentStretch(s, at(26, 10));
+    assert.deepEqual([r.block.doing, r.since.getTime(), r.prev], ['上班', at2(26, 9), null]);
+    // Between blocks: free since work ended; work came before
+    r = Life.currentStretch(s, at(26, 18, 20));
+    assert.deepEqual([r.block, r.since.getTime(), r.prev.doing], [null, at2(26, 18), '上班']);
+    // Up at 07:00 after last night's sleep (which began the day before)
+    r = Life.currentStretch(s, at(27, 7, 10));
+    assert.deepEqual([r.block.doing, r.since.getTime(), r.prev.doing], ['起床洗漱', at2(27, 7), '睡觉']);
+    // Asleep since 23:30 yesterday
+    r = Life.currentStretch(s, at(27, 3));
+    assert.deepEqual([r.block.doing, r.since.getTime()], ['睡觉', at2(26, 23, 30)]);
+    assert.deepEqual(Life.currentStretch(Life.normalizeSchedule(null), at(26, 10)), { block: null, since: null, prev: null });
+});

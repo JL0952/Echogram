@@ -81,3 +81,51 @@ test('the model\'s answer split into the round\'s texts', () => {
 test('the hour, for counting requests', () => {
     assert.equal(R.hourKey(new Date(2026, 0, 5, 7, 59)), '2026-01-05T07');
 });
+
+test('new topics: the wait grows with each unanswered one, up to a few in a row', () => {
+    assert.deepEqual(R.TEMPERAMENTS.map(t => t.topicCap), [1, 2, 3, 5]);
+    assert.equal(R.topicWaitHours({ baseHours: 8, temperament: 'normal' }), 8);
+    assert.equal(R.topicWaitHours({ baseHours: 8, temperament: 'normal', unanswered: 1 }), 24);
+    assert.equal(R.topicWaitHours({ baseHours: 4, temperament: 'clingy', unanswered: 2 }), 16);
+    assert.equal(R.topicWaitHours({ baseHours: 30, temperament: 'aloof', unanswered: 3 }), 30);
+    assert.equal(R.CLOCK_TRIGGERS.length, 16);
+});
+
+test('just got free: within half an hour of a busy or sleeping stretch ending', () => {
+    const now = T0;
+    assert.equal(R.justGotFree({ phone: 'free', prevPhone: 'busy', since: now - 10 * MIN, now }), true);
+    assert.equal(R.justGotFree({ phone: 'free', prevPhone: 'asleep', since: now - 30 * MIN, now }), true);
+    assert.equal(R.justGotFree({ phone: 'free', prevPhone: 'busy', since: now - 31 * MIN, now }), false);
+    assert.equal(R.justGotFree({ phone: 'free', prevPhone: 'free', since: now - 5 * MIN, now }), false);
+    assert.equal(R.justGotFree({ phone: 'busy', prevPhone: 'asleep', since: now - 5 * MIN, now }), false);
+});
+
+test('topics from the character\'s own day', () => {
+    const say = (d, today) => (d === today ? 'today' : d === '2026-11-01' ? 'tomorrow' : d);
+    const day = {
+        justFree: true, prevDoing: '上班', block: { doing: '回家路上', place: '地铁' }, today: '2026-10-31',
+        life: {
+            errands: [{ text: '交论文', progress: '', due: '2026-11-05' }, { text: '周日搬家', progress: '打包了一半', due: '2026-11-01' }],
+            log: [{ date: '2026-10-30', text: '昨天的事' }, { date: '2026-10-31', text: '中午和小雨和好了' }], today: null,
+        },
+    };
+    assert.deepEqual(R.lifeTopics({ day, sayDay: say }), [
+        { type: 'block_change', weight: 70, detail: '上班 is over; now: 回家路上' },
+        { type: 'errand', weight: 65, detail: '周日搬家 (打包了一半), due tomorrow' },
+        { type: 'life_event', weight: 55, detail: '中午和小雨和好了' },
+    ]);
+    // Not just free, nothing due by tomorrow, today's change of plans first
+    const quiet = { ...day, justFree: false, life: { errands: [{ text: 'x', due: '2026-11-05' }], log: [], today: { date: '2026-10-31', text: '今晚和你吃饭' } } };
+    assert.deepEqual(R.lifeTopics({ day: quiet, sayDay: say }), [{ type: 'life_event', weight: 55, detail: "today's change of plans: 今晚和你吃饭" }]);
+    assert.deepEqual(R.lifeTopics({ day: null }), []);
+    // Overdue still counts
+    const late = { ...quiet, life: { errands: [{ text: '交房租', due: '2026-10-29' }], log: [], today: null } };
+    assert.equal(R.lifeTopics({ day: late, sayDay: say })[0].detail, '交房租, was due 2026-10-29');
+});
+
+test('what the model is told for a topic', () => {
+    const t = (type, detail) => R.topicInstruction({ type, detail, charName: 'Mira', userName: 'Qi', timeSince: '5 hours' });
+    assert.equal(t('block_change', '上班 is over'), "Mira just got free: 上班 is over. It has been 5 hours since Qi last texted. Text Qi about what Mira just did or what's next.");
+    assert.match(t('errand', 'x'), /^On Mira's mind: x\. It has been 5 hours/);
+    assert.match(t('life_event', 'x'), /^Something from Mira's day: x\./);
+});
