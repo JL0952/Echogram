@@ -669,9 +669,16 @@ test('a note in the life start leaves the reports and their replay as they were'
 });
 
 test('time together in a sentence', () => {
-    assert.equal(Life.togetherEntry({ userName: 'Qi', from: at(26, 19, 30).getTime(), until: at(26, 22, 30).getTime() }), 'With Qi (19:30–22:30)');
+    const span = { userName: 'Qi', from: at(26, 14).getTime(), until: at(26, 17, 30).getTime() };
+    assert.equal(Life.togetherEntry(span), '14:00–17:30 With Qi');
+    assert.equal(Life.togetherEntry({ ...span, text: '和 Qi 去看了电影' }), '14:00–17:30 和 Qi 去看了电影');
     const { systemPrompt, prompt } = Life.buildTogetherRequest({ charName: 'Mira', userName: 'Qi', story: 'Qi: 走吧' });
-    assert.match(systemPrompt, /what they did together, naming Qi/);
+    assert.match(systemPrompt, /what they did together, naming Qi: no heading, no quotes, no date or time/);
+    assert.match(systemPrompt, /Write nothing else/);
+    assert.doesNotMatch(systemPrompt, /feeling/);
+    const auto = Life.buildTogetherRequest({ charName: 'Mira', userName: 'Qi', story: 'Qi: 走吧', moodRule: '\n\nMOOD: the rule' }).systemPrompt;
+    assert.match(auto, /Then report how this time left Mira feeling, the story being Qi's latest messages:\nMOOD: the rule$/);
+    assert.doesNotMatch(auto, /Write nothing else/);
     assert.equal(prompt, '<story>\nQi: 走吧\n</story>');
     assert.equal(Life.cleanTogetherEntry('和 Qi 去看了电影'), '和 Qi 去看了电影');
     assert.equal(Life.cleanTogetherEntry('\n"和 Qi 去看了电影。"\n还有别的'), '和 Qi 去看了电影。');

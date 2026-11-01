@@ -1508,13 +1508,14 @@
         const fromClock = clock(Date.now() - 2 * HOUR);
         res.toggledOff = !plan() && !r.isWithYou();
         res.partedPlanned = env.partedPlans.length === 1 && env.partedPlans[0][0] === 'mira.png' && Math.abs(env.partedPlans[0][1] - Date.now()) < 60000;
-        res.fixedFirst = log().length === 1 && log()[0].text === `With 我 (${fromClock}–${clock(Date.now())})`;
+        const span = `${fromClock}–${clock(Date.now())}`;
+        res.fixedFirst = log().length === 1 && log()[0].text === `${span} With 我`;
         const asked = summaries[0]?.apiMessages.at(-1).content || '';
         res.storySent = summaries.length === 1 && asked.includes('去看电影') && asked.includes('Mira: 好呀') && !asked.includes('走吧') && !asked.includes('<think>');
         const startBefore = env.settings.lifeState['mira.png'].startAt;
         release();
         await sleep(20);
-        res.sentence = log().length === 1 && log()[0].text === '和我去看了电影，在江边走了很久' && env.settings.lifeState['mira.png'].startAt === startBefore;
+        res.sentence = log().length === 1 && log()[0].text === `${span} 和我去看了电影，在江边走了很久` && env.settings.lifeState['mira.png'].startAt === startBefore;
         click('[data-emo-tab="life"]');
         res.recentShows = $p('.et-life-entry').text().includes('在江边走了很久');
 
@@ -1527,7 +1528,7 @@
         r.noteTogetherEnded();
         r.noteTogetherEnded();
         await sleep(20);
-        res.ranOut = log().length === 1 && log()[0].text.startsWith('With 我 (') && summaries.length === 0 && plan().noted === true
+        res.ranOut = log().length === 1 && log()[0].text.endsWith(' With 我') && summaries.length === 0 && plan().noted === true
             && env.partedPlans.length === 2 && env.partedPlans[1][1] === plan().until;
         // Replacing what's already noted notes nothing more
         click('[data-emo-plan-phone="free"]');
@@ -1539,15 +1540,56 @@
         story.push({ is_user: true, name: '我', mes: '走吧', send_date: Date.now() - 2 * HOUR });
         sentence = async () => { throw new Error('down'); };
         await r.noteTogether('mira.png', { from: Date.now() - 3 * HOUR, until: Date.now() - HOUR });
-        res.failedKeepsFixed = log().length === 1 && log()[0].text.startsWith('With 我 (');
+        res.failedKeepsFixed = log().length === 1 && log()[0].text.endsWith(' With 我');
         sentence = async () => 'I cannot help with that request.';
         env.settings.lifeState = settings.lifeState = {};
         await r.noteTogether('mira.png', { from: Date.now() - 3 * HOUR, until: Date.now() - HOUR });
-        res.refusalKeepsFixed = log().length === 1 && log()[0].text.startsWith('With 我 (');
+        res.refusalKeepsFixed = log().length === 1 && log()[0].text.endsWith(' With 我');
         env.settings.lifeState = settings.lifeState = {};
         sentence = async () => { env.settings.lifeState = {}; return '一句话'; };
         await r.noteTogether('mira.png', { from: Date.now() - 3 * HOUR, until: Date.now() - HOUR });
         res.deletedStaysGone = log().length === 0;
+
+        // Across midnight it stays under the day it began
+        const midnight = new Date(); midnight.setHours(0, 0, 0, 0);
+        env.settings.lifeState = settings.lifeState = {};
+        story.length = 0;
+        await r.noteTogether('mira.png', { from: midnight.getTime() - HOUR, until: midnight.getTime() + 60000 });
+        res.dayItBegan = log()[0]?.date === window.EchoTextDailyLife.dateKey(new Date(midnight.getTime() - HOUR)) && log()[0]?.text.startsWith('23:00–00:01 ');
+
+        // Auto mode: the sentence's <mood> line moves the feelings, a step at most, and locks and the sentence hold
+        const stretch = { from: Date.now() - 3 * HOUR, until: Date.now() - HOUR };
+        const mood = () => JSON.parse(JSON.stringify(env.settings.emotionState['mira.png']));
+        env.settings.emotionState = settings.emotionState = { 'mira.png': { startAt: Date.now() - 1000, start: { ...settings.emotionState['mira.png'].start, joy: 20, anger: 40, sadness: 0, rapport: 10 } } };
+        settings.characterProfiles['mira.png'] = { ...settings.characterProfiles['mira.png'], locks: { sadness: 15 } };
+        env.settings.characterProfiles = settings.characterProfiles;
+        env.settings.emotionMode = settings.emotionMode = 'auto';
+        env.settings.chatHistory['mira.png'] = [...chat(), { is_user: false, mes: 'x', send_date: Date.now() - 500, mood: { joy: 20 } }];
+        story.push({ is_user: true, name: '我', mes: '走吧', send_date: Date.now() - 2 * HOUR });
+        summaries.length = 0;
+        env.settings.lifeState = settings.lifeState = {};
+        sentence = async () => '和我去吃了饭\n<mood>joy 90, anger 35, sadness 80, rapport 90</mood>';
+        await r.noteTogether('mira.png', stretch);
+        const after = emo.getEmotionState();
+        res.moodAsked = /MOOD:/.test(summaries[0]?.systemPrompt || '') && /how this time left Mira feeling/.test(summaries[0]?.systemPrompt || '');
+        res.moodMoved = Math.abs(after.joy - 45) < 2 && Math.abs(after.anger - 35) < 2 && after.sadness === 15 && Math.abs(after.rapport - 20) < 1;
+        res.moodNotInText = /吃了饭$/.test(log()[0]?.text || '');
+        res.moodStartsOver = mood().startAt >= stretch.until;
+        // No <mood> line: nothing moves
+        const before = JSON.stringify(mood().start);
+        sentence = async () => '又一句';
+        env.settings.lifeState = settings.lifeState = {};
+        await r.noteTogether('mira.png', stretch);
+        res.noMoodLine = JSON.stringify(mood().start) === before;
+        // Manual mode isn't asked and doesn't move, whatever comes back
+        env.settings.emotionMode = settings.emotionMode = 'manual';
+        const manualBefore = JSON.stringify(emo.getEmotionState());
+        summaries.length = 0;
+        sentence = async () => '再一句\n<mood>joy 99</mood>';
+        env.settings.lifeState = settings.lifeState = {};
+        await r.noteTogether('mira.png', stretch);
+        res.manualStays = !/MOOD:/.test(summaries[0]?.systemPrompt || '') && JSON.stringify(emo.getEmotionState()) === manualBefore && /再一句$/.test(log()[0]?.text || '');
+        settings.characterProfiles['mira.png'] = { ...settings.characterProfiles['mira.png'], locks: {} };
 
         // No week: nothing to be with you in
         env.settings.characterSchedules = settings.characterSchedules = {};

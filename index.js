@@ -6123,15 +6123,16 @@
     }
 
     /**
-     * Time together is over: it goes in the life's Recent list right away, and when the
-     * main chat has anything from that time, the model's sentence about it takes its place.
-     * A text may follow once they've parted. An accidental moment leaves nothing.
+     * Time together is over: it goes in the life's Recent list right away, under the day
+     * it began, with its hours, and when the main chat has anything from that time, the
+     * model's sentence about it takes its place and in Auto mode moves the feelings. A
+     * text may follow once they've parted. An accidental moment leaves nothing.
      */
     async function noteTogether(key, { from, until }) {
         const char = getCurrentCharacter();
         if (!char || until - from < DailyLife.TOGETHER_MIN_MINUTES * 60000) return;
         const userName = getUserName();
-        const entry = { id: `with${from.toString(36)}`, date: DailyLife.dateKey(new Date(until)), text: DailyLife.togetherEntry({ userName, from, until }) };
+        const entry = { id: `with${from.toString(36)}`, date: DailyLife.dateKey(new Date(from)), text: DailyLife.togetherEntry({ userName, from, until }) };
         settings.lifeState[key] = DailyLife.noteInStart(settings.lifeState[key], entry);
         saveSettings();
         if (emotionSystem) emotionSystem.refresh();
@@ -6139,19 +6140,23 @@
         const story = getSTStoryContext(char, { from, until, maxMessages: ST_STRETCH_MAX_MESSAGES, maxChars: ST_STRETCH_MAX_CHARS });
         if (!story) return;
         try {
-            const request = DailyLife.buildTogetherRequest({ charName: char.name || 'Character', userName, story });
+            const request = DailyLife.buildTogetherRequest({ charName: char.name || 'Character', userName, story, moodRule: buildMoodRules(char) });
             const systemPrompt = withRefusalFrame(request.systemPrompt);
             const raw = await sendCompletionRequest({
                 apiMessages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: request.prompt }],
                 rawPrompt: request.prompt, systemPrompt, signal: new AbortController().signal,
             });
-            const text = DailyLife.cleanTogetherEntry(stripThinkingTags(String(raw ?? '')));
+            const reply = readReply(stripThinkingTags(String(raw ?? '')));
+            const text = DailyLife.cleanTogetherEntry(reply.mes);
             if (!text || ChatSummaries.looksLikeRefusal(text)) return;
             // Deleted meanwhile, or the chat cleared: left that way
             if (!DailyLife.normalizeLife(settings.lifeState[key]).start.log.some(e => e.id === entry.id)) return;
-            settings.lifeState[key] = DailyLife.noteInStart(settings.lifeState[key], { ...entry, text });
+            settings.lifeState[key] = DailyLife.noteInStart(settings.lifeState[key], { ...entry, text: DailyLife.togetherEntry({ userName, from, until, text }) });
             saveSettings();
-            if (emotionSystem) emotionSystem.refresh();
+            if (emotionSystem) {
+                emotionSystem.refresh();
+                emotionSystem.applyMood(reply.mood, key);
+            }
         } catch (err) {
             warn('Noting the time together failed:', err);
         }

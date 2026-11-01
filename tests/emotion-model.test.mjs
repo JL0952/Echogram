@@ -185,3 +185,19 @@ test('Auto mode: a deleted or swiped reply takes its report back', () => {
     assert.ok(!Model.hasReport([{ is_user: true, mood: { joy: 1 } }, reply(undefined)]));
     assert.ok(!Model.hasReport(undefined));
 });
+
+test('a report on its own moves feelings a step at most, past locks, and says what moved', () => {
+    const profile = Model.normalizeProfile({ bigFive: { N: 'mid' }, locks: { anger: 30 } });
+    const values = { ...Model.zeroValues(), joy: 20, rapport: 10 };
+    const change = Model.applyReport(values, { joy: 90, rapport: 90, anger: 90, desire: 50 }, { profile });
+    assert.equal(values.joy, 45);
+    assert.equal(values.rapport, 20);
+    assert.deepEqual(change, { joy: 25, rapport: 10 });
+    assert.deepEqual(Model.roundedChange({ joy: 24.6, anger: 0.2 }), { joy: 25 });
+    assert.equal(Model.roundedChange({ joy: 0.1 }), null);
+    assert.equal(Model.roundedChange(null), null);
+    // The chat's first report: feelings at 0 go straight there
+    const fresh = { ...Model.zeroValues() };
+    Model.applyReport(fresh, { joy: 80 }, { profile, first: true });
+    assert.equal(fresh.joy, 80);
+});
