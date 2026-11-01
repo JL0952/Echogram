@@ -26,7 +26,7 @@ new Function(fs.readFileSync(`${__dirname}/scenarios.js`, 'utf8'))();
 const NAMES = ['buildSystemPrompt', 'getVerbosityPrompt', 'getCharacterVerbosity', 'getEchoTextFirstMessage', 'getSTStoryContext', 'findSTOpeningIndex',
     'isCharInCurrentSTChat', 'cleanSTMessageText', 'ST_STORY_MAX_MESSAGES', 'ST_STORY_MAX_CHARS', 'replaceMacros', 'buildMessageFormatPrompt',
     'RichMessages', 'Features', 'Platforms', 'activePlatformMemo', 'getActivePlatform', 'getActiveFeatures', 'platformHas', 'getReactionIds', 'isTetheredMode',
-    'DailyLife', 'dailyLifeActive', 'activeSchedule', 'activeLife', 'buildDailyLifeContext', 'buildLifeRules', 'getEmotionHistory'];
+    'DailyLife', 'dailyLifeActive', 'activeSchedule', 'activeLife', 'buildDailyLifeContext', 'phoneOverride', 'buildLifeRules', 'getEmotionHistory'];
 // Stubbed: SillyTavern state and the parts with their own data
 const STUBS = `
     const FA_REACTIONS = env.FA_REACTIONS; const settings = env.settings; const SillyTavern = env.SillyTavern;

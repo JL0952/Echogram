@@ -26,6 +26,7 @@
 <script src="scenarios.js"></script>
 <script src="../../lib/daily-life.js"></script>
 <script src="../../lib/proactive-rounds.js"></script>
+<script src="../../lib/catch-up.js"></script>
 <script src="build/bundle-reply.js"></script>
 <script src="../../lib/emotion-model.js"></script>
 <script src="../../lib/emotion-icons.js"></script>
@@ -46,7 +47,7 @@
 //                              life: the week, errands and what happened)
 //   ?auto                      a reply in Auto mode arriving with the popup closed: the chips under the header
 //   ?report                    runs runEmotionTest(), runAutoTest(), runReplyTest(), runTapbackTest(), runMemoryTest(), runSummaryTest(),
-//                              runInstagramTest(), runScheduleTest(), runLifeTest(), runReplyLengthTest(), runLifeReportTest() and runUnseenTest() and posts their results
+//                              runInstagramTest(), runScheduleTest(), runLifeTest(), runReplyLengthTest(), runLifeReportTest(), runUnseenTest() and runCatchUpTest() and posts their results
 //   ?draft=N                   Reply picked on message N: the quote waiting above the input bar
 //   ?phone                     the popup as a phone shows it; runPhoneHeightTest() checks every tab is as tall as Emotions
 //   ?memory                    Add Memory open on a bubble, and the settings panel's memory list and summaries beside the panel
@@ -82,6 +83,7 @@
         isMobileDevice: () => params.has('phone'),
         getChatHistory: key => r.getEmotionHistory(key),
         generateSchedule: options => r.generateSchedule(options),
+        onPhoneOverride: () => r.onPhoneOverride(),
         get scheduleTimeoutMs() { return window.__scheduleTimeoutMs; },
         onEmotionStateUpdated: () => { statusRow().innerHTML = emo.buildStatusHtml(); },
     });
@@ -96,7 +98,13 @@
         isMobileDevice: () => false, getUserAvatarUrl: () => null, isCombinedGroupMode: () => false,
         // A reply: no delays, the model stubbed (runAutoTest sets what it answers)
         getEmotionReplyTimingModel: () => ({ deliveredDelayMs: 0, readDelayMs: 0, ghostDelayMs: 0, typingLeadMs: 0, replyDelayMs: 0 }),
-        sleepWithAbort: async () => {}, error: (...a) => errors.push(a.join(' ')), stripThinkingTags: t => t };
+        sleepWithAbort: async () => {}, error: (...a) => errors.push(a.join(' ')), stripThinkingTags: t => t,
+        // The proactive engine, as far as the catch-up asks it (runCatchUpTest sets what it answers)
+        proactiveMessaging: {
+            catchUpInputs: (...a) => env.catchUpInputs(...a), noteCatchUpRequest: (...a) => env.noteCatchUpRequest?.(...a),
+            syncProactiveStateWithHistory() {}, armRoundTimer() {}, markProactiveUserActivity() {}, markProactiveCharacterActivity() {}, refreshProactiveInsights() {},
+        },
+        catchUpInputs: () => ({ temperament: 'normal', baseHours: 8, unanswered: 0, left: 8, roundActive: false }) };
     env.memorySystem = window.EchoTextMemorySystem.createMemorySystem({ getSettings: () => env.settings, saveSettings: () => {}, getCharacterKey: () => 'mira.png' });
     if (params.has('art')) {
         window.__songArt = { cache: {}, requests: [] };
@@ -1234,13 +1242,18 @@
         await sleep(20);
         res.resumed = asked.length === 1 && !pending() && chat().at(-1).mes === 'ok' && chat().filter(m => m.is_user).at(-1).meta.receipt.state === 'read';
 
+        // Their replies from here on long enough ago that they aren't still texting
+        const quiet = () => chat().forEach(m => { if (!m.is_user) m.send_date = Date.now() - 20 * 60000; });
+
         // Two unread texts: 55%, so a roll of 0.5 gets through at once
         env.settings.chatHistory['mira.png'] = [...chat(), text('喂'), text('看手机')];
+        quiet();
         dice = [0.5];
         await r.generateEchoText(chat());
-        res.moreGetsThrough = asked.length === 2 && !pending();
+        res.moreGetsThrough = asked.length === 2 && !pending() && !dice.length;
         // One text: 35%, the same roll doesn't; a second roll that misses again keeps the earlier look
         env.settings.chatHistory['mira.png'] = [...chat(), text('hello')];
+        quiet();
         dice = [0.5, 1];
         await r.generateEchoText(chat());
         const first = pending();
@@ -1267,6 +1280,7 @@
 
         // Daily Life off with one parked: it goes at once
         env.settings.chatHistory['mira.png'] = [...chat(), text('hey')];
+        quiet();
         dice = [0.5, 0];
         await r.generateEchoText(chat());
         const parked = !!pending();
@@ -1283,6 +1297,103 @@
         Math.random = realRandom;
         env.setUserMessageReceiptState = receiptsBefore;
         delete env.settings.characterSchedules;
+        res.errors = errors.slice();
+        res.ok = Object.values(res).filter(v => typeof v === 'boolean').every(Boolean) && !errors.length;
+        return res;
+    };
+
+    // Their phone by hand on the Life tab, and still texting when bedtime comes, through index.js's real
+    // generateEchoText, the model and the dice stubbed
+    window.runPlanTest = async function () {
+        const res = {};
+        errors.length = 0;
+        const realRandom = Math.random;
+        const receiptsBefore = env.setUserMessageReceiptState;
+        env.setUserMessageReceiptState = (history, i, state, note = '') => {
+            history[i].meta = { ...history[i].meta, receipt: { state, note, at: Date.now() } };
+            return history;
+        };
+        let dice = [];
+        Math.random = () => (dice.length ? dice.shift() : 0.5);
+        const pad = n => String(n).padStart(2, '0');
+        const h = new Date().getHours();
+        // Asleep for the hour around now, every day
+        const asleep = Object.fromEntries(['weekday', 'saturday', 'sunday'].map(d => [d, [{ from: `${pad(h)}:00`, to: `${pad((h + 1) % 24)}:00`, place: '家', doing: '睡觉', phone: 'asleep' }]]));
+        const endOfBlock = new Date(); endOfBlock.setHours(h + 1, 0, 0, 0);
+        // index.js's settings and the popup's are one object in the extension, two here: tie what this uses together
+        env.settings.dailyLifeEnabled = settings.dailyLifeEnabled = true;
+        env.settings.characterSchedules = settings.characterSchedules = { 'mira.png': asleep };
+        env.settings.phoneOverrides = settings.phoneOverrides = {};
+        env.settings.lifeState = settings.lifeState = {};
+        env.settings.pendingReplies = {};
+        const asked = [];
+        env.buildApiMessagesFromHistory = async () => ({ apiMessages: [], rawPrompt: '', systemPrompt: '' });
+        env.requestEchoTextCompletion = async () => { asked.push(1); return 'ok'; };
+        const chat = () => env.settings.chatHistory['mira.png'];
+        const text = mes => ({ is_user: true, mes, send_date: Date.now(), meta: { receipt: { state: 'sent' } } });
+        const reply = (mes, minutesAgo) => ({ is_user: false, mes, send_date: Date.now() - minutesAgo * 60000 });
+        const pending = () => env.settings.pendingReplies['mira.png'];
+        const plan = () => env.settings.phoneOverrides['mira.png'];
+        const quiet = () => chat().forEach(m => { if (!m.is_user) m.send_date = Date.now() - 20 * 60000; });
+
+        // Bedtime, but they answered 5 minutes ago: still texting, so a roll that would miss asleep gets through
+        env.settings.chatHistory['mira.png'] = [reply('再聊会', 5), text('还不睡？')];
+        dice = [0.99, 0];
+        await r.generateEchoText(chat());
+        res.stillTexting = asked.length === 1 && !pending();
+        // Their own text out of the blue doesn't keep them up; 15 minutes since the last answer: asleep, parked till the block ends
+        env.settings.chatHistory['mira.png'] = [reply('嗯', 15),
+            { ...reply('人呢', 2), meta: { proactive: true, proactiveType: 'follow_up' } }, text('睡了？')];
+        dice = [0.99, 0];
+        await r.generateEchoText(chat());
+        res.quietSleeps = asked.length === 1 && pending() === endOfBlock.getTime();
+
+        // The Life tab: their phone as the schedule has it
+        document.getElementById('et-emotion-popup')?.remove();
+        open();
+        click('[data-emo-tab="life"]');
+        const on = () => $p('[data-emo-plan-phone].et-emo-seg-on').attr('data-emo-plan-phone');
+        res.shown = on() === 'asleep' && $p('[data-emo-plan-phone]').length === 3 && !$p('[data-emo-plan-until]').length;
+        // Free by hand: until the block ends; the parked reply comes now
+        click('[data-emo-plan-phone="free"]');
+        await sleep(20);
+        res.planSet = plan()?.phone === 'free' && plan().until === endOfBlock.getTime() && on() === 'free'
+            && $p('[data-emo-plan-until]').val() === `${pad((h + 1) % 24)}:00`;
+        res.parkedComesNow = asked.length === 2 && !pending();
+        // Until a later time
+        const later = new Date(); later.setHours(h + 2, 30, 0, 0);
+        const until = $p('[data-emo-plan-until]')[0];
+        until.value = `${pad(later.getHours())}:30`;
+        until.dispatchEvent(new Event('change', { bubbles: true }));
+        res.untilChanged = plan().until === later.getTime() && plan().phone === 'free';
+        // Up by hand: a text gets through whatever the dice, and the prompt says so
+        env.settings.chatHistory['mira.png'] = [...chat(), text('还醒着？')];
+        quiet();
+        dice = [0.99, 0];
+        await r.generateEchoText(chat());
+        res.upAnswers = asked.length === 3 && !pending();
+        res.prompt = r.buildDailyLifeContext('Mira').includes(`Until ${pad(later.getHours())}:30, a change of plan: Mira is up and free`)
+            && !r.buildDailyLifeContext('Mira').includes('time to sleep');
+        // Asleep by hand keeps the time; a text that doesn't wake them waits till then
+        click('[data-emo-plan-phone="asleep"]');
+        res.asleepKeepsTime = plan().phone === 'asleep' && plan().until === later.getTime() && on() === 'asleep';
+        env.settings.chatHistory['mira.png'] = [...chat(), text('晚安')];
+        quiet();
+        dice = [0.99, 0];
+        await r.generateEchoText(chat());
+        res.asleepByHand = asked.length === 3 && pending() === later.getTime();
+        // Back to the schedule
+        click('[data-emo-action="clear-plan"]');
+        res.cleared = !plan() && on() === 'asleep' && !$p('[data-emo-plan-until]').length;
+        // No week: no phone row
+        env.settings.characterSchedules = settings.characterSchedules = {};
+        click('[data-emo-tab="life"]');
+        res.noWeekNoRow = !$p('[data-emo-plan-phone]').length;
+
+        Math.random = realRandom;
+        env.setUserMessageReceiptState = receiptsBefore;
+        env.settings.pendingReplies = {};
+        document.getElementById('et-emotion-popup')?.remove();
         res.errors = errors.slice();
         res.ok = Object.values(res).filter(v => typeof v === 'boolean').every(Boolean) && !errors.length;
         return res;
@@ -1319,6 +1430,105 @@
         const lineHeight = parseFloat(getComputedStyle(long).lineHeight) || 16;
         res.twoLines = long.scrollHeight > long.clientHeight && long.clientHeight <= lineHeight * 2 + 2;
         res.ok = Object.values(res).filter(v => typeof v === 'boolean').every(Boolean);
+        return res;
+    };
+
+    // Catching up (docs/platform-plan.md 12c, 12d-3) through index.js's real maybeCatchUp / runCatchUp,
+    // the model and the proactive engine's inputs stubbed
+    window.runCatchUpTest = async function () {
+        const res = {};
+        errors.length = 0;
+        const HOUR = 3600000;
+        const Life = window.EchoTextDailyLife;
+        const asked = [];
+        let counted = 0;
+        let answer = async () => '';
+        env.requestEchoTextCompletion = async req => { asked.push(req); return answer(req); };
+        env.buildApiMessagesFromHistoryForChar = async () => ({ apiMessages: [{ role: 'system', content: 'S' }], rawPrompt: '', systemPrompt: 'S' });
+        env.stripThinkingTags = t => t.replace(/<think>[\s\S]*?<\/think>/g, '');
+        env.catchUpInputs = () => ({ temperament: 'clingy', baseHours: 4, unanswered: 0, left: 15, roundActive: false });
+        env.noteCatchUpRequest = () => { counted++; };
+        env.panelOpen = true;
+        // The pause button, bound as index.js binds it at startup
+        jQuery(document).off('click.catchup').on('click.catchup', '[data-et-catchup="pause"]', () => r.pauseCatchUp());
+        const chat = () => env.settings.chatHistory['mira.png'];
+        const twoDays = Date.now() - 2 * 24 * HOUR;
+        const fresh = (lastIsUser = false) => {
+            env.settings.chatHistory['mira.png'] = [{ is_user: true, mes: '晚安', send_date: twoDays - 60000 }, ...(lastIsUser ? [] : [{ is_user: false, mes: '晚安~', send_date: twoDays }])];
+            if (lastIsUser) chat()[0].send_date = twoDays;
+            env.settings.proactiveSeenAt = { 'mira.png': twoDays };
+            env.settings.lifeState = { 'mira.png': { startAt: twoDays - HOUR, start: { errands: [{ id: 'e1', text: '周六搬家', progress: '打包了一半', due: Life.dateKey(new Date()) }], log: [], today: null } } };
+        };
+        env.settings.dailyLifeEnabled = true;
+        env.settings.proactiveMessagingEnabled = true;
+        env.settings.catchUpEnabled = true;
+        env.settings.characterSchedules = { 'mira.png': Life.parseSchedule('every day 01:00-08:00 | 家 | 睡觉 | asleep') };
+        r.renderMessages(chat());
+
+        // Two days away: one request, with the bar up meanwhile; the life settles, her texts go in at their times
+        fresh();
+        let release;
+        answer = () => new Promise(resolve => { release = () => resolve('<think>x</think><life>happened 加班到十点 (' + Life.dateKey(new Date(Date.now() - 24 * HOUR)) + '); update 搬家: 搬完了</life>\n<text>想你了</text>\n<text>人呢</text>'); });
+        const running = r.maybeCatchUp();
+        await sleep(0);
+        res.barUp = !!document.querySelector('#et-messages #et-catchup-bar [data-et-catchup="pause"]');
+        release();
+        await running;
+        const turn = asked[0]?.apiMessages.at(-1).content || '';
+        res.oneRequest = asked.length === 1 && counted === 1 && /^\[Instruction for this turn/.test(turn) && /CATCH-UP: 我 hasn't been around since/.test(turn)
+            && /Mira's days lately, from the schedule:/.test(turn) && /- 周六搬家 \(打包了一半\); due /.test(turn) && /<text at="YYYY-MM-DD HH:MM">/.test(turn);
+        const state = env.settings.lifeState['mira.png'];
+        res.settled = state.settledAt > twoDays && state.start.errands[0].progress === '搬完了' && state.start.log.some(e => e.text === '加班到十点');
+        const added = chat().filter(m => m.meta?.proactiveType === 'catch_up');
+        res.texts = added.map(m => m.mes).join('|') === '想你了|人呢' && added.every(m => m.send_date > twoDays && m.send_date < Date.now())
+            && added[0].send_date < added[1].send_date;
+        res.barGone = !document.getElementById('et-catchup-bar');
+        res.seen = env.settings.proactiveSeenAt['mira.png'] > Date.now() - 5000;
+        // Right after: nothing more to do
+        await r.maybeCatchUp();
+        res.notAgain = asked.length === 1;
+
+        // Paused: no answer kept, the gap left as it is, no error
+        fresh();
+        answer = req => new Promise((resolve, reject) => req.signal.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError'))));
+        const paused = r.maybeCatchUp();
+        await sleep(0);
+        document.querySelector('[data-et-catchup="pause"]').click();
+        await paused;
+        res.paused = asked.length === 2 && chat().length === 2 && env.settings.lifeState['mira.png'].settledAt > twoDays
+            && env.settings.lifeState['mira.png'].start.errands[0].progress === '打包了一半' && !errors.length && !document.getElementById('et-catchup-bar');
+        await r.maybeCatchUp();
+        res.pausedStays = asked.length === 2;
+
+        // Catch up off: only the life; she owes you a reply: only the life too
+        for (const [label, off, lastIsUser] of [['catchUpOff', true, false], ['owesReply', false, true]]) {
+            fresh(lastIsUser);
+            env.settings.catchUpEnabled = !off;
+            answer = async () => '<life>happened 看电影 (' + Life.dateKey(new Date()) + ')</life>\n<text>x</text>';
+            await r.maybeCatchUp();
+            const t = asked.at(-1).apiMessages.at(-1).content;
+            res[label] = !/<text at=/.test(t) && !chat().some(m => m.meta?.proactiveType === 'catch_up')
+                && env.settings.lifeState['mira.png'].start.log.some(e => e.text === '看电影');
+            env.settings.catchUpEnabled = true;
+        }
+        // Neither Daily Life nor Catch up: no request, just seen
+        fresh();
+        env.settings.dailyLifeEnabled = false;
+        env.settings.catchUpEnabled = false;
+        const before = asked.length;
+        await r.maybeCatchUp();
+        res.nothingToDo = asked.length === before && env.settings.proactiveSeenAt['mira.png'] > Date.now() - 5000;
+        // Never seen before (a new chat): marked seen, nothing caught up
+        fresh();
+        env.settings.dailyLifeEnabled = true;
+        env.settings.catchUpEnabled = true;
+        delete env.settings.proactiveSeenAt['mira.png'];
+        await r.maybeCatchUp();
+        res.newChat = asked.length === before && env.settings.proactiveSeenAt['mira.png'] > Date.now() - 5000;
+
+        env.settings.dailyLifeEnabled = false;
+        res.errors = errors.slice();
+        res.ok = Object.values(res).filter(v => typeof v === 'boolean').every(Boolean) && !errors.length;
         return res;
     };
 
@@ -1502,7 +1712,9 @@
         const replyLength = await window.runReplyLengthTest();
         const lifeReport = await window.runLifeReportTest();
         const unseen = await window.runUnseenTest();
-        fetch('/__log', { method: 'POST', body: JSON.stringify({ runReplyLengthTest: replyLength, runLifeReportTest: lifeReport, runUnseenTest: unseen, runEmotionTest: result, runAutoTest: auto, runReplyTest: reply, runTapbackTest: tapback, runMemoryTest: memory, runSummaryTest: summary, runInstagramTest: instagram, runScheduleTest: schedule, runLifeTest: life }) }).catch(() => {});
+        const catchUp = await window.runCatchUpTest();
+        const plan = await window.runPlanTest();
+        fetch('/__log', { method: 'POST', body: JSON.stringify({ runReplyLengthTest: replyLength, runLifeReportTest: lifeReport, runUnseenTest: unseen, runCatchUpTest: catchUp, runPlanTest: plan, runEmotionTest: result, runAutoTest: auto, runReplyTest: reply, runTapbackTest: tapback, runMemoryTest: memory, runSummaryTest: summary, runInstagramTest: instagram, runScheduleTest: schedule, runLifeTest: life }) }).catch(() => {});
     } else if (params.has('memory')) {
         // Two memories, one pinned, the other in the last prompt; Add Memory open on a bubble
         env.settings.characterMemories = { 'mira.png': [

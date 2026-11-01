@@ -4423,7 +4423,19 @@ html.et-bg-light {
     color: var(--et-theme-color);
 }
 
-/* The Life tab: today's change, an errand's due day (red once it's passed) */
+/* The Life tab: their phone now and until when it's set by hand, today's change, an errand's due day (red once it's passed) */
+.et-emo-seg.et-life-phone {
+    margin: 4px 0 0;
+}
+
+.et-life-plan {
+    margin-top: 4px;
+}
+
+.et-life-plan .et-emo-reset {
+    flex: 0 0 auto;
+}
+
 .et-life-today {
     display: block;
     width: 100%;
@@ -11503,4 +11515,59 @@ html.et-bg-light .et-music-play {
 
 .et-reaction-note i {
     color: var(--react-color, var(--et-theme-color));
+}
+
+/* Catching up (lib/catch-up.js): a bar over the messages, with a pause button; all looks */
+.et-catchup-bar {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: fit-content;
+    max-width: calc(100% - 24px);
+    margin: 8px auto 4px;
+    padding: 5px 6px 5px 12px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--et-theme-color, #4da6ff) 18%, rgba(20, 22, 34, 0.86));
+    border: 1px solid color-mix(in srgb, var(--et-theme-color, #4da6ff) 45%, transparent);
+    color: #e8ecf8;
+    font-size: 0.74rem;
+    font-weight: 600;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    animation: et-catchup-in 0.2s ease-out;
+}
+
+.et-catchup-bar > i {
+    animation: et-catchup-spin 1.6s linear infinite;
+}
+
+.et-catchup-pause {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border: none;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.14);
+    color: inherit;
+    font-size: 0.66rem;
+    cursor: pointer;
+}
+
+.et-catchup-pause:hover {
+    background: rgba(255, 255, 255, 0.26);
+}
+
+@keyframes et-catchup-in {
+    from { opacity: 0; transform: translateY(-4px); }
+    to { opacity: 1; transform: none; }
+}
+
+@keyframes et-catchup-spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(-360deg); }
 }

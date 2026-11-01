@@ -484,3 +484,85 @@ test('where a time sits in the week: the stretch since when, and what came befor
     assert.deepEqual([r.block.doing, r.since.getTime()], ['睡觉', at2(26, 23, 30)]);
     assert.deepEqual(Life.currentStretch(Life.normalizeSchedule(null), at(26, 10)), { block: null, since: null, prev: null });
 });
+
+test('a change of plan by hand: made until the next time, held from when it was made until then', () => {
+    // 23:00 Monday, until 01:00: tonight; until 22:00: tomorrow night
+    const plan = Life.makeOverride('free', '01:00', at(26, 23));
+    assert.deepEqual(plan, { phone: 'free', from: at(26, 23).getTime(), until: at(27, 1).getTime() });
+    assert.equal(Life.makeOverride('free', '22:00', at(26, 23)).until, at(27, 22).getTime());
+    assert.equal(Life.makeOverride('free', '01:00', at(26, 23), 5).from, 5);
+    assert.equal(Life.makeOverride('dancing', '01:00', at(26, 23)), null);
+    assert.equal(Life.makeOverride('free', '1am', at(26, 23)), null);
+    assert.deepEqual(Life.activeOverride(plan, at(27, 0, 30)), plan);
+    assert.equal(Life.activeOverride(plan, at(27, 1)), null);
+    assert.equal(Life.activeOverride(plan, at(26, 22)), null);
+    assert.equal(Life.activeOverride(null, at(27, 0)), null);
+    assert.equal(Life.activeOverride({ phone: 'free', until: at(27, 1).getTime() }, at(27, 0)), null);
+});
+
+test('the phone now: a change of plan by hand, then still texting, then the schedule', () => {
+    const s = Life.parseSchedule(STANDARD);
+    const ms = (...a) => at(...a).getTime();
+    // The schedule: asleep 23:30–07:00, free between blocks
+    assert.deepEqual(Life.phoneAt({ schedule: s, date: at(27, 0) }), { phone: 'asleep', endsAt: ms(27, 7), by: 'schedule' });
+    assert.deepEqual(Life.phoneAt({ schedule: s, date: at(26, 19) }), { phone: 'free', endsAt: ms(26, 23, 30), by: 'schedule' });
+    assert.deepEqual(Life.phoneAt({ schedule: null, date: at(26, 19) }), { phone: 'free', endsAt: null, by: 'schedule' });
+    // Answered under 10 minutes ago: still up
+    assert.deepEqual(Life.phoneAt({ schedule: s, date: at(27, 0), repliedAt: ms(26, 23, 55) }), { phone: 'free', endsAt: ms(27, 0, 5), by: 'texting' });
+    assert.equal(Life.phoneAt({ schedule: s, date: at(27, 0), repliedAt: ms(26, 23, 50) }).phone, 'asleep');
+    assert.equal(Life.phoneAt({ schedule: s, date: at(26, 10), repliedAt: ms(26, 9, 58) }).by, 'texting');
+    // By hand wins, even over texting; then back to the schedule
+    const late = Life.makeOverride('free', '01:00', at(26, 23));
+    assert.deepEqual(Life.phoneAt({ schedule: s, override: late, date: at(27, 0) }), { phone: 'free', endsAt: ms(27, 1), by: 'plan' });
+    const nap = Life.makeOverride('asleep', '15:00', at(31, 13));
+    assert.equal(Life.phoneAt({ schedule: s, override: nap, date: at(31, 14), repliedAt: ms(31, 13, 58) }).phone, 'asleep');
+    assert.equal(Life.phoneAt({ schedule: s, override: late, date: at(27, 1) }).phone, 'asleep');
+    // When it gives way: up till 01:00, then the schedule's sleep; asleep by hand into the schedule's sleep goes on with it
+    assert.equal(Life.phoneEndsAt({ schedule: s, override: late, date: at(27, 0) }), ms(27, 1));
+    assert.equal(Life.phoneEndsAt({ schedule: s, date: at(27, 0) }), ms(27, 7));
+    assert.equal(Life.phoneEndsAt({ schedule: s, override: Life.makeOverride('asleep', '01:00', at(26, 22)), date: at(26, 22) }), ms(27, 7));
+    assert.equal(Life.phoneEndsAt({ schedule: null, date: at(26, 22) }), null);
+});
+
+test('a sleeping character still texting, or up by hand, sees your texts; asleep by hand, they wake when it ends', () => {
+    const s = Life.parseSchedule(STANDARD);
+    const ms = (...a) => at(...a).getTime();
+    const rolls = (...values) => () => values.shift();
+    // Bedtime came mid-conversation: no roll while they answered under 10 minutes ago
+    assert.equal(Life.unseenUntil({ schedule: s, date: at(26, 23, 35), unread: 1, repliedAt: ms(26, 23, 30), random: rolls(0.99) }), null);
+    assert.equal(Life.unseenUntil({ schedule: s, date: at(26, 23, 45), unread: 1, repliedAt: ms(26, 23, 30), random: rolls(0.5, 0) }), ms(27, 7));
+    // Up till 01:00 by hand
+    const late = Life.makeOverride('free', '01:00', at(26, 23));
+    assert.equal(Life.unseenUntil({ schedule: s, override: late, date: at(27, 0, 30), unread: 1, random: rolls(0.99) }), null);
+    // A nap by hand on a free afternoon: they look once it's over
+    const nap = Life.makeOverride('asleep', '15:00', at(31, 13));
+    assert.equal(Life.unseenUntil({ schedule: s, override: nap, date: at(31, 14), unread: 1, random: rolls(0.5, 0) }), ms(31, 15));
+    // Busy by hand: a few minutes later
+    const busy = Life.makeOverride('busy', '17:00', at(31, 13));
+    assert.equal(Life.unseenUntil({ schedule: s, override: busy, date: at(31, 14), unread: 1, random: rolls(0.5, 0) }), ms(31, 14, 3));
+});
+
+test('when the character last answered: not their own texts, nor yours', () => {
+    const t = (h, m) => at(26, h, m).getTime();
+    assert.equal(Life.lastReplyAt([
+        { is_user: false, mes: 'hi', send_date: t(22, 0) },
+        { is_user: true, mes: 'yo', send_date: t(22, 5) },
+        { is_user: false, mes: 'sup', send_date: t(22, 6) },
+        { is_user: false, mes: 'u there?', send_date: t(22, 40), meta: { proactive: true, proactiveType: 'follow_up' } },
+        { is_user: true, mes: 'back', send_date: t(23, 0) },
+    ]), t(22, 6));
+    assert.equal(Life.lastReplyAt([{ is_user: true, send_date: t(22, 0) }]), null);
+    assert.equal(Life.lastReplyAt(null), null);
+});
+
+test('a change of plan by hand in the prompt', () => {
+    const s = Life.parseSchedule(STANDARD);
+    const up = Life.describeNow({ schedule: s, date: at(27, 0), charName: 'Mira', override: Life.makeOverride('free', '01:00', at(26, 23)) });
+    assert.match(up, /Right now \(23:30–07:00\): 睡觉, at 家\.\nUntil 01:00, a change of plan: Mira is up and free to look at the phone and text, whatever the schedule says\.\n/);
+    assert.doesNotMatch(up, /time to sleep/);
+    const nap = Life.describeNow({ schedule: s, date: at(26, 19), charName: 'Mira', override: Life.makeOverride('asleep', '20:00', at(26, 19)) });
+    assert.match(nap, /Right now: nothing in particular\.\nUntil 20:00, a change of plan: Mira is asleep: if Mira is texting now, something woke Mira up\.\nNext/);
+    // Run out: as without
+    assert.equal(Life.describeNow({ schedule: s, date: at(27, 2), charName: 'Mira', override: Life.makeOverride('free', '01:00', at(26, 23)) }),
+        Life.describeNow({ schedule: s, date: at(27, 2), charName: 'Mira' }));
+});

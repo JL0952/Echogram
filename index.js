@@ -48,6 +48,7 @@
     loadEchoTextModule('lib/texting-behavior.js', 'EchoTextTextingBehavior');
     loadEchoTextModule('lib/daily-life.js', 'EchoTextDailyLife');
     loadEchoTextModule('lib/proactive-rounds.js', 'EchoTextProactiveRounds');
+    loadEchoTextModule('lib/catch-up.js', 'EchoTextCatchUp');
     loadEchoTextModule('lib/emotion-system.js', 'EchoTextEmotionSystem');
     loadEchoTextModule('lib/proactive-messaging.js', 'EchoTextProactiveMessaging');
     loadEchoTextModule('lib/settings-modal.js', 'EchoTextSettingsModal');
@@ -398,6 +399,9 @@
         if (!s.pendingReplies || typeof s.pendingReplies !== 'object' || Array.isArray(s.pendingReplies)) {
             s.pendingReplies = {};
         }
+        if (!s.phoneOverrides || typeof s.phoneOverrides !== 'object' || Array.isArray(s.phoneOverrides)) {
+            s.phoneOverrides = {};
+        }
         if (!s.proactiveCharacterConfig || typeof s.proactiveCharacterConfig !== 'object' || Array.isArray(s.proactiveCharacterConfig)) {
             s.proactiveCharacterConfig = {};
         }
@@ -461,6 +465,7 @@
         jQuery('#et_nsfw_enabled').prop('checked', settings.nsfwEnabled === true);
         jQuery('#et_daily_life').prop('checked', settings.dailyLifeEnabled === true);
         jQuery('#et_daily_life_made_up').prop('checked', settings.dailyLifeMadeUp === true);
+        jQuery('#et_catch_up').prop('checked', settings.catchUpEnabled !== false);
         jQuery('#et_swiped_messages').prop('checked', settings.swipedMessages === true);
         jQuery('#et_fab_size').val(settings.fabSize);
         jQuery('#et_fab_size_val').text(settings.fabSize + 'px');
@@ -508,6 +513,7 @@
         jQuery('#et_nsfw_enabled_panel').prop('checked', settings.nsfwEnabled === true);
         jQuery('#et_daily_life_panel').prop('checked', settings.dailyLifeEnabled === true);
         jQuery('#et_daily_life_made_up_panel').prop('checked', settings.dailyLifeMadeUp === true);
+        jQuery('#et_catch_up_panel').prop('checked', settings.catchUpEnabled !== false);
         jQuery('#et_swiped_messages_panel').prop('checked', settings.swipedMessages === true);
         jQuery('#et_verbosity_default_panel').val(settings.verbosityDefault || 'medium');
 
@@ -829,6 +835,12 @@
             settings.dailyLifeMadeUp = jQuery(this).is(':checked');
             saveSettings();
             jQuery('#et_daily_life_made_up').prop('checked', settings.dailyLifeMadeUp);
+        });
+
+        jQuery('#et_catch_up_panel').off('change.panel').on('change.panel', function () {
+            settings.catchUpEnabled = jQuery(this).is(':checked');
+            saveSettings();
+            jQuery('#et_catch_up').prop('checked', settings.catchUpEnabled);
         });
 
         // Swiped messages toggle (panel)
@@ -2428,6 +2440,7 @@
         // Also reset emotion state and Daily Life's errands and what happened when clearing history
         clearEmotionState();
         delete settings.lifeState[key];
+        delete settings.phoneOverrides?.[key];
         saveSettings();
     }
 
@@ -3959,7 +3972,7 @@
             ? emotionSystem.getEmotionReplyTimingModel()
             : { deliveredDelayMs: 500, readDelayMs: 1200, ghostDelayMs: 0, typingLeadMs: 300, replyDelayMs: 600 };
         // Daily Life: busy or asleep, they read and answer more slowly
-        const phone = currentScheduleBlock()?.block.phone;
+        const phone = phoneNow()?.phone;
         if (phone !== 'busy' && phone !== 'asleep') return timing;
         return { ...timing, readDelayMs: timing.readDelayMs * BUSY_SLOWDOWN, replyDelayMs: timing.replyDelayMs * BUSY_SLOWDOWN };
     }
@@ -3967,8 +3980,10 @@
     function syncProactiveStateWithHistory(characterKey, history) {
         if (!proactiveMessaging) return;
         proactiveMessaging.syncProactiveStateWithHistory(characterKey, history);
-        // The open character changed or their chat loaded: their follow-up round's timer
+        // The open character changed or their chat loaded: their follow-up round's timer,
+        // and a catch-up if one is due
         proactiveMessaging.armRoundTimer();
+        setTimeout(() => maybeCatchUp(), 0);
     }
 
     function markProactiveUserActivity(characterKey, timestamp = Date.now()) {
@@ -4648,6 +4663,7 @@
         // this call the overflow items would remain hidden after every panel rebuild).
         applySelectedCharacterToPanel();
         resumePendingReply();
+        maybeCatchUp();
 
         setTimeout(() => { if (!isMobileDevice()) jQuery('#et-input').focus(); }, 300);
     }
@@ -5857,34 +5873,81 @@
         return schedule ? DailyLife.blockAt(schedule, new Date()) : null;
     }
 
+    /** The open character's change of plan by hand (Life tab; settings.phoneOverrides), held or not. */
+    function phoneOverride() {
+        return settings.phoneOverrides?.[getCharacterKey()] || null;
+    }
+
+    /**
+     * The open character's phone now while they have a schedule, { phone, endsAt, by }: a
+     * change of plan by hand, else free while still texting you, else the schedule
+     * (lib/daily-life.js phoneAt). Null without one.
+     */
+    function phoneNow() {
+        const schedule = activeSchedule();
+        if (!schedule) return null;
+        return DailyLife.phoneAt({ schedule, override: phoneOverride(), date: new Date(), repliedAt: DailyLife.lastReplyAt(getChatHistory()) });
+    }
+
+    /** When the open character's phone state now gives way (ms), for what waits on them; 0 if not ahead. */
+    function phoneEndsNow() {
+        const now = phoneNow();
+        if (!now) return 0;
+        if (now.by === 'texting') return now.endsAt;
+        return DailyLife.phoneEndsAt({ schedule: activeSchedule(), override: phoneOverride(), date: new Date() }) || 0;
+    }
+
+    /**
+     * A change of plan was made or undone on the Life tab: a reply waiting for the
+     * character to look comes now if they're free now.
+     */
+    function onPhoneOverride() {
+        const key = getCharacterKey();
+        if (key && settings.pendingReplies?.[key] && phoneNow()?.phone === 'free') {
+            settings.pendingReplies[key] = Date.now();
+            saveSettings();
+            resumePendingReply();
+        }
+        refreshProactiveInsights();
+    }
+
     /** Where the character is in their life, for the system prompt; '' without Daily Life, or with nothing to say. */
     function buildDailyLifeContext(charName) {
         if (!dailyLifeActive()) return '';
-        const text = DailyLife.describeNow({ schedule: activeSchedule(), life: activeLife(), date: new Date(), charName });
+        const text = DailyLife.describeNow({ schedule: activeSchedule(), life: activeLife(), date: new Date(), charName, override: phoneOverride() });
         return text ? `\n\n${text}` : '';
     }
 
-    /** The insights row: the block the character is in now, and when they look at texts they haven't seen. */
+    /**
+     * The insights row: the block the character is in now (or a change of plan, or still
+     * texting), and when they look at texts they haven't seen.
+     */
     function scheduleInsight() {
         if (!activeSchedule()) return '—';
         const now = currentScheduleBlock();
+        const phoneNowAt = phoneNow();
+        const clock = ms => new Date(ms).toTimeString().slice(0, 5);
+        const label = id => DailyLife.PHONES.find(p => p.id === id).label;
         const pending = settings.pendingReplies?.[getCharacterKey()];
-        const unseen = pending ? ` · reads at ${new Date(pending).toTimeString().slice(0, 5)}` : '';
+        const unseen = pending ? ` · reads at ${clock(pending)}` : '';
+        if (phoneNowAt.by === 'plan') return `${label(phoneNowAt.phone)} until ${clock(phoneNowAt.endsAt)}${unseen}`;
+        const texting = phoneNowAt.by === 'texting' ? ' · texting' : '';
         if (!now) return `Free${unseen}`;
         const { block } = now;
-        const phone = DailyLife.PHONES.find(p => p.id === block.phone).label;
-        return `${block.from}–${block.to} ${[block.doing, block.place].filter(Boolean).join(' · ')} (${phone})${unseen}`;
+        return `${block.from}–${block.to} ${[block.doing, block.place].filter(Boolean).join(' · ')} (${label(block.phone)})${texting}${unseen}`;
     }
 
     /**
      * Whether a busy or sleeping character leaves `unread` texts unseen for now: if so, when
      * they'll look is kept (settings.pendingReplies, by character) and true is returned. More
      * unread texts make them likelier to notice; another text that gets through clears it.
+     * A change of plan by hand counts, and one still texting you sees them.
      */
     function parkUnseenReply(unread) {
         const key = getCharacterKey();
         const schedule = activeSchedule();
-        const until = schedule ? DailyLife.unseenUntil({ schedule, date: new Date(), unread }) : null;
+        const until = schedule ? DailyLife.unseenUntil({ schedule, override: phoneOverride(), date: new Date(), unread,
+            repliedAt: DailyLife.lastReplyAt(getChatHistory()) }) : null;
         if (!until) {
             if (key && settings.pendingReplies?.[key]) { delete settings.pendingReplies[key]; saveSettings(); }
             refreshProactiveInsights();
@@ -5955,6 +6018,144 @@
         if (!DailyLife.hasSchedule(schedule)) throw new Error('the model sent back no schedule');
         settings.characterSchedules[key] = schedule;
         saveSettings();
+    }
+
+
+    // ============================================================
+    // CATCH-UP (docs/platform-plan.md 12c, 12d-3; the logic is lib/catch-up.js)
+    // ============================================================
+    // Proactive texts only ever run for the open character while the page runs. When you
+    // open a character's chat after a while nothing ran for them, one request fills the
+    // gap: how their life moved on (Daily Life) and the texts they sent you meanwhile
+    // (Catch up). A bar says so, and it can be paused (the gap is then left as it is).
+    //   settings.proactiveSeenAt[k]: when proactive texts last ran for the character
+
+    const CatchUp = window.EchoTextCatchUp;
+    // The catch-up under way: { key, controller }
+    let catchingUp = null;
+    let seenSavedAt = 0;
+
+    /**
+     * Marks the open character seen now: proactive texts are running for them. Not over a
+     * gap waiting to be caught up (it's caught up first, or skipped), and not in a group.
+     * Saved every ten minutes or so.
+     */
+    function markSeen(force = false) {
+        const key = getCharacterKey();
+        if (!key || inGroupSession()) return;
+        if (!settings.proactiveSeenAt || typeof settings.proactiveSeenAt !== 'object') settings.proactiveSeenAt = {};
+        const now = Date.now();
+        const seen = settings.proactiveSeenAt[key];
+        if (!force && seen && now - seen > CatchUp.GAP_MS) return;
+        settings.proactiveSeenAt[key] = now;
+        if (force || now - seenSavedAt > 10 * 60000) { seenSavedAt = now; saveSettings(); }
+    }
+
+    /** The bar over the messages while catching up, with its pause button; gone otherwise. */
+    function setCatchUpBar(on) {
+        jQuery('#et-catchup-bar').remove();
+        if (!on) return;
+        jQuery('#et-messages').prepend('<div id="et-catchup-bar" class="et-catchup-bar"><i class="fa-solid fa-clock-rotate-left"></i>'
+            + '<span>Catching up…</span><button type="button" class="et-catchup-pause" data-et-catchup="pause" title="Pause"><i class="fa-solid fa-pause"></i></button></div>');
+    }
+
+    /**
+     * The open character's catch-up, when their chat is on screen and a gap is due:
+     * Daily Life settles their life over it, Catch up writes the texts they'd have sent
+     * (lib/catch-up.js planTexts). Nothing to do: they're simply marked seen.
+     */
+    async function maybeCatchUp() {
+        if (catchingUp || isGenerating || !panelOpen || inGroupSession() || !CatchUp) return;
+        const char = getCurrentCharacter();
+        const key = getCharacterKey();
+        if (!char || !key) return;
+        const history = getChatHistory();
+        const seen = settings.proactiveSeenAt?.[key];
+        const last = history[history.length - 1];
+        if (!seen || !last) { markSeen(true); return; }
+        const now = Date.now();
+        const lastAt = Number(last.send_date) || Date.parse(last.send_date) || 0;
+        const state = settings.lifeState?.[key];
+        const settleFrom = Math.max(lastAt, state?.settledAt || 0, state?.startAt || 0);
+        const settle = dailyLifeActive() && now - settleFrom >= CatchUp.GAP_MS;
+        // Texts: not while she owes you a reply or a follow-up round is under way
+        const textFrom = Math.max(seen, lastAt);
+        let texts = [];
+        if (settings.catchUpEnabled !== false && settings.proactiveMessagingEnabled === true && settings.dynamicSystemsEnabled !== false
+            && proactiveMessaging && !last.is_user && now - textFrom >= CatchUp.GAP_MS) {
+            const inputs = proactiveMessaging.catchUpInputs(key, char);
+            if (!inputs.roundActive) {
+                texts = CatchUp.planTexts({ from: textFrom, to: now, temperament: inputs.temperament, unanswered: inputs.unanswered,
+                    baseHours: inputs.baseHours, schedule: activeSchedule(), override: phoneOverride(), left: inputs.left });
+            }
+        }
+        if (!settle && !texts.length) { markSeen(true); return; }
+        await runCatchUp({ char, key, settle, texts, from: Math.min(settle ? settleFrom : Infinity, texts.length ? textFrom : Infinity), now });
+    }
+
+    async function runCatchUp({ char, key, settle, texts, from, now }) {
+        const controller = new AbortController();
+        catchingUp = { key, controller };
+        // Holds the proactive timers and your next reply until it's done (onGenerationSettled)
+        isGenerating = true;
+        setCatchUpBar(true);
+        let settled = false;
+        try {
+            const history = getChatHistory();
+            const userName = getUserName();
+            const { apiMessages, rawPrompt, systemPrompt } = await buildApiMessagesFromHistoryForChar(history, [], char);
+            const instruction = CatchUp.buildInstruction({
+                charName: char.name || 'Character', userName, from, now, settle, schedule: activeSchedule(),
+                errands: activeLife()?.errands || [], madeUp: settings.dailyLifeMadeUp === true, texts,
+            });
+            apiMessages.push({ role: 'user', content: `[Instruction for this turn — not a message from ${userName}; never quote or answer it: ${instruction}]` });
+            if (texts.length) proactiveMessaging.noteCatchUpRequest(key);
+            const raw = await requestEchoTextCompletion({ apiMessages, rawPrompt, systemPrompt, signal: controller.signal });
+            // Paused, or another character now: left as it is
+            if (controller.signal.aborted || getCharacterKey() !== key) return;
+            const answer = CatchUp.readAnswer(stripThinkingTags(String(raw ?? '')), { from, now, planned: texts });
+            if (settle) {
+                settings.lifeState[key] = DailyLife.settleLife(settings.lifeState[key], getEmotionHistory(key), answer.life, new Date(now));
+                settled = true;
+            }
+            if (answer.texts.length) {
+                const chat = getChatHistory();
+                for (const text of answer.texts) {
+                    const reply = readReply(text.mes);
+                    if (!reply.mes) continue;
+                    chat.push({ is_user: false, mes: reply.mes, send_date: text.at, meta: { proactive: true, proactiveType: 'catch_up' },
+                        ...(reply.mood ? { mood: reply.mood } : {}) });
+                    markProactiveCharacterActivity(key, true, 'catch_up', text.at);
+                }
+                saveChatHistory(chat);
+                renderMessages(chat);
+            }
+        } catch (err) {
+            if (!controller.signal.aborted) {
+                warn('Catching up failed:', err);
+                toastr.error(`Could not catch up: ${err.message}`, 'Echogram');
+            }
+        } finally {
+            // Done, paused or failed: the gap isn't tried again
+            if (settle && !settled) {
+                const state = settings.lifeState[key];
+                settings.lifeState[key] = state ? { ...state, settledAt: now } : { start: { errands: [], log: [], today: null }, startAt: 0, settledAt: now };
+            }
+            if (getCharacterKey() === key) markSeen(true);
+            else settings.proactiveSeenAt[key] = Date.now();
+            catchingUp = null;
+            isGenerating = false;
+            setCatchUpBar(false);
+            saveSettings();
+            if (emotionSystem) emotionSystem.refresh();
+            refreshProactiveInsights();
+            onGenerationSettled();
+        }
+    }
+
+    /** Pausing a catch-up: its request stops, and the gap is left as it is. */
+    function pauseCatchUp() {
+        if (catchingUp) catchingUp.controller.abort();
     }
 
     // ============================================================
@@ -7977,6 +8178,7 @@
             getCharacterName,
             getChatHistory: getEmotionHistory,
             generateSchedule,
+            onPhoneOverride,
             isPanelOpen,
             isMobileDevice,
             onEmotionStateUpdated: ({ dominant, dominantChanged }) => {
@@ -8176,17 +8378,19 @@
                 if (!schedule) return null;
                 const date = new Date();
                 const { block, since, prev } = DailyLife.currentStretch(schedule, date);
+                // A change of plan or still texting: their phone, and never just got free
+                const now = phoneNow();
+                const own = now.by === 'schedule';
                 return {
-                    phone: block ? block.phone : 'free', block, since: since ? since.getTime() : null,
-                    prevPhone: prev ? prev.phone : 'free', prevDoing: prev ? prev.doing : '',
+                    phone: now.phone, block, since: since ? since.getTime() : null,
+                    prevPhone: own ? (prev ? prev.phone : 'free') : now.phone, prevDoing: prev ? prev.doing : '',
                     life: activeLife(), today: DailyLife.dateKey(date),
                 };
             },
-            // Daily Life: the open character's block now ({ phone, endsAt }), or null
+            // Daily Life: the open character's phone now and when that changes ({ phone, endsAt }), or null
             getScheduleNow: () => {
-                const now = currentScheduleBlock();
-                if (!now) return null;
-                return { phone: now.block.phone, endsAt: DailyLife.blockEndAt(activeSchedule(), new Date())?.getTime() || 0 };
+                const now = phoneNow();
+                return now ? { phone: now.phone, endsAt: phoneEndsNow() } : null;
             },
             readReply,
             noteMoodReport,
@@ -8253,7 +8457,16 @@
         setInterval(resumePendingReply, 60000);
         // The proactive insights keep up on their own while they're on screen ("in 6m", what's due)
         setInterval(refreshVisibleInsights, 30000);
-        document.addEventListener('visibilitychange', () => { if (!document.hidden) resumePendingReply(); });
+        document.addEventListener('visibilitychange', () => { if (!document.hidden) { resumePendingReply(); maybeCatchUp(); } });
+        // Catch-up: proactive texts are running for the open character; a first run of this
+        // marks every chat seen now, so old chats aren't caught up on all at once
+        if (!settings.proactiveSeenAt || typeof settings.proactiveSeenAt !== 'object') {
+            settings.proactiveSeenAt = Object.fromEntries(Object.keys(settings.chatHistory || {}).map(key => [key, Date.now()]));
+            saveSettings();
+        }
+        setInterval(() => markSeen(), 60000);
+        setTimeout(() => maybeCatchUp(), 3000);
+        jQuery(document).on('click', '[data-et-catchup="pause"]', () => pauseCatchUp());
 
         jQuery('body').append(buildFabHtml());
         positionFab();
