@@ -72,7 +72,7 @@ test('what the model is told', () => {
     assert.match(text, /Mira's days lately, from the schedule:\n- Wed 2026-10-28: /);
     assert.match(text, /Before those days, 3 more days went by\./);
     assert.match(text, /- 周六搬家 \(打包了一半\); due 2026-10-31/);
-    assert.match(text, /happened <what> \(YYYY-MM-DD\); update <errand>: <how it stands now>; done <errand>\. An errand past its due day/);
+    assert.match(text, /happened <what> \(YYYY-MM-DD HH:MM\); update <errand>: <how it stands now>; done <errand>\. An errand past its due day/);
     assert.doesNotMatch(text, /new <errand>/);
     assert.match(text, /Sum up the days before in one happened entry/);
     assert.match(text, /Then the texts Mira sent Qi meanwhile, each still unanswered when the next came, one at each of these moments:\n- 2026-10-30 19:00\n- 2026-10-31 12:00 \(逛街\)/);
@@ -132,4 +132,11 @@ test('time together: no texts in it, and the model is told', () => {
     const earlier = C.buildInstruction({ charName: 'Mira', userName: 'Qi', from: at(31, 8), now: NOW, settle: true, schedule: WEEK,
         together: { phone: 'together', from: at(30, 8), until: at(30, 12) } });
     assert.doesNotMatch(earlier, /in person/);
+});
+
+test('what a catch-up reports says when it happened, never the time you came back', () => {
+    const { life } = C.readAnswer('<life>happened 加班到十点 (2026-10-30 21:00); happened 睡了一天</life>', { from: at(29, 8), now: NOW, planned: [] });
+    assert.deepEqual(life.map(c => c.time), ['21:00', undefined]);
+    const settled = Life.settleLife({ startAt: 0, start: { errands: [], log: [], today: null } }, [], life, new Date(NOW));
+    assert.deepEqual(settled.start.log.map(e => e.text).sort(), ['21:00 加班到十点', '睡了一天']);
 });

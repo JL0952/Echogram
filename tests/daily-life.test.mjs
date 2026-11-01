@@ -303,7 +303,7 @@ test('the <life> line: standard', () => {
         { op: 'new', text: '下周三考试', due: '2026-11-04', feeling: '' },
         { op: 'update', name: '周六搬家', progress: '打包完了' },
         { op: 'done', name: '和小雨冷战' },
-        { op: 'happened', text: '中午和小雨和好了', date: '2026-10-31' },
+        { op: 'happened', text: '中午和小雨和好了', date: '2026-10-31', time: '15:00' },
         { op: 'today', date: '2026-10-31', text: '今晚和你吃饭，不去健身' },
     ]);
 });
@@ -325,7 +325,7 @@ test('the <life> line: looser', () => {
     // A semicolon inside the brackets stays with its errand
     assert.deepEqual(Life.parseLifeTag('x\n<life>new 周六搬家 (due 2026-11-03; 嫌麻烦); happened 和好了</life>', SAT).life, [
         { op: 'new', text: '周六搬家', due: '2026-11-03', feeling: '嫌麻烦' },
-        { op: 'happened', text: '和好了', date: '2026-10-31' },
+        { op: 'happened', text: '和好了', date: '2026-10-31', time: '15:00' },
     ]);
     assert.deepEqual(Life.parseLifeTag('fine\n<life>today none</life>', SAT), { text: 'fine', life: [{ op: 'today', date: '2026-10-31', text: '' }] });
     // Only junk inside: the line still goes, nothing reported
@@ -704,4 +704,50 @@ test('the day for the roleplay prompt: what the schedule says, no phone, the sto
     assert.match(Life.describeToday({ schedule: WEEK_BUSY, date, charName: 'Mira', override: Life.makeOverride('free', '13:00', at(26, 10)) }), /上班/);
     assert.doesNotMatch(Life.describeToday({ schedule: Life.normalizeSchedule(null), life, date, charName: 'Mira' }), /schedule says/);
     assert.equal(Life.describeToday({ schedule: Life.normalizeSchedule(null), date, charName: 'Mira' }), '');
+});
+
+test('what happened says when: its own time, or the reply\'s, and the day goes by it', () => {
+    const happened = (text, options) => Life.parseLifeTag(`x\n<life>${text}</life>`, SAT, options).life[0];
+    // In the brackets, with or without a day, a span too
+    assert.deepEqual(happened('happened 吃了火锅 (14:30)'), { op: 'happened', text: '吃了火锅', date: '2026-10-31', time: '14:30' });
+    assert.deepEqual(happened('happened 吃了火锅 (2026-10-30 9:05)'), { op: 'happened', text: '吃了火锅', date: '2026-10-30', time: '09:05' });
+    assert.deepEqual(happened('happened 看了电影 (昨天 14:00-16:30)'), { op: 'happened', text: '看了电影', date: '2026-10-30', time: '14:00–16:30' });
+    // Written the way Recent shows it
+    assert.deepEqual(happened('happened 14:30 吃了火锅'), { op: 'happened', text: '吃了火锅', date: '2026-10-31', time: '14:30' });
+    assert.deepEqual(happened('happened 14:00–16:30 看了电影 (2026-10-30)'), { op: 'happened', text: '看了电影', date: '2026-10-30', time: '14:00–16:30' });
+    // A day with no time: no time. Nothing at all: it just happened, unless told not to say so
+    assert.equal(happened('happened 吃了火锅 (2026-10-30)').time, undefined);
+    assert.equal(happened('happened 吃了火锅').time, '15:00');
+    assert.equal(happened('happened 吃了火锅', { stampNow: false }).time, undefined);
+    // A time out of range isn't one
+    assert.equal(happened('happened 吃了火锅 (25:00)').time, undefined);
+    // Kept at the start of the entry, the day in time order; ones without a time first
+    const report = (time, life) => ({ is_user: false, send_date: time, life });
+    const state = { startAt: 0, start: { errands: [], log: [{ id: 'a', date: '2026-10-31', text: '手写的' }, { id: 'w', date: '2026-10-31', text: '14:00–17:30 With Qi' }], today: null } };
+    const history = [report(at(31, 16).getTime(), [{ op: 'happened', date: '2026-10-31', text: '晚饭', time: '18:00' }, { op: 'happened', date: '2026-10-31', text: '午饭', time: '12:00' }])];
+    assert.deepEqual(Life.currentLife(state, at(31, 20), history).log.map(e => e.text), ['手写的', '12:00 午饭', '14:00–17:30 With Qi', '18:00 晚饭']);
+    // What a chat already has stays as it was
+    assert.deepEqual(Life.currentLife({ startAt: 0, start: { errands: [], log: [], today: null } }, at(31, 20), [report(at(31, 16).getTime(), [{ op: 'happened', date: '2026-10-31', text: '旧的' }])]).log.map(e => e.text), ['旧的']);
+    assert.match(Life.lifeRules({ charName: 'Mira', userName: 'Qi' }), /- happened <what> \(HH:MM\): something that happened to Mira; leave the time out if it just happened/);
+});
+
+test('today\'s change can go when what it was for is over, reports of it too', () => {
+    const date = at(31, 20);
+    const report = (time, text) => ({ is_user: false, send_date: time, life: [{ op: 'today', date: '2026-10-31', text }] });
+    const state = { startAt: 0, start: { errands: [], log: [], today: { date: '2026-10-31', text: '手写的' } } };
+    const ended = at(31, 18).getTime();
+    const history = [report(at(31, 16).getTime(), '模型写的')];
+    assert.equal(Life.currentLife(state, date, history).today.text, '模型写的');
+    const cleared = Life.clearToday(state, ended);
+    assert.equal(cleared.startAt, 0);
+    assert.equal(Life.currentLife(cleared, date, history).today, null);
+    // One written after stands; so does what you edited after it ended
+    assert.equal(Life.currentLife(cleared, date, [...history, report(at(31, 19).getTime(), '后来的')]).today.text, '后来的');
+    const edited = { ...state, startAt: at(31, 19).getTime() };
+    assert.equal(Life.clearToday(edited, ended).start.today.text, '手写的');
+    // A note after it keeps that
+    const noted = Life.noteInStart(cleared, { id: 'w', date: '2026-10-31', text: 'x' });
+    assert.equal(Life.currentLife(noted, date, history).today, null);
+    // Nothing to clear
+    assert.equal(Life.currentLife(Life.clearToday(undefined, ended), date, null).today, null);
 });

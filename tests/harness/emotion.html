@@ -1151,7 +1151,7 @@
         const first = chat()[chat().length - 1];
         res.lineTakenOut = first.mes === '搬家啊\n累死' && !panel.textContent.includes('life>');
         res.kept = first.life?.length === 2 && first.life[0].op === 'new' && first.life[0].due === dayFromToday(3);
-        res.shown = errands() === '周六搬家' && progress() === '嫌麻烦' && $p('[data-emo-entry] .et-sched-doing').text() === '和小雨和好了';
+        res.shown = errands() === '周六搬家' && progress() === '嫌麻烦' && /^\d\d:\d\d 和小雨和好了$/.test($p('[data-emo-entry] .et-sched-doing').text());
         res.lit = $p('.et-life-touched').length === 2;
         res.stateUntouched = !settings.lifeState['mira.png'];
 
@@ -1654,6 +1654,27 @@
         story.length = 0;
         await r.noteTogether('mira.png', { from: midnight.getTime() - HOUR, until: midnight.getTime() + 60000 });
         res.dayItBegan = log()[0]?.date === window.EchoTextDailyLife.dateKey(new Date(midnight.getTime() - HOUR)) && log()[0]?.text.startsWith('23:00–00:01 ');
+
+        // Today's change goes when the time together ends, written by hand or by a reply; a moment by accident leaves it
+        const Life = window.EchoTextDailyLife;
+        const todayKey = Life.dateKey(new Date());
+        const lifeWith = (today) => ({ 'mira.png': { startAt: 0, start: { errands: [], log: [], today } } });
+        const todayNow = () => Life.currentLife(env.settings.lifeState['mira.png'], new Date(), chat()).today;
+        env.settings.lifeState = settings.lifeState = lifeWith({ date: todayKey, text: '去看电影' });
+        await r.noteTogether('mira.png', { from: Date.now() - 3 * HOUR, until: Date.now() - 1000 });
+        res.todayCleared = todayNow() === null;
+        env.settings.lifeState = settings.lifeState = lifeWith({ date: todayKey, text: '去看电影' });
+        await r.noteTogether('mira.png', { from: Date.now() - 60000, until: Date.now() });
+        res.accidentKeepsToday = todayNow()?.text === '去看电影' && log().length === 0;
+        // Two minutes is no accident
+        await r.noteTogether('mira.png', { from: Date.now() - 2 * 60000, until: Date.now() });
+        res.twoMinutesCount = todayNow() === null && log().length === 1;
+        const chatBefore = env.settings.chatHistory['mira.png'];
+        env.settings.lifeState = settings.lifeState = {};
+        env.settings.chatHistory['mira.png'] = [...chatBefore, { is_user: false, mes: 'x', send_date: Date.now() - 2000, life: [{ op: 'today', date: todayKey, text: '模型写的' }] }];
+        await r.noteTogether('mira.png', { from: Date.now() - 3 * HOUR, until: Date.now() - 1000 });
+        res.reportedTodayCleared = todayNow() === null;
+        env.settings.chatHistory['mira.png'] = chatBefore;
 
         // Auto mode: the sentence's <mood> line moves the feelings, a step at most, and locks and the sentence hold
         const stretch = { from: Date.now() - 3 * HOUR, until: Date.now() - HOUR };

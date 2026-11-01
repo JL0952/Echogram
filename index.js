@@ -6215,15 +6215,16 @@
      * Time together is over: it goes in the life's Recent list right away, under the day
      * it began, with its hours, and when the main chat has anything from that time, the
      * model's sentence about it takes its place and in Auto mode moves the feelings, with a
-     * bar up meanwhile; paused, what's there stays. A text may follow once they've parted.
-     * An accidental moment leaves nothing.
+     * bar up meanwhile; paused, what's there stays. Today's change goes with it: it was most
+     * likely written for this. A text may follow once they've parted. An accidental moment
+     * leaves nothing.
      */
     async function noteTogether(key, { from, until }) {
         const char = getCurrentCharacter();
         if (!char || until - from < DailyLife.TOGETHER_MIN_MINUTES * 60000) return;
         const userName = getUserName();
         const entry = { id: `with${from.toString(36)}`, date: DailyLife.dateKey(new Date(from)), text: DailyLife.togetherEntry({ userName, from, until }) };
-        settings.lifeState[key] = DailyLife.noteInStart(settings.lifeState[key], entry);
+        settings.lifeState[key] = DailyLife.clearToday(DailyLife.noteInStart(settings.lifeState[key], entry), until);
         saveSettings();
         if (emotionSystem) emotionSystem.refresh();
         if (proactiveMessaging) proactiveMessaging.planParted(key, until);
