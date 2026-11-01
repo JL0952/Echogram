@@ -22,13 +22,13 @@ function proactive(features) {
 const templates = proactive([]).getDefaultProactiveConfigForCharacter({}).triggerTemplates;
 const turn = (features, type, prompt = templates[type]) => proactive(features).buildTriggerTurnText({ type, prompt }, 'Mira');
 
-const TRIGGERS = ['checkin', 'pregnant_pause', 'dormancy_break', 'late_night', 'morning_wave', 'lunch_nudge', 'evening_winddown',
+const TRIGGERS = ['checkin', 'dormancy_break', 'late_night', 'morning_wave', 'lunch_nudge', 'evening_winddown',
     'weekend_ping', 'affection_reciprocation', 'repair_attempt', 'curiosity_ping', 'anxiety_reassurance', 'celebration_nudge',
     'sharing_impulse', 'mood_follow_up', 'memory_nudge', 'time_window', 'afternoon_slump', 'pre_dawn', 'commute_ping', 'post_work',
     'sunday_evening', 'post_midnight_impulse', 'monday_reboot', 'friday_feeling', 'sunday_scaries', 'midweek_check',
     'nostalgia_wave', 'longing_ping', 'playful_tease', 'jealousy_nudge', 'boredom_break', 'overwhelm_check', 'gratitude_burst',
     'pride_share', 'suppressed_thought', 'thinking_of_you', 'random_thought', 'dream_mention', 'song_stuck', 'overthinking_spiral',
-    'craving_share', 'inside_joke_callback', 'quiet_productive', 'double_text', 'seen_no_reply_soft', 'followup_callback'];
+    'craving_share', 'inside_joke_callback', 'quiet_productive', 'followup_callback'];
 
 test('every trigger still has a template', () => {
     assert.deepEqual(Object.keys(templates).sort(), [...TRIGGERS].sort());

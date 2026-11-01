@@ -402,6 +402,9 @@
         if (!s.phoneOverrides || typeof s.phoneOverrides !== 'object' || Array.isArray(s.phoneOverrides)) {
             s.phoneOverrides = {};
         }
+        if (!s.lifeKept || typeof s.lifeKept !== 'object' || Array.isArray(s.lifeKept)) {
+            s.lifeKept = {};
+        }
         if (!s.proactiveCharacterConfig || typeof s.proactiveCharacterConfig !== 'object' || Array.isArray(s.proactiveCharacterConfig)) {
             s.proactiveCharacterConfig = {};
         }
@@ -3984,6 +3987,7 @@
         // and a catch-up if one is due
         proactiveMessaging.armRoundTimer();
         setTimeout(() => maybeCatchUp(), 0);
+        keepLifeMemories();
     }
 
     function markProactiveUserActivity(characterKey, timestamp = Date.now()) {
@@ -5227,6 +5231,8 @@
         saveChatHistory(newHistory);
         setFabUnreadIndicator(false);
         markProactiveUserActivity(getCharacterKey(), Date.now());
+        // What the replies before it finished is settled now
+        keepLifeMemories();
         renderMessages(newHistory);
         scheduleCharacterReply();
         return newHistory;
@@ -5911,6 +5917,73 @@
         refreshProactiveInsights();
     }
 
+    // Life memories kept per character: at most this many marks of what's been kept
+    const LIFE_KEPT_MAX = 300;
+
+    /**
+     * Keeps what the open chat's life has let go of as Life memories (12e): an errand a
+     * reply marked done, once you've texted after it (a swipe can take it back till then;
+     * `settledBefore` moves that), and what happened once it's older than the week the life
+     * keeps, a memory a week, added to as more of that week goes. Each only once
+     * (settings.lifeKept, by character), even when you delete the memory. A catch-up's
+     * `changes` are kept as it settles them.
+     */
+    function keepLifeMemories({ settledBefore = null, changes = null } = {}) {
+        if (!dailyLifeActive() || !memorySystem) return;
+        const key = getCharacterKey();
+        const history = getEmotionHistory(key);
+        const lastUser = [...history].reverse().find(m => m?.is_user);
+        const before = settledBefore ?? (lastUser ? Number(lastUser.send_date) || Date.parse(lastUser.send_date) || 0 : 0);
+        const { done, expired } = DailyLife.lettingGo(settings.lifeState?.[key], history, new Date(), { settledBefore: before, changes });
+        if (!done.length && !expired.length) return;
+        if (!settings.lifeKept) settings.lifeKept = {};
+        const kept = settings.lifeKept[key] || (settings.lifeKept[key] = {});
+        const name = getCurrentCharacter()?.name || 'Character';
+        let changed = false;
+        for (const errand of done) {
+            if (kept[`errand:${errand.id}`]) continue;
+            kept[`errand:${errand.id}`] = 1;
+            changed = true;
+            addLifeMemory(DailyLife.errandMemory(errand, name));
+        }
+        const weeks = new Map();
+        for (const entry of expired) {
+            if (kept[`entry:${entry.id}`]) continue;
+            kept[`entry:${entry.id}`] = 1;
+            changed = true;
+            const monday = DailyLife.weekOf(entry.date);
+            weeks.set(monday, [...(weeks.get(monday) || []), { date: entry.date, text: entry.text }]);
+        }
+        for (const [monday, entries] of weeks) {
+            const week = kept[`week:${monday}`];
+            if (!week) {
+                const memory = addLifeMemory(DailyLife.weekMemory(monday, entries, name));
+                if (memory) kept[`week:${monday}`] = { memory: memory.id, entries };
+            } else if ((settings.characterMemories?.[key] || []).some(m => m.id === week.memory)) {
+                // Still there (you may have deleted it): the week's memory grows
+                week.entries = [...week.entries, ...entries];
+                memorySystem.editMemory(week.memory, DailyLife.weekMemory(monday, week.entries, name));
+            }
+        }
+        const marks = Object.keys(kept);
+        for (const mark of marks.slice(0, Math.max(0, marks.length - LIFE_KEPT_MAX))) delete kept[mark];
+        if (changed) saveSettings();
+    }
+
+    /**
+     * Adds a Life memory to the open character's list; when it's full, their oldest Life
+     * memory makes room, never one of yours (null then, when there's none).
+     */
+    function addLifeMemory({ label, content }) {
+        const list = settings.characterMemories?.[getCharacterKey()] || [];
+        if (list.length >= memorySystem.MAX_MEMORIES_PER_SCOPE) {
+            const oldest = [...list].reverse().find(m => m.category === 'life');
+            if (!oldest) return null;
+            memorySystem.deleteMemory(oldest.id);
+        }
+        return memorySystem.addMemory({ category: 'life', label, content, scope: 'per-character' });
+    }
+
     /** Where the character is in their life, for the system prompt; '' without Daily Life, or with nothing to say. */
     function buildDailyLifeContext(charName) {
         if (!dailyLifeActive()) return '';
@@ -6115,6 +6188,8 @@
             if (controller.signal.aborted || getCharacterKey() !== key) return;
             const answer = CatchUp.readAnswer(stripThinkingTags(String(raw ?? '')), { from, now, planned: texts });
             if (settle) {
+                // Settling bakes in every report so far: what ended is kept first
+                keepLifeMemories({ settledBefore: Infinity, changes: answer.life });
                 settings.lifeState[key] = DailyLife.settleLife(settings.lifeState[key], getEmotionHistory(key), answer.life, new Date(now));
                 settled = true;
             }
@@ -8020,6 +8095,7 @@
         hobby:          'Hobby / Interest',
         favorite_thing: 'Favorite Thing',
         shared_moment:  'Shared Moment',
+        life:           'Life',
         custom:         'Custom'
     };
 
@@ -8179,6 +8255,8 @@
             getChatHistory: getEmotionHistory,
             generateSchedule,
             onPhoneOverride,
+            // An edit by hand bakes in every report so far: what ended is kept first
+            keepLifeMemories: () => keepLifeMemories({ settledBefore: Infinity }),
             isPanelOpen,
             isMobileDevice,
             onEmotionStateUpdated: ({ dominant, dominantChanged }) => {

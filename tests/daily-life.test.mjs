@@ -566,3 +566,40 @@ test('a change of plan by hand in the prompt', () => {
     assert.equal(Life.describeNow({ schedule: s, date: at(27, 2), charName: 'Mira', override: Life.makeOverride('free', '01:00', at(26, 23)) }),
         Life.describeNow({ schedule: s, date: at(27, 2), charName: 'Mira' }));
 });
+
+test('what the life lets go of: errands done before you texted after them, what happened past the week', () => {
+    const t = (d, h) => at(d, h).getTime();
+    const state = { startAt: 0, start: {
+        errands: [{ id: 'e1', text: '周六搬家', progress: '打包了一半', due: '2026-10-31' }, { id: 'e2', text: '体检', due: '2026-11-02' }],
+        log: [{ id: 'l1', date: '2026-10-20', text: '加班到十点' }, { id: 'l2', date: '2026-10-25', text: '和小雨和好了' }, { id: 'l3', date: '2026-10-30', text: '买了新鞋' }],
+        today: null,
+    } };
+    const history = [
+        { is_user: true, mes: '搬完了吗', send_date: t(31, 18) },
+        { is_user: false, mes: '搬完了！', send_date: t(31, 19), life: [{ op: 'update', name: '搬家', progress: '搬完了' }, { op: 'done', name: '周六搬家' }] },
+        { is_user: false, mes: '体检取消了', send_date: t(31, 21), life: [{ op: 'done', name: '体检' }] },
+    ];
+    // Nov 1: you texted at 20:00, so only the move is settled; Oct 20 and 25 are past the week
+    const user = t(31, 20);
+    const gone = Life.lettingGo(state, history, at(32, 10), { settledBefore: user });
+    assert.deepEqual(gone.done.map(e => [e.id, e.progress, e.date]), [['e1', '搬完了', '2026-10-31']]);
+    assert.deepEqual(gone.expired.map(e => e.id), ['l1', 'l2']);
+    // Everything, as an edit by hand or a catch-up settles it; a catch-up's own report too
+    const all = Life.lettingGo(state, history, at(32, 10), { changes: [{ op: 'happened', date: '2026-10-21', text: '感冒了' }] });
+    assert.deepEqual(all.done.map(e => e.id), ['e1', 'e2']);
+    assert.deepEqual(all.expired.map(e => e.text), ['加班到十点', '感冒了', '和小雨和好了']);
+    assert.deepEqual(Life.lettingGo(null, [], at(32, 10)), { done: [], expired: [] });
+    // A report before the life was edited by hand no longer counts
+    assert.deepEqual(Life.lettingGo({ ...state, startAt: t(31, 22) }, history, at(32, 10)).done, []);
+});
+
+test('what the life lets go of, as memories', () => {
+    assert.equal(Life.weekOf('2026-11-01'), '2026-10-26');
+    assert.equal(Life.weekOf('2026-10-26'), '2026-10-26');
+    assert.equal(Life.weekOf('2026-10-25'), '2026-10-19');
+    assert.deepEqual(Life.errandMemory({ text: '周六搬家', progress: '搬完了', date: '2026-10-31' }, 'Mira'),
+        { label: '周六搬家', content: 'Mira\'s errand "周六搬家" came to an end on 2026-10-31: 搬完了.' });
+    assert.equal(Life.errandMemory({ text: '体检', progress: '', date: '2026-10-31' }, 'Mira').content, 'Mira\'s errand "体检" came to an end on 2026-10-31.');
+    assert.deepEqual(Life.weekMemory('2026-10-19', [{ date: '2026-10-25', text: '和小雨和好了' }, { date: '2026-10-20', text: '加班到十点' }], 'Mira'),
+        { label: 'Week of 2026-10-19', content: 'What happened to Mira the week of 2026-10-19: 加班到十点 (10-20); 和小雨和好了 (10-25).' });
+});

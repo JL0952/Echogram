@@ -8281,6 +8281,14 @@ textarea.et-sched-in {
     color: #fb7185;
 }
 
+/* Life (Daily Life's, kept on its own) — sky */
+.et-mem-card[data-mem-category="life"] .et-mem-cat-chip,
+.et-mem-cat-chip[data-cat="life"] {
+    background: rgba(56, 189, 248, 0.10);
+    border-color: rgba(56, 189, 248, 0.28);
+    color: color-mix(in srgb, #38bdf8 75%, var(--et-surface-text));
+}
+
 /* Custom — slate */
 .et-mem-card[data-mem-category="custom"] .et-mem-cat-chip,
 .et-mem-cat-chip[data-cat="custom"] {
@@ -9369,6 +9377,9 @@ details.et-te-advanced[open] .et-te-advanced-toggle::before { transform: rotate(
 }
 .et-mem-card[data-mem-category="shared_moment"] {
     --et-mem-cat-color: #fb7185;
+}
+.et-mem-card[data-mem-category="life"] {
+    --et-mem-cat-color: #38bdf8;
 }
 .et-mem-card[data-mem-category="custom"] {
     --et-mem-cat-color: #94a3b8;

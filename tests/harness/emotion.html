@@ -84,6 +84,7 @@
         getChatHistory: key => r.getEmotionHistory(key),
         generateSchedule: options => r.generateSchedule(options),
         onPhoneOverride: () => r.onPhoneOverride(),
+        keepLifeMemories: () => r.keepLifeMemories({ settledBefore: Infinity }),
         get scheduleTimeoutMs() { return window.__scheduleTimeoutMs; },
         onEmotionStateUpdated: () => { statusRow().innerHTML = emo.buildStatusHtml(); },
     });
@@ -1401,6 +1402,87 @@
         return res;
     };
 
+    // What the life lets go of, kept as Life memories (12e), through index.js's real postUserMessage and
+    // keepLifeMemories and the Life tab's edits
+    window.runLifeMemoryTest = async function () {
+        const res = {};
+        errors.length = 0;
+        const Life = window.EchoTextDailyLife;
+        const day = n => Life.dateKey(new Date(Date.now() + n * 86400000));
+        // index.js's settings and the popup's are one object in the extension, two here: tie what this uses together
+        env.settings.dailyLifeEnabled = settings.dailyLifeEnabled = true;
+        env.settings.characterSchedules = settings.characterSchedules = {};
+        env.settings.lifeKept = {};
+        env.settings.characterMemories = {};
+        env.settings.lifeState = settings.lifeState = { 'mira.png': { startAt: 1, start: {
+            errands: [{ id: 'e1', text: '周六搬家', progress: '打包了一半', due: day(0), from: 'chat' }, { id: 'e2', text: '体检', due: day(2), from: 'you' }],
+            log: [{ id: 'l1', date: day(-12), text: '加班到十点' }, { id: 'l2', date: day(-2), text: '和小雨和好了' }],
+            today: null,
+        } } };
+        const chat = () => env.settings.chatHistory['mira.png'];
+        const mems = () => env.settings.characterMemories['mira.png'] || [];
+        const life = () => mems().filter(m => m.category === 'life');
+        env.settings.chatHistory['mira.png'] = [
+            { is_user: true, mes: '搬完了吗', send_date: Date.now() - 120000 },
+            { is_user: false, mes: '搬完了！', send_date: Date.now() - 60000, life: [{ op: 'update', name: '搬家', progress: '搬完了' }, { op: 'done', name: '周六搬家' }] },
+        ];
+        r.renderMessages(chat());
+
+        // The chat opens: what happened 12 days ago goes into its week's memory; the move, not answered yet, waits
+        r.keepLifeMemories();
+        const week = Life.weekOf(day(-12));
+        res.weekKept = life().length === 1 && life()[0].label === `Week of ${week}` && life()[0].content.includes('加班到十点')
+            && !life()[0].content.includes('和小雨和好了');
+        // You text: the move is settled and kept, once
+        r.postUserMessage(r.createUserMessage('恭喜！'));
+        r.keepLifeMemories();
+        const move = () => life().find(m => m.label === '周六搬家');
+        res.errandKept = !!move() && move().content.includes('came to an end') && move().content.includes('搬完了') && life().length === 2;
+        // Deleted by you: not again
+        env.memorySystem.deleteMemory(move().id);
+        r.postUserMessage(r.createUserMessage('在吗'));
+        res.deletedStaysGone = !move() && life().length === 1;
+        // More of that week goes: its memory grows
+        env.settings.lifeState['mira.png'].start.log.push({ id: 'l3', date: Life.weekOf(day(-12)), text: '感冒了' });
+        r.keepLifeMemories();
+        res.weekGrows = life().length === 1 && life()[0].content.includes('感冒了') && life()[0].content.includes('加班到十点');
+
+        // A done report you haven't answered, then an edit by hand on the Life tab: kept first
+        chat().push({ is_user: false, mes: '体检取消了', send_date: Date.now(), life: [{ op: 'done', name: '体检' }] });
+        document.getElementById('et-emotion-popup')?.remove();
+        open();
+        click('[data-emo-tab="life"]');
+        const today = $p('[data-emo-life-today]')[0];
+        today.value = '在家收拾';
+        today.dispatchEvent(new Event('input', { bubbles: true }));
+        await sleep(450);
+        res.keptBeforeEdit = life().some(m => m.label === '体检') && env.settings.lifeState['mira.png'].start.today?.text === '在家收拾';
+        document.getElementById('et-emotion-popup')?.remove();
+
+        // A full list: the oldest Life memory makes room; with none, yours stay and nothing's added
+        env.settings.characterMemories['mira.png'] = [
+            ...Array.from({ length: 48 }, (_, i) => ({ id: `u${i}`, category: 'custom', label: `mine ${i}`, content: 'x', keys: [], createdAt: 0, pinned: false })),
+            { id: 'old-life', category: 'life', label: 'old', content: 'old', keys: [], createdAt: 0, pinned: false },
+            { id: 'u48', category: 'custom', label: 'mine 48', content: 'x', keys: [], createdAt: 0, pinned: false },
+        ];
+        r.addLifeMemory({ label: 'new', content: 'new' });
+        res.fullMakesRoom = mems().length === 50 && !mems().some(m => m.id === 'old-life') && mems()[0].label === 'new';
+        env.settings.characterMemories['mira.png'] = Array.from({ length: 50 }, (_, i) => ({ id: `u${i}`, category: 'custom', label: `mine ${i}`, content: 'x', keys: [], createdAt: 0, pinned: false }));
+        res.fullOfYours = r.addLifeMemory({ label: 'new', content: 'new' }) === null && mems().every(m => m.category === 'custom');
+
+        // Daily Life off: nothing
+        env.settings.characterMemories['mira.png'] = [];
+        env.settings.lifeKept = {};
+        env.settings.dailyLifeEnabled = false;
+        r.keepLifeMemories({ settledBefore: Infinity });
+        res.offNothing = mems().length === 0;
+
+        env.settings.dailyLifeEnabled = settings.dailyLifeEnabled = false;
+        res.errors = errors.slice();
+        res.ok = Object.values(res).filter(v => typeof v === 'boolean').every(Boolean) && !errors.length;
+        return res;
+    };
+
     // ?phone: every tab as tall as Emotions with its sliders, Emotions off included; a longer one scrolls inside
     window.runPhoneHeightTest = async function () {
         const res = {};
@@ -1716,7 +1798,8 @@
         const unseen = await window.runUnseenTest();
         const catchUp = await window.runCatchUpTest();
         const plan = await window.runPlanTest();
-        fetch('/__log', { method: 'POST', body: JSON.stringify({ runReplyLengthTest: replyLength, runLifeReportTest: lifeReport, runUnseenTest: unseen, runCatchUpTest: catchUp, runPlanTest: plan, runEmotionTest: result, runAutoTest: auto, runReplyTest: reply, runTapbackTest: tapback, runMemoryTest: memory, runSummaryTest: summary, runInstagramTest: instagram, runScheduleTest: schedule, runLifeTest: life }) }).catch(() => {});
+        const lifeMemory = await window.runLifeMemoryTest();
+        fetch('/__log', { method: 'POST', body: JSON.stringify({ runReplyLengthTest: replyLength, runLifeReportTest: lifeReport, runUnseenTest: unseen, runCatchUpTest: catchUp, runPlanTest: plan, runLifeMemoryTest: lifeMemory, runEmotionTest: result, runAutoTest: auto, runReplyTest: reply, runTapbackTest: tapback, runMemoryTest: memory, runSummaryTest: summary, runInstagramTest: instagram, runScheduleTest: schedule, runLifeTest: life }) }).catch(() => {});
     } else if (params.has('memory')) {
         // Two memories, one pinned, the other in the last prompt; Add Memory open on a bubble
         env.settings.characterMemories = { 'mira.png': [
