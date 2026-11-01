@@ -583,6 +583,9 @@
         window._etGetCharacterName = () => 'Mira';
         window._etGetRecalledMemoryIds = () => env.memorySystem.getRecalledIds();
         window._etGetChatSummaries = r.getChatSummariesForList;
+        window._etGetChatMemories = r.getChatMemoriesForList;
+        window._etKeepChatSummary = r.keepChatSummary;
+        window._etKeepChatMemory = id => { env.memorySystem.moveToPermanent(id); r.refreshMemoryLists(); };
         window._etSetChatSummary = r.setChatSummary;
         // Once: it binds its handlers on the document
         const sm = settingsModal || (settingsModal = window.EchoTextSettingsModal.createSettingsModal({ getSettings: () => env.settings, saveSettings: () => {} }));
@@ -1738,7 +1741,7 @@
         // index.js's settings and the popup's are one object in the extension, two here: tie what this uses together
         env.settings.dailyLifeEnabled = settings.dailyLifeEnabled = true;
         env.settings.characterSchedules = settings.characterSchedules = {};
-        env.settings.lifeKept = {};
+        env.settings.chatMemories = {};
         env.settings.characterMemories = {};
         env.settings.lifeState = settings.lifeState = { 'mira.png': { startAt: 1, start: {
             errands: [{ id: 'e1', text: '周六搬家', progress: '打包了一半', due: day(0), from: 'chat' }, { id: 'e2', text: '体检', due: day(2), from: 'you' }],
@@ -1746,7 +1749,7 @@
             today: null,
         } } };
         const chat = () => env.settings.chatHistory['mira.png'];
-        const mems = () => env.settings.characterMemories['mira.png'] || [];
+        const mems = () => env.settings.chatMemories['mira.png']?.items || [];
         const life = () => mems().filter(m => m.category === 'life');
         env.settings.chatHistory['mira.png'] = [
             { is_user: true, mes: '搬完了吗', send_date: Date.now() - 120000 },
@@ -1785,25 +1788,87 @@
         res.keptBeforeEdit = life().some(m => m.label === '体检') && env.settings.lifeState['mira.png'].start.today?.text === '在家收拾';
         document.getElementById('et-emotion-popup')?.remove();
 
-        // A full list: the oldest Life memory makes room; with none, yours stay and nothing's added
-        env.settings.characterMemories['mira.png'] = [
-            ...Array.from({ length: 48 }, (_, i) => ({ id: `u${i}`, category: 'custom', label: `mine ${i}`, content: 'x', keys: [], createdAt: 0, pinned: false })),
-            { id: 'old-life', category: 'life', label: 'old', content: 'old', keys: [], createdAt: 0, pinned: false },
-            { id: 'u48', category: 'custom', label: 'mine 48', content: 'x', keys: [], createdAt: 0, pinned: false },
-        ];
-        r.addLifeMemory({ label: 'new', content: 'new' });
-        res.fullMakesRoom = mems().length === 50 && !mems().some(m => m.id === 'old-life') && mems()[0].label === 'new';
+        // They're the chat's: none of them among the character's own, and yours are left alone
+        res.inTheChat = life().length > 0 && !(env.settings.characterMemories['mira.png'] || []).length;
+
+        // Moved to permanent: out of the chat, there for good, and through a cleared chat
+        const keep = life()[0];
+        env.memorySystem.moveToPermanent(keep.id);
+        const permanent = () => env.settings.characterMemories['mira.png'] || [];
+        res.moved = !life().some(m => m.id === keep.id) && permanent().some(m => m.id === keep.id);
+        const count = life().length;
+        r.clearChatHistory();
+        res.clearedWithChat = !env.settings.chatMemories['mira.png'] && count > 0 && permanent().some(m => m.id === keep.id);
+
+        // A full permanent list isn't pushed out by a move; yours stay
+        env.settings.chatHistory['mira.png'] = [{ is_user: true, mes: 'x', send_date: Date.now() }];
+        const added = r.addLifeMemory({ label: 'new', content: 'new' });
         env.settings.characterMemories['mira.png'] = Array.from({ length: 50 }, (_, i) => ({ id: `u${i}`, category: 'custom', label: `mine ${i}`, content: 'x', keys: [], createdAt: 0, pinned: false }));
-        res.fullOfYours = r.addLifeMemory({ label: 'new', content: 'new' }) === null && mems().every(m => m.category === 'custom');
+        res.fullStays = env.memorySystem.moveToPermanent(added.id) === false && life().length === 1 && env.settings.characterMemories['mira.png'].length === 50;
 
         // Daily Life off: nothing
         env.settings.characterMemories['mira.png'] = [];
-        env.settings.lifeKept = {};
+        env.settings.chatMemories = {};
         env.settings.dailyLifeEnabled = false;
         r.keepLifeMemories({ settledBefore: Infinity });
         res.offNothing = mems().length === 0;
 
         env.settings.dailyLifeEnabled = settings.dailyLifeEnabled = false;
+        res.errors = errors.slice();
+        res.ok = Object.values(res).filter(v => typeof v === 'boolean').every(Boolean) && !errors.length;
+        return res;
+    };
+
+    // A chat's memories in the settings list: This chat beside Permanent, moving one over, copying a summary
+    window.runChatMemoryTest = async function () {
+        const res = {};
+        errors.length = 0;
+        env.settings.memoryEnabled = true;
+        env.settings.memoryScope = 'per-character';
+        env.settings.chatMemories = {};
+        env.settings.characterMemories = {};
+        env.settings.dailyLifeEnabled = true;
+        env.settings.chatHistory['mira.png'] = Array.from({ length: 40 }, (_, i) => ({ is_user: i % 2 === 0, mes: `line ${i}`, send_date: Date.now() - (40 - i) * 1000 }));
+        env.settings.chatHistory['mira.png'][29].memo = { id: 'mm1', text: '他们约好周末看电影', count: 30, at: Date.now() };
+        const life = env.memorySystem.addMemory({ category: 'life', label: 'Week of 2026-10-19', content: '加班到十点', scope: 'chat' });
+        const mine = env.memorySystem.addMemory({ category: 'custom', label: 'mine', content: '我写的' });
+        const { host, render } = await mountSettingsPanel();
+        const section = () => host.querySelector('.et-memo-section');
+        const permanent = () => host.querySelector('#et_memory_list_panel');
+        res.twoSections = section().style.display !== 'none' && section().textContent.includes('This chat')
+            && host.querySelector('#et_memory_list_label_panel').textContent === 'Permanent — Mira';
+        res.chatCard = !!section().querySelector(`[data-mem-id="${life.id}"]`) && !permanent().querySelector(`[data-mem-id="${life.id}"]`)
+            && !!permanent().querySelector(`[data-mem-id="${mine.id}"]`) && !!section().querySelector('.et-memo-card');
+        // Only what's in the chat can be moved
+        res.keepOnlyInChat = !!section().querySelector(`[data-mem-id="${life.id}"] [data-mem-action="keep"]`) && !permanent().querySelector('[data-mem-action="keep"]');
+
+        // Pin and edit reach a chat memory
+        section().querySelector(`[data-mem-id="${life.id}"] [data-mem-action="pin"]`).click();
+        res.pinned = env.settings.chatMemories['mira.png'].items[0].pinned === true;
+
+        // Archives carry them; a cleared chat drops them
+        const snapshot = r.getChatMemoriesSnapshot();
+        res.snapshot = snapshot.items[0].id === life.id;
+
+        // Copying a summary leaves it there and marks it; a second time isn't offered
+        section().querySelector('[data-memo-action="keep"]').click();
+        render();
+        res.summaryCopied = env.settings.characterMemories['mira.png'].some(m => m.content === '他们约好周末看电影')
+            && !!env.settings.chatHistory['mira.png'][29].memo && env.settings.chatHistory['mira.png'][29].memo.kept === true
+            && !section().querySelector('[data-memo-action="keep"]') && !section().querySelector('.et-mem-confirm-pending');
+        res.summaryStillCovers = r.getChatSummariesForList().length === 1;
+
+        // Moving the Life memory: out of the chat, into Permanent, through a cleared chat
+        section().querySelector(`[data-mem-id="${life.id}"] [data-mem-action="keep"]`).click();
+        render();
+        res.moved = !section().querySelector(`[data-mem-id="${life.id}"]`) && !!permanent().querySelector(`[data-mem-id="${life.id}"]`);
+        const another = env.memorySystem.addMemory({ category: 'life', label: 'x', content: 'y', scope: 'chat' });
+        r.clearChatHistory();
+        render();
+        res.cleared = !env.settings.chatMemories['mira.png'] && !!permanent().querySelector(`[data-mem-id="${life.id}"]`) && !!permanent().querySelector(`[data-mem-id="${mine.id}"]`) && !!another;
+
+        host.remove();
+        env.settings.dailyLifeEnabled = false;
         res.errors = errors.slice();
         res.ok = Object.values(res).filter(v => typeof v === 'boolean').every(Boolean) && !errors.length;
         return res;
@@ -2200,9 +2265,10 @@
         const plan = await window.runPlanTest();
         const lifeMemory = await window.runLifeMemoryTest();
         const rename = await window.runRenameTest();
+        const chatMemory = await window.runChatMemoryTest();
         const together = await window.runTogetherTest();
         const storyPause = await window.runStoryPauseTest();
-        fetch('/__log', { method: 'POST', body: JSON.stringify({ runTogetherTest: together, runStoryPauseTest: storyPause, runReplyLengthTest: replyLength, runLifeReportTest: lifeReport, runUnseenTest: unseen, runCatchUpTest: catchUp, runPlanTest: plan, runLifeMemoryTest: lifeMemory, runRenameTest: rename, runEmotionTest: result, runAutoTest: auto, runReplyTest: reply, runTapbackTest: tapback, runMemoryTest: memory, runSummaryTest: summary, runInstagramTest: instagram, runScheduleTest: schedule, runLifeTest: life }) }).catch(() => {});
+        fetch('/__log', { method: 'POST', body: JSON.stringify({ runChatMemoryTest: chatMemory, runTogetherTest: together, runStoryPauseTest: storyPause, runReplyLengthTest: replyLength, runLifeReportTest: lifeReport, runUnseenTest: unseen, runCatchUpTest: catchUp, runPlanTest: plan, runLifeMemoryTest: lifeMemory, runRenameTest: rename, runEmotionTest: result, runAutoTest: auto, runReplyTest: reply, runTapbackTest: tapback, runMemoryTest: memory, runSummaryTest: summary, runInstagramTest: instagram, runScheduleTest: schedule, runLifeTest: life }) }).catch(() => {});
     } else if (params.has('memory')) {
         // Two memories, one pinned, the other in the last prompt; Add Memory open on a bubble
         env.settings.characterMemories = { 'mira.png': [

@@ -403,8 +403,9 @@
         if (!s.phoneOverrides || typeof s.phoneOverrides !== 'object' || Array.isArray(s.phoneOverrides)) {
             s.phoneOverrides = {};
         }
-        if (!s.lifeKept || typeof s.lifeKept !== 'object' || Array.isArray(s.lifeKept)) {
-            s.lifeKept = {};
+        window.EchoTextMemorySystem?.moveLifeMemories(s);
+        if (!s.chatMemories || typeof s.chatMemories !== 'object' || Array.isArray(s.chatMemories)) {
+            s.chatMemories = {};
         }
         if (!s.characterNames || typeof s.characterNames !== 'object' || Array.isArray(s.characterNames)) {
             s.characterNames = {};
@@ -2596,6 +2597,7 @@
         clearEmotionState();
         delete settings.lifeState[key];
         delete settings.phoneOverrides?.[key];
+        delete settings.chatMemories?.[key];
         saveSettings();
     }
 
@@ -5952,6 +5954,13 @@
         return state ? JSON.parse(JSON.stringify(state)) : null;
     }
 
+    /** The memories that go with the chat, as an archive saves them, or null when there are none. */
+    function getChatMemoriesSnapshot() {
+        const key = getCharacterKey();
+        const store = key ? settings.chatMemories?.[key] : null;
+        return store ? JSON.parse(JSON.stringify(store)) : null;
+    }
+
     /** A character's texting style (emotion popup, Personality tab) for its system prompt. */
     function buildTextingStyleContext(char) {
         return emotionSystem ? emotionSystem.buildTextingStyleContext(char.avatar || char.name, char.name || 'Character') : '';
@@ -6275,7 +6284,7 @@
      * reply marked done, once you've texted after it (a swipe can take it back till then;
      * `settledBefore` moves that), and what happened once it's older than the week the life
      * keeps, a memory a week, added to as more of that week goes. Each only once
-     * (settings.lifeKept, by character), even when you delete the memory. A catch-up's
+     * (marked with the chat's memories), even when you delete the memory. A catch-up's
      * `changes` are kept as it settles them.
      */
     function keepLifeMemories({ settledBefore = null, changes = null } = {}) {
@@ -6286,8 +6295,8 @@
         const before = settledBefore ?? (lastUser ? Number(lastUser.send_date) || Date.parse(lastUser.send_date) || 0 : 0);
         const { done, expired } = DailyLife.lettingGo(settings.lifeState?.[key], history, new Date(), { settledBefore: before, changes });
         if (!done.length && !expired.length) return;
-        if (!settings.lifeKept) settings.lifeKept = {};
-        const kept = settings.lifeKept[key] || (settings.lifeKept[key] = {});
+        const store = memorySystem.getChatStore(key);
+        const { kept } = store;
         const name = getCurrentCharacter()?.name || 'Character';
         let changed = false;
         for (const errand of done) {
@@ -6309,7 +6318,7 @@
             if (!week) {
                 const memory = addLifeMemory(DailyLife.weekMemory(monday, entries, name));
                 if (memory) kept[`week:${monday}`] = { memory: memory.id, entries };
-            } else if ((settings.characterMemories?.[key] || []).some(m => m.id === week.memory)) {
+            } else if (store.items.some(m => m.id === week.memory)) {
                 // Still there (you may have deleted it): the week's memory grows
                 week.entries = [...week.entries, ...entries];
                 memorySystem.editMemory(week.memory, DailyLife.weekMemory(monday, week.entries, name));
@@ -6320,18 +6329,9 @@
         if (changed) saveSettings();
     }
 
-    /**
-     * Adds a Life memory to the open character's list; when it's full, their oldest Life
-     * memory makes room, never one of yours (null then, when there's none).
-     */
+    /** Adds a Life memory to the open chat's memories. */
     function addLifeMemory({ label, content }) {
-        const list = settings.characterMemories?.[getCharacterKey()] || [];
-        if (list.length >= memorySystem.MAX_MEMORIES_PER_SCOPE) {
-            const oldest = [...list].reverse().find(m => m.category === 'life');
-            if (!oldest) return null;
-            memorySystem.deleteMemory(oldest.id);
-        }
-        return memorySystem.addMemory({ category: 'life', label, content, scope: 'per-character' });
+        return memorySystem.addMemory({ category: 'life', label, content, scope: 'chat' });
     }
 
     /** Where the character is in their life, for the system prompt; '' without Daily Life, or with nothing to say. */
@@ -8484,6 +8484,26 @@
         refreshMemoryLists();
     }
 
+    /** The open chat's memories for the settings list. */
+    function getChatMemoriesForList() {
+        return memorySystem && !inGroupSession() ? memorySystem.getChatMemories() : [];
+    }
+
+    /**
+     * Copies one of the chat's summaries to the permanent memories, to stay through a
+     * cleared chat. The summary itself stays: the messages it covers are only sent through it.
+     */
+    function keepChatSummary(id) {
+        const history = getChatHistory();
+        const msg = history.find(m => m.memo && String(m.memo.id) === String(id));
+        if (!msg || msg.memo.kept || !memorySystem) return;
+        if (!memorySystem.permanentHasRoom()) { toastr.warning('Permanent memories are full', 'Echogram'); return; }
+        memorySystem.addMemory({ category: 'life', label: 'Chat summary', content: msg.memo.text });
+        msg.memo = { ...msg.memo, kept: true };
+        saveChatHistory(history);
+        refreshMemoryLists();
+    }
+
     const _MEM_CATEGORY_LABELS = {
         inside_joke:    'Inside Joke',
         person:         'Important Person',
@@ -8757,6 +8777,12 @@
         window._etGetRecalledMemoryIds = () => memorySystem.getRecalledIds();
         window._etGetChatSummaries = getChatSummariesForList;
         window._etSetChatSummary = setChatSummary;
+        window._etGetChatMemories = getChatMemoriesForList;
+        window._etKeepChatSummary = keepChatSummary;
+        window._etKeepChatMemory = id => {
+            if (!memorySystem.moveToPermanent(id)) toastr.warning('Permanent memories are full', 'Echogram');
+            refreshMemoryLists();
+        };
 
         saveLoadModal = window.EchoTextSaveLoadModal.createSaveLoadModal({
             getSettings: () => settings,
@@ -8768,6 +8794,7 @@
             renderMessages,
             getEmotionSnapshot,
             getLifeSnapshot,
+            getChatMemoriesSnapshot,
             isPanelOpen,
             isGroupSession: () => groupManager ? groupManager.isGroupSession() : false,
             captureGroupSnapshot: () => groupManager ? groupManager.captureGroupSnapshot(settings) : null,
