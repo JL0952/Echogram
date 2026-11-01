@@ -8,7 +8,7 @@ globalThis.window = {};
 for (const file of ['rich-messages.js', 'features.js', 'chat-view-model.js', 'daily-life.js', 'story-texts.js']) {
     new Function(readFileSync(new URL(`../lib/${file}`, import.meta.url), 'utf8'))();
 }
-const { insertTexts } = window.EchoTextStoryTexts;
+const { insertTexts, addToEnd } = window.EchoTextStoryTexts;
 
 const T0 = new Date(2026, 9, 10, 14, 0, 0).getTime();
 const at = min => T0 + min * 60000;
@@ -18,8 +18,7 @@ const text = (mes, min, is_user = false) => ({ mes, is_user, send_date: at(min) 
 const timeOf = msg => Date.parse(msg.send_date);
 const options = { charName: '间谍', userName: '齐宁', timeOf };
 const isTime = line => /^\[[^\]]*\d\d:\d\d\]$/.test(line);
-const shape = chat => chat.filter(m => !m.mes.startsWith('<current_time>'))
-    .map(m => (m.extra?.echotext ? m.mes.split('\n').slice(2, -1).filter(line => !isTime(line)).join(' | ') : m.mes));
+const shape = chat => chat.map(m => (m.extra?.echotext ? m.mes.split('\n').slice(2, -1).filter(line => !isTime(line)).join(' | ') : m.mes));
 
 test('texts go between the story messages they were sent between, each run as one narrator message', () => {
     const chat = [story('他在便利店买水。', 0), story('“你...”', 10, true), story('他转过身。', 11)];
@@ -69,7 +68,7 @@ test('each run says its date and time, and again when time moves on', () => {
         text('早', 0, true), text('早', 3),
         text('吃了吗', 11, true),
         text('昨晚的事', 60 * 7.5), text('别说了', 60 * 7.5 + 2, true),
-    ], { ...options, now: new Date(2026, 9, 12, 10, 0) });
+    ], options);
     assert.deepEqual(chat[1].mes.split('\n').slice(1, -1), [
         '齐宁 and 间谍 texted each other by phone at this point in the story:',
         '[2026-10-10 Sat 14:00]',
@@ -84,39 +83,37 @@ test('each run says its date and time, and again when time moves on', () => {
 });
 
 test('another day says so, however close, and each block says its own', () => {
-    const now = new Date(2026, 9, 12, 10, 0);
     const chat = [story('开场', -60 * 24)];
     insertTexts(chat, [{ is_user: true, mes: '晚安', send_date: new Date(2026, 9, 11, 23, 59).getTime() },
-        { is_user: false, mes: '晚安', send_date: new Date(2026, 9, 12, 0, 1).getTime() }], { ...options, now });
+        { is_user: false, mes: '晚安', send_date: new Date(2026, 9, 12, 0, 1).getTime() }], options);
     assert.deepEqual(chat[1].mes.split('\n').slice(2, -1), ['[2026-10-11 Sun 23:59]', '齐宁: 晚安', '[2026-10-12 Mon 00:01]', '间谍: 晚安']);
     const split = [story('开场', 0), story('中间', 10, true)];
-    insertTexts(split, [text('前', 5, true), text('后', 11)], { ...options, now });
+    insertTexts(split, [text('前', 5, true), text('后', 11)], options);
     assert.match(split[1].mes, /\n\[2026-10-10 Sat 14:05\]\n齐宁: 前\n/);
     assert.match(split[3].mes, /\n\[2026-10-10 Sat 14:11\]\n间谍: 后\n/);
 });
 
-test('the time now comes last, and only with texts', () => {
+test('the time now, and the day if there is one, go at the very end', () => {
     const now = new Date(2026, 9, 12, 10, 0);
     const chat = [story('开场', 0), story('next', 10, true)];
-    insertTexts(chat, [text('a', 1, true)], { ...options, now });
-    const last = chat[chat.length - 1];
-    assert.equal(last.mes, '<current_time>\nIt is now 2026-10-12 Mon 10:00.\n</current_time>');
-    assert.equal(last.extra.type, 'narrator');
+    addToEnd(chat, { now });
+    assert.equal(chat.at(-1).mes, '<current_time>\nIt is now 2026-10-12 Mon 10:00.\n</current_time>');
+    assert.equal(chat.at(-1).extra.type, 'narrator');
+    addToEnd(chat, { now, today: '<character_today>…</character_today>' });
+    assert.equal(chat.at(-1).mes, '<current_time>\nIt is now 2026-10-12 Mon 10:00.\n</current_time>\n<character_today>…</character_today>');
     // Continue keeps the message being continued last
     const continued = [story('开场', 0), story('他说', 5)];
-    insertTexts(continued, [text('a', 1, true)], { ...options, now, keepLast: true });
-    assert.equal(continued[continued.length - 1].mes, '他说');
-    assert.match(continued[continued.length - 2].mes, /^<current_time>/);
-    const none = [story('开场', 0)];
-    insertTexts(none, [text('old', -5, true)], { ...options, now });
-    assert.equal(none.length, 1);
+    addToEnd(continued, { now, keepLast: true });
+    assert.equal(continued.at(-1).mes, '他说');
+    assert.match(continued.at(-2).mes, /^<current_time>/);
 });
 
 test('what was there reads the same later: a prompt cache holds up to what is new', () => {
     const texts = [text('a', 1, true), text('b', 2)];
     const prompt = now => {
         const chat = [story('开场', 0), story('next', 10, true)];
-        insertTexts(chat, texts, { ...options, now });
+        insertTexts(chat, texts, options);
+        addToEnd(chat, { now });
         return chat.map(m => m.mes);
     };
     const first = prompt(new Date(2026, 9, 10, 15, 0));
@@ -125,7 +122,7 @@ test('what was there reads the same later: a prompt cache holds up to what is ne
     assert.notEqual(first.at(-1), days.at(-1));
     // A new text goes after all of it
     const chat = [story('开场', 0), story('next', 10, true)];
-    insertTexts(chat, [...texts, text('c', 20, true)], { ...options, now: new Date(2026, 9, 25, 9, 30) });
+    insertTexts(chat, [...texts, text('c', 20, true)], options);
     assert.deepEqual(chat.slice(0, 3).map(m => m.mes), first.slice(0, 3));
 });
 

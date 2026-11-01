@@ -685,3 +685,23 @@ test('time together in a sentence', () => {
     assert.equal(Life.cleanTogetherEntry('Summary: 「和 Qi 吃了饭」'), '和 Qi 吃了饭');
     assert.equal(Life.cleanTogetherEntry('   '), '');
 });
+
+test('the day for the roleplay prompt: what the schedule says, no phone, the story first', () => {
+    const date = at(26, 11);
+    const life = { errands: [{ id: 'e', text: '搬家', progress: '', due: '2026-10-27', feeling: '' }], log: [{ id: 'l', date: '2026-10-26', text: '吵了一架' }], today: { date: '2026-10-26', text: '请了假' } };
+    const text = Life.describeToday({ schedule: WEEK_BUSY, life, date, charName: 'Mira', userName: 'Qi' });
+    assert.match(text, /^<character_today>\nBackground on Mira's day, from outside the story\. The story comes first/);
+    assert.match(text, /Mira's schedule says \(09:00–18:00\): 上班, at 公司\./);
+    assert.match(text, /Today, unlike usual: 请了假\./);
+    assert.match(text, /- 搬家 \(due tomorrow\)/);
+    assert.match(text, /- today: 吵了一架/);
+    assert.doesNotMatch(text, /phone|glance|asleep/);
+    // With you: not the block
+    const together = Life.describeToday({ schedule: WEEK_BUSY, date, charName: 'Mira', userName: 'Qi', override: Life.makeOverride('together', '13:00', at(26, 10)) });
+    assert.match(together, /Right now Mira is with Qi in person \(since 10:00, until around 13:00\)\./);
+    assert.doesNotMatch(together, /上班/);
+    // A change of plan by hand isn't the schedule's business here; no schedule, only a life; nothing at all
+    assert.match(Life.describeToday({ schedule: WEEK_BUSY, date, charName: 'Mira', override: Life.makeOverride('free', '13:00', at(26, 10)) }), /上班/);
+    assert.doesNotMatch(Life.describeToday({ schedule: Life.normalizeSchedule(null), life, date, charName: 'Mira' }), /schedule says/);
+    assert.equal(Life.describeToday({ schedule: Life.normalizeSchedule(null), date, charName: 'Mira' }), '');
+});

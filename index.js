@@ -2604,31 +2604,47 @@
     // ============================================================
 
     /**
-     * SillyTavern's generation interceptor (manifest.json). With the "EchoText
-     * Messages" context toggle on, the texts with the story's character go into
-     * the roleplay prompt, each run of texts where it happened in the story
-     * (lib/story-texts.js). Group chats keep their own EchoText storage and are
-     * left out.
+     * The story's character's day for the roleplay prompt, with Daily Life on: whoever
+     * that is, not the character open in Echogram. '' with nothing to say.
      */
+    function buildCharacterToday(char) {
+        if (settings.dailyLifeEnabled !== true) return '';
+        const key = char.avatar || char.name;
+        const date = new Date();
+        return DailyLife.describeToday({
+            schedule: DailyLife.normalizeSchedule(settings.characterSchedules?.[key]),
+            life: DailyLife.currentLife(settings.lifeState?.[key], date, getEmotionHistory(key)),
+            date, charName: char.name || 'Character', userName: getUserName(), override: settings.phoneOverrides?.[key] || null,
+        });
+    }
+
+    /**
+     * What Echogram adds to the roleplay prompt: the texts with the story's character,
+     * each run where it happened in the story, then the time now and the character's day
+     * at the very end (lib/story-texts.js). Group chats keep their own EchoText storage and
+     * are left out.
+     */
+    function addEchogramToStory(chat, type) {
+        const context = SillyTavern.getContext();
+        if (context.groupId) return;
+        const char = context.characters?.[context.characterId];
+        if (!char || !Array.isArray(chat) || !chat.length) return;
+        const history = settings.chatHistory?.[char.avatar || char.name];
+        // As getChatHistory: a stored copy of the greeting isn't a text
+        const firstMes = (char.first_mes || '').trim();
+        const texts = (Array.isArray(history) ? history : []).filter(msg => msg.is_user || !firstMes || (msg.mes || '').trim() !== firstMes);
+        const keepLast = type === 'continue';
+        const inserted = StoryTexts.insertTexts(chat, texts, { charName: char.name, userName: getUserName(), timeOf: stMessageTime, keepLast });
+        const today = buildCharacterToday(char);
+        if (inserted || today) StoryTexts.addToEnd(chat, { today, keepLast });
+        if (inserted) log(`Added EchoText messages to the prompt in ${inserted} place(s)`);
+    }
+
+    /** SillyTavern's generation interceptor (manifest.json), with the "Echogram Messages" context toggle on. */
     globalThis.echoTextGenerateInterceptor = function (chat, contextSize, abort, type) {
         if (!settings.enabled || settings.ctxSTMessages !== true) return;
         try {
-            const context = SillyTavern.getContext();
-            if (context.groupId) return;
-            const char = context.characters?.[context.characterId];
-            const history = char && settings.chatHistory?.[char.avatar || char.name];
-            if (!Array.isArray(history) || !history.length) return;
-
-            // As getChatHistory: a stored copy of the greeting isn't a text
-            const firstMes = (char.first_mes || '').trim();
-            const texts = firstMes ? history.filter(msg => msg.is_user || (msg.mes || '').trim() !== firstMes) : history;
-            const inserted = StoryTexts.insertTexts(chat, texts, {
-                charName: char.name,
-                userName: getUserName(),
-                timeOf: stMessageTime,
-                keepLast: type === 'continue',
-            });
-            if (inserted) log(`Added EchoText messages to the prompt in ${inserted} place(s)`);
+            addEchogramToStory(chat, type);
         } catch (e) {
             error('Could not add EchoText messages to the prompt:', e);
         }

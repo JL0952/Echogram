@@ -23,7 +23,7 @@ for (const f of ['lib/config.js', 'lib/rich-messages.js', 'lib/features.js', 'li
 new Function(fs.readFileSync(`${__dirname}/scenarios.js`, 'utf8'))();
 
 // Real index.js code: the prompt builder and the helpers it uses
-const NAMES = ['buildSystemPrompt', 'buildPromptParts', 'buildLifeDate', 'buildApiMessagesFromHistory', 'buildApiMessagesFromHistoryForChar', 'placeLiveContext', 'splitsLiveContext', 'buildChatTurns', 'buildChatMessages', 'getSTStoryMessages', 'stMessageTime', 'StoryTexts', 'ST_STORY_CHUNK_MESSAGES', 'ST_STORY_CHUNK_CHARS', 'getVerbosityPrompt', 'getCharacterVerbosity', 'getEchoTextFirstMessage', 'getSTStoryContext', 'findSTOpeningIndex',
+const NAMES = ['addEchogramToStory', 'buildCharacterToday', 'buildSystemPrompt', 'buildPromptParts', 'buildLifeDate', 'buildApiMessagesFromHistory', 'buildApiMessagesFromHistoryForChar', 'placeLiveContext', 'splitsLiveContext', 'buildChatTurns', 'buildChatMessages', 'getSTStoryMessages', 'stMessageTime', 'StoryTexts', 'ST_STORY_CHUNK_MESSAGES', 'ST_STORY_CHUNK_CHARS', 'getVerbosityPrompt', 'getCharacterVerbosity', 'getEchoTextFirstMessage', 'getSTStoryContext', 'findSTOpeningIndex',
     'isCharInCurrentSTChat', 'cleanSTMessageText', 'ST_STORY_MAX_MESSAGES', 'ST_STORY_MAX_CHARS', 'replaceMacros', 'buildMessageFormatPrompt',
     'RichMessages', 'Features', 'Platforms', 'activePlatformMemo', 'getActivePlatform', 'getActiveFeatures', 'platformHas', 'getReactionIds', 'isTetheredMode',
     'DailyLife', 'dailyLifeActive', 'activeSchedule', 'activeLife', 'buildDailyLifeContext', 'phoneOverride', 'buildLifeRules', 'getEmotionHistory'];
@@ -35,6 +35,7 @@ const STUBS = `
     const isCombinedGroupMode = () => false; const inGroupSession = () => false; const groupManager = null; const stripThinkingTags = t => t;
     const expandTimeDateMacros = t => t; const getActiveWorldInfoEntries = async () => 'WORLD INFO STUB';
     const buildInsideJokesContext = () => \`\\n\\n<memories>\${env.memory || 'MEMORY STUB'}</memories>\`;
+    const log = () => {};
     const historyToSend = h => h; const resolveHistoryMessageText = m => m.mes; const buildUserReactionText = () => '';
     const buildMemoryContext = buildInsideJokesContext; const getChatHistory = () => [];
     const buildEmotionContext = () => '\\n\\n<emotional_state>EMOTION STUB</emotional_state>';
@@ -50,7 +51,7 @@ function load(code) {
         const names = node.type === 'FunctionDeclaration' ? [node.id.name] : node.type === 'VariableDeclaration' ? node.declarations.map(d => d.id.name) : [];
         if (names.some(n => NAMES.includes(n))) parts.push(code.slice(node.start, node.end));
     }
-    return new Function('env', `${STUBS}\n${parts.join('\n')}\nreturn { buildSystemPrompt, buildApiMessagesFromHistory };`);
+    return new Function('env', `${STUBS}\n${parts.join('\n')}\nreturn { buildSystemPrompt, buildApiMessagesFromHistory, addEchogramToStory: typeof addEchogramToStory === 'function' ? addEchogramToStory : null };`);
 }
 
 const defaults = window.EchoTextConfig.defaultSettings;
@@ -204,6 +205,43 @@ if (api) {
         assert.ok(whole.systemPrompt.includes('ANOTHER MEMORY') && whole.systemPrompt.includes('ANGRY'));
         assert.ok(whole.systemPrompt.includes('<story_so_far>') && whole.systemPrompt.includes('He drinks again.') && !whole.systemPrompt.includes('story_events'), 'the story up front, as ever');
     }
+    // The roleplay's prompt (13c): the texts where they happened, then the time and the character's day last
+    env.settings.source = 'profile';
+    const storyChat = () => [{ is_user: true, mes: 'open', send_date: new Date(at(0)).toISOString() }, { is_user: false, mes: 'reply', send_date: new Date(at(1)).toISOString() },
+        { is_user: true, mes: 'latest', send_date: new Date(at(20)).toISOString() }];
+    const inStory = (type) => { const chat = storyChat(); api(env).addEchogramToStory(chat, type); return chat; };
+    const dayKey = window.EchoTextDailyLife.dateKey;
+    const weekOf = blocks => Object.fromEntries(['weekday', 'saturday', 'sunday'].map(d => [d, blocks]));
+    env.settings.chatHistory = { 'mira.png': [turn(true, 'text', 10)] };
+    env.settings.dailyLifeEnabled = false;
+    env.settings.characterSchedules = { 'mira.png': weekOf([{ from: '00:00', to: '23:59', place: 'the safehouse', doing: 'watching the street', phone: 'busy' }]) };
+    let added = inStory();
+    assert.deepEqual(added.map(m => m.mes.split('\n')[0]), ['open', 'reply', '<text_messages>', 'latest', '<current_time>'], 'Daily Life off: as before');
+    assert.ok(!added.at(-1).mes.includes('character_today'));
+    env.settings.dailyLifeEnabled = true;
+    added = inStory();
+    assert.ok(added.at(-1).mes.startsWith('<current_time>') && added.at(-1).mes.includes('<character_today>\nBackground on Mira') && added.at(-1).mes.includes('watching the street, at the safehouse'));
+    assert.ok(!added.at(-1).mes.includes('phone'), 'nothing about their phone');
+    assert.ok(added.at(-1).mes.includes('The story comes first'));
+    // With you instead of the schedule; the Echogram character open doesn't matter: it's the story's
+    env.settings.phoneOverrides = { 'mira.png': { phone: 'together', from: Date.now() - 3600000, until: Date.now() + 3600000 } };
+    const open = env.char;
+    env.char = { ...card, avatar: 'other.png', name: 'Other' };
+    added = inStory();
+    env.char = open;
+    assert.ok(added.at(-1).mes.includes('Right now Mira is with Qi in person') && !added.at(-1).mes.includes('watching the street'));
+    env.settings.phoneOverrides = {};
+    // No texts: still the day, and the time with it
+    env.settings.chatHistory = {};
+    env.settings.lifeState = { 'mira.png': { startAt: 0, start: { errands: [{ text: 'Find the leak', due: dayKey(new Date(Date.now() + 86400000)) }], log: [], today: null } } };
+    added = inStory();
+    assert.ok(added.at(-1).mes.startsWith('<current_time>') && added.at(-1).mes.includes('- Find the leak (due tomorrow)'));
+    // Continue keeps the last message last
+    assert.equal(inStory('continue').at(-1).mes, 'latest');
+    // Nothing to say and no texts: nothing added
+    env.settings.lifeState = {};
+    env.settings.characterSchedules = {};
+    assert.equal(inStory().length, 3);
     console.log('order: ok');
 }
 if (PRINT) console.log(`\n--- ${PRINT} (working tree) ---\n${b[PRINT]}`);
