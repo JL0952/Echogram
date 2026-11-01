@@ -2058,12 +2058,15 @@
 
     /**
      * Puts what changes from reply to reply after the chat, before the texts you've just
-     * sent: next time the request is the same up to there.
+     * sent: next time the request is the same up to there. It says it isn't from you:
+     * a profile's "strict" prompt post-processing turns it into a user message and merges
+     * it with your texts.
      */
     function placeLiveContext(apiMessages, parts) {
         let at = apiMessages.length;
         while (at > 1 && apiMessages[at - 1].role === 'user') at--;
-        apiMessages.splice(at, 0, ...parts.filter(Boolean).map(content => ({ role: 'system', content: content.trim() })));
+        const context = parts.filter(Boolean).map(part => part.trim()).join('\n\n');
+        apiMessages.splice(at, 0, { role: 'system', content: `<context_for_this_reply>\nNot written by ${getUserName()}: never quote or answer it.\n\n${context}\n</context_for_this_reply>` });
     }
 
     /**

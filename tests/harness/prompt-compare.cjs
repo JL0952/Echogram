@@ -139,6 +139,8 @@ if (api) {
     assert.ok(!first.apiMessages[0].content.includes('MEMORY STUB') && !first.apiMessages[0].content.includes('BEHAVIOR'), 'nothing that changes up front');
     assert.ok(first.apiMessages[0].content.includes('<story_so_far>'), 'the story stays far from the end');
     assert.ok(first.apiMessages[3].content.includes('MEMORY STUB') && first.apiMessages[3].content.includes('BEHAVIOR'));
+    assert.ok(first.apiMessages[3].content.startsWith('<context_for_this_reply>\nNot written by Qi: never quote or answer it.\n\n'), 'says it is not from you');
+    assert.ok(first.apiMessages[3].content.endsWith('</context_for_this_reply>'));
     // The next reply: other memories and feelings, and the chat moved on. Same up to where it was
     env.memory = 'ANOTHER MEMORY';
     env.feeling = 'ANGRY ';
@@ -150,7 +152,7 @@ if (api) {
     assert.deepEqual((await send([...history, turn(true, 'hello?')])).apiMessages.map(m => m.role), ['system', 'user', 'assistant', 'system', 'user', 'user']);
     assert.equal((await send(history.slice(0, 2))).apiMessages.at(-1).role, 'system');
     const proactive = await send(history.slice(0, 2), ['PROACTIVE NOTE']);
-    assert.deepEqual(proactive.apiMessages.slice(-2).map(m => m.content.includes('PROACTIVE NOTE')), [false, true]);
+    assert.ok(proactive.apiMessages.at(-1).content.includes('PROACTIVE NOTE') && proactive.apiMessages.at(-1).content.includes('MEMORY'), 'one message, its notes with it');
     assert.equal(proactive.apiMessages[1].role, 'user');
     // The prefill stays last
     env.settings.antiRefusal = true;
