@@ -506,48 +506,6 @@
                             based on triggers like time of day, conversation gaps, and emotional context. Messages
                             appear in the Echogram panel when triggered.</div>
 
-                        <div class="et-field">
-                            <label class="et-field-label"><i class="fa-solid fa-gauge-high"></i> Message Activity</label>
-                            <div class="et-activity-mode-grid" id="et_activity_mode_grid_panel" style="display:grid; grid-template-columns:repeat(3,1fr); gap:6px; margin-top:6px;">
-                                <button class="et-activity-btn" data-mode="quiet" type="button" title="~1–2 messages per day. Minimal API use, great for token budgets.">
-                                    <i class="fa-solid fa-moon"></i>
-                                    <span class="et-activity-label">Quiet</span>
-                                    <span class="et-activity-sub">~1–2 / day</span>
-                                </button>
-                                <button class="et-activity-btn" data-mode="relaxed" type="button" title="~3 messages per day. Gentle, unobtrusive presence.">
-                                    <i class="fa-solid fa-leaf"></i>
-                                    <span class="et-activity-label">Relaxed</span>
-                                    <span class="et-activity-sub">~3 / day</span>
-                                </button>
-                                <button class="et-activity-btn" data-mode="natural" type="button" title="Default. Dynamic, emotion-influenced frequency — roughly 4–6 per day when active.">
-                                    <i class="fa-solid fa-wave-square"></i>
-                                    <span class="et-activity-label">Natural</span>
-                                    <span class="et-activity-sub">Default</span>
-                                </button>
-                                <button class="et-activity-btn" data-mode="lively" type="button" title="More active. The character reaches out more readily when emotions are elevated.">
-                                    <i class="fa-solid fa-bolt"></i>
-                                    <span class="et-activity-label">Lively</span>
-                                    <span class="et-activity-sub">~6–8 / day</span>
-                                </button>
-                                <button class="et-activity-btn" data-mode="expressive" type="button" title="Most frequent. Minimal floor — the trigger system drives everything. Best with a powerful model.">
-                                    <i class="fa-solid fa-fire"></i>
-                                    <span class="et-activity-label">Expressive</span>
-                                    <span class="et-activity-sub">Unrestricted</span>
-                                </button>
-                                <button class="et-activity-btn" data-mode="custom" type="button" title="Set your own minimum gap between messages.">
-                                    <i class="fa-solid fa-sliders"></i>
-                                    <span class="et-activity-label">Custom</span>
-                                    <span class="et-activity-sub">Manual</span>
-                                </button>
-                            </div>
-                            <div class="et-activity-custom-row" id="et_activity_custom_row_panel" style="display:none; margin-top:10px;">
-                                <div class="et-slider-row">
-                                    <input type="range" id="et_proactive_rate_limit_panel" class="slider et-slider" min="15" max="720" step="15" value="180">
-                                    <span id="et_proactive_rate_limit_val_panel" class="et-slider-val">180 min</span>
-                                </div>
-                            </div>
-                            <div class="et-hint" id="et_activity_mode_hint_panel" style="margin-top:8px;">Natural frequency with emotion-driven variation.</div>
-                        </div>
 
                         <div class="et-field">
                             <div class="et-proactive-controls-row">
@@ -555,12 +513,6 @@
                                     type="button" title="Enable or disable proactive trigger checks">
                                     <i class="fa-solid fa-toggle-on"></i>
                                     <span>Proactive: Enabled</span>
-                                </button>
-                                <button id="et_proactive_refresh_panel"
-                                    class="et-proactive-btn et-proactive-btn-refresh" type="button"
-                                    title="Refresh proactive insights">
-                                    <i class="fa-solid fa-rotate"></i>
-                                    <span>Refresh Insights</span>
                                 </button>
                                 <button id="et_trigger_message_panel" class="et-proactive-btn et-proactive-btn-trigger"
                                     type="button" title="Send a random proactive trigger message now">

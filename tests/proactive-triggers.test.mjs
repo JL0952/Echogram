@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 globalThis.window = {};
-for (const f of ['lib/rich-messages.js', 'lib/features.js', 'lib/chat-view-model.js', 'lib/emotion-model.js', 'lib/proactive-messaging.js']) {
+for (const f of ['lib/rich-messages.js', 'lib/features.js', 'lib/chat-view-model.js', 'lib/emotion-model.js', 'lib/proactive-rounds.js', 'lib/proactive-messaging.js']) {
     new Function(readFileSync(new URL(`../${f}`, import.meta.url), 'utf8'))();
 }
 const Model = window.EchoTextEmotionModel;
@@ -21,14 +21,14 @@ const EMOTION_TRIGGERS = ['affection_reciprocation', 'repair_attempt', 'curiosit
  * afternoons (some triggers only run on odd or even dates, or some weekdays), with
  * the user's last text 5 hours back. `values: null` is emotions off.
  */
-function triggers(values, { snapshot = null, heart = false, bubbleHeart = false, pace = 1, lastUserHours = 5, lastProactiveHours = null } = {}) {
+function triggers(values, { snapshot = null, heart = false, bubbleHeart = false, pace = 1, lastUserHours = 5, lastProactiveHours = null, temperament = 'normal' } = {}) {
     const found = new Set();
     let blocked = 0;
     for (let d = 0; d < 7; d++) {
         const now = new Date(2026, 9, 12 + d, 15, 0, 0);
         const p = window.EchoTextProactiveMessaging.createProactiveMessaging({
-            getSettings: () => ({ proactiveRateLimitMinutes: 180 }),
-            getUserName: () => 'Me', getActiveFeatures: () => [],
+            getSettings: () => ({}),
+            getUserName: () => 'Me', getActiveFeatures: () => [], getTemperament: () => temperament,
             expandTimeDateMacros: t => t, replaceMacros: t => t,
             getEmotionState: () => (values ? { ...Model.zeroValues(), ...values } : null),
             getProactivePace: () => pace,
@@ -42,7 +42,7 @@ function triggers(values, { snapshot = null, heart = false, bubbleHeart = false,
         ];
         const state = { lastUserMessageAt: userAt, lastCharacterMessageAt: userAt - HOUR, triggerHistory: {}, lastEmotionSnapshot: snapshot,
             lastProactiveAt: lastProactiveHours === null ? 0 : now.getTime() - lastProactiveHours * HOUR };
-        const config = p.getDefaultProactiveConfigForCharacter({});
+        const config = { ...p.getDefaultProactiveConfigForCharacter({}), temperament };
         const candidates = p.evaluateProactiveTrigger({ history, state, config, now, collect: true });
         if (!candidates) blocked++;
         for (const c of candidates || []) if (EMOTION_TRIGGERS.includes(c.type)) found.add(c.type);
@@ -120,16 +120,20 @@ test('the cold shoulder: high anger or disgust holds every proactive text back f
     assert.ok(triggers({ anger: 45 }));
 });
 
-test('the pace from the feelings sets the wait between proactive texts', () => {
-    // 2.5 hours since the last one, a 3-hour wait: too soon as configured, fine at 0.6 of it
-    assert.equal(triggers({}, { lastProactiveHours: 2.5 }), null);
-    assert.ok(triggers({}, { lastProactiveHours: 2.5, pace: 0.6 }));
+test('the temperament sets the wait between proactive texts, the feelings stretch it', () => {
+    // Obsessed: 1–2 hours. 0.9 hours since the last one is too soon; at half the pace it isn't (most days)
+    assert.equal(triggers({}, { lastProactiveHours: 0.9, temperament: 'obsessed' }), null);
+    assert.ok(triggers({}, { lastProactiveHours: 0.9, temperament: 'obsessed', pace: 0.5 }));
+    // Normal: 6–10 hours; aloof: a day or two
+    assert.equal(triggers({}, { lastProactiveHours: 5.9 }), null);
+    assert.ok(triggers({}, { lastProactiveHours: 10.1 }));
+    assert.equal(triggers({}, { lastProactiveHours: 23.9, temperament: 'aloof' }), null);
 });
 
 test('the insights panel names the new conditions, the cold shoulder and the stretched wait', () => {
     const now = Date.now();
     const insights = (values, pace = 1) => {
-        const settings = { proactiveMessagingEnabled: true, proactiveRateLimitMinutes: 180 };
+        const settings = { proactiveMessagingEnabled: true };
         return window.EchoTextProactiveMessaging.createProactiveMessaging({
             getSettings: () => settings, getUserName: () => 'Me', getActiveFeatures: () => [],
             expandTimeDateMacros: t => t, replaceMacros: t => t,
@@ -146,7 +150,10 @@ test('the insights panel names the new conditions, the cold shoulder and the str
     assert.equal(req(calm, 'anxiety_reassurance'), 'High Anxiety');
     assert.doesNotMatch(JSON.stringify(calm.triggerDiagnostics), /Trust|Fear/);
     assert.match(insights({ anger: 90 }).next, /^Ghosting .* Anger\)$/);
-    // The last proactive text went 2 hours ago: a 3-hour wait still has 1 to go, 1.4 × 3 has 2.2
-    assert.match(calm.next, /Cooling down \(~?1 ?h/);
-    assert.match(insights({}, 1.4).next, /Cooling down \(~?2 ?h/);
+    // The last proactive text went 2 hours ago: Normal waits 6–10 hours, longer at 1.4 × the pace
+    const hours = next => { const m = next.match(/Cooling down \((?:(\d+)h)? ?(?:(\d+)m)?/); return Number(m[1] || 0) + Number(m[2] || 0) / 60; };
+    assert.ok(hours(calm.next) >= 4 && hours(calm.next) <= 8);
+    assert.ok(hours(insights({}, 1.4).next) > hours(calm.next));
+    // With the temperament by the name
+    assert.equal(calm.character, 'Mira · Normal');
 });

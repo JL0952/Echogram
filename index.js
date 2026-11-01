@@ -47,6 +47,7 @@
     loadEchoTextModule('lib/emotion-icons.js', 'EchoTextEmotionIcons');
     loadEchoTextModule('lib/texting-behavior.js', 'EchoTextTextingBehavior');
     loadEchoTextModule('lib/daily-life.js', 'EchoTextDailyLife');
+    loadEchoTextModule('lib/proactive-rounds.js', 'EchoTextProactiveRounds');
     loadEchoTextModule('lib/emotion-system.js', 'EchoTextEmotionSystem');
     loadEchoTextModule('lib/proactive-messaging.js', 'EchoTextProactiveMessaging');
     loadEchoTextModule('lib/settings-modal.js', 'EchoTextSettingsModal');
@@ -419,55 +420,6 @@
      * Each maps to a floor in minutes and a human description.
      *  'expressive' uses 30 min so the trigger/jitter system is the real governor.
      */
-    const ACTIVITY_MODE_PRESETS = {
-        quiet:      { minutes: 480, hint: 'Quiet: ~1–2 messages per day. Minimal API use — ideal when watching token spend.' },
-        relaxed:    { minutes: 300, hint: 'Relaxed: ~3 messages per day. A gentle presence that doesn\'t intrude.' },
-        natural:    { minutes: 180, hint: 'Natural: Dynamic, emotion-influenced frequency. The default — feels organic without overwhelming.' },
-        lively:     { minutes:  90, hint: 'Lively: ~6–8 messages per day. The character reaches out more readily, especially when emotionally engaged.' },
-        expressive: { minutes:  30, hint: 'Expressive: Minimal floor — the trigger system drives everything. Best with a fast or local model.' },
-        custom:     { minutes: null, hint: 'Custom: Use the slider to set your own minimum gap between messages.' }
-    };
-
-    /**
-     * Applies an activity mode to a given set of DOM targets (works for both
-     * the settings modal and the panel accordion — just pass different selectors).
-     *
-     * @param {string} mode        - one of the ACTIVITY_MODE_PRESETS keys
-     * @param {string} gridSel     - selector for the button grid
-     * @param {string} customSel   - selector for the custom slider row
-     * @param {string} sliderSel   - selector for the range input
-     * @param {string} valSel      - selector for the value display span
-     * @param {string} hintSel     - selector for the hint text element
-     */
-    function applyActivityMode(mode, gridSel, customSel, sliderSel, valSel, hintSel) {
-        const preset = ACTIVITY_MODE_PRESETS[mode] || ACTIVITY_MODE_PRESETS.natural;
-
-        // Highlight the active button
-        jQuery(gridSel).find('.et-activity-btn').removeClass('et-activity-btn-active');
-        jQuery(gridSel).find(`.et-activity-btn[data-mode="${mode}"]`).addClass('et-activity-btn-active');
-
-        // Show/hide custom slider
-        if (mode === 'custom') {
-            jQuery(customSel).show();
-        } else {
-            jQuery(customSel).hide();
-            // Apply the preset floor
-            if (preset.minutes !== null) {
-                jQuery(sliderSel).val(preset.minutes);
-                jQuery(valSel).text(preset.minutes + ' min');
-                settings.proactiveRateLimitMinutes = preset.minutes;
-            }
-        }
-
-        // Update hint
-        jQuery(hintSel).text(preset.hint);
-
-        // Persist
-        settings.proactiveActivityMode = mode;
-        saveSettings();
-        if (typeof refreshProactiveInsights === 'function') refreshProactiveInsights();
-    }
-
     function loadSettings() {
         settings = getSettings();
         applySettingsToUI();
@@ -524,15 +476,6 @@
         jQuery('#et_ctx_authors_note').prop('checked', settings.ctxAuthorsNote === true);
         jQuery('#et_ctx_world_info').prop('checked', settings.ctxWorldInfo === true);
         jQuery('#et_ctx_st_messages').prop('checked', settings.ctxSTMessages === true);
-        jQuery('#et_proactive_rate_limit').val(settings.proactiveRateLimitMinutes || 180);
-        jQuery('#et_proactive_rate_limit_val').text((settings.proactiveRateLimitMinutes || 180) + ' min');
-        // Activity mode
-        const activeMode = settings.proactiveActivityMode || 'natural';
-        jQuery('#et_activity_mode_grid').find('.et-activity-btn').removeClass('et-activity-btn-active');
-        jQuery(`#et_activity_mode_grid .et-activity-btn[data-mode="${activeMode}"]`).addClass('et-activity-btn-active');
-        jQuery('#et_activity_custom_row').toggle(activeMode === 'custom');
-        const modeHint = (ACTIVITY_MODE_PRESETS[activeMode] || ACTIVITY_MODE_PRESETS.natural).hint;
-        jQuery('#et_activity_mode_hint').text(modeHint);
         updateProactiveToggleButtons();
 
         jQuery('.et-icon-option').removeClass('selected');
@@ -606,15 +549,6 @@
             toggleWIPanelRows(_wiMode);
         }
         jQuery('#et_ctx_st_messages_panel').prop('checked', settings.ctxSTMessages === true);
-        jQuery('#et_proactive_rate_limit_panel').val(settings.proactiveRateLimitMinutes || 180);
-        jQuery('#et_proactive_rate_limit_val_panel').text((settings.proactiveRateLimitMinutes || 180) + ' min');
-        // Activity mode
-        const activeModePanel = settings.proactiveActivityMode || 'natural';
-        jQuery('#et_activity_mode_grid_panel').find('.et-activity-btn').removeClass('et-activity-btn-active');
-        jQuery(`#et_activity_mode_grid_panel .et-activity-btn[data-mode="${activeModePanel}"]`).addClass('et-activity-btn-active');
-        jQuery('#et_activity_custom_row_panel').toggle(activeModePanel === 'custom');
-        const modeHintPanel = (ACTIVITY_MODE_PRESETS[activeModePanel] || ACTIVITY_MODE_PRESETS.natural).hint;
-        jQuery('#et_activity_mode_hint_panel').text(modeHintPanel);
         updateProactiveToggleButtons();
 
         // Appearance
@@ -804,6 +738,8 @@
                 setTimeout(() => section.removeClass('closing'), 350);
             } else {
                 section.addClass('open');
+                // Opening the proactive section: its insights as they are now
+                if (section.data('section') === 'proactive-insights') refreshProactiveInsights();
             }
         });
 
@@ -1251,30 +1187,6 @@
             jQuery(`.et-icon-option[data-icon="${settings.fabIcon}"]`).addClass('selected');
         });
 
-        // Activity mode selector (panel accordion)
-        jQuery('#et_activity_mode_grid_panel').off('click.panel').on('click.panel', '.et-activity-btn', function () {
-            const mode = jQuery(this).data('mode');
-            applyActivityMode(mode,
-                '#et_activity_mode_grid_panel', '#et_activity_custom_row_panel',
-                '#et_proactive_rate_limit_panel', '#et_proactive_rate_limit_val_panel', '#et_activity_mode_hint_panel');
-            // Mirror to modal if open
-            applyActivityMode(mode,
-                '#et_activity_mode_grid', '#et_activity_custom_row',
-                '#et_proactive_rate_limit', '#et_proactive_rate_limit_val', '#et_activity_mode_hint');
-        });
-
-        jQuery('#et_proactive_rate_limit_panel').off('input.panel').on('input.panel', function () {
-            const minutes = parseInt(jQuery(this).val(), 10) || 180;
-            jQuery('#et_proactive_rate_limit_val_panel').text(minutes + ' min');
-            settings.proactiveRateLimitMinutes = minutes;
-            saveSettings();
-            jQuery('#et_proactive_rate_limit').val(minutes);
-            jQuery('#et_proactive_rate_limit_val').text(minutes + ' min');
-        });
-
-        jQuery('#et_proactive_refresh_panel').off('click.panel').on('click.panel', function () {
-            refreshProactiveInsights();
-        });
 
         jQuery('#et_proactive_toggle_panel').off('click.panel').on('click.panel', function () {
             // Toggle both proactiveMessagingEnabled and dynamicSystemsEnabled
@@ -4053,7 +3965,10 @@
     }
 
     function syncProactiveStateWithHistory(characterKey, history) {
-        if (proactiveMessaging) proactiveMessaging.syncProactiveStateWithHistory(characterKey, history);
+        if (!proactiveMessaging) return;
+        proactiveMessaging.syncProactiveStateWithHistory(characterKey, history);
+        // The open character changed or their chat loaded: their follow-up round's timer
+        proactiveMessaging.armRoundTimer();
     }
 
     function markProactiveUserActivity(characterKey, timestamp = Date.now()) {
@@ -4062,6 +3977,12 @@
 
     function markProactiveCharacterActivity(characterKey, proactive = false, outboundType = 'reply', timestamp = Date.now()) {
         if (proactiveMessaging) proactiveMessaging.markProactiveCharacterActivity(characterKey, proactive, outboundType, timestamp);
+    }
+
+    /** The proactive insights, wherever they're on screen (the settings window, the extension panel). */
+    function refreshVisibleInsights() {
+        const shown = [...document.querySelectorAll('.et-proactive-insights-grid')].some(el => el.offsetParent !== null);
+        if (shown) refreshProactiveInsights();
     }
 
     function refreshProactiveInsights() {
@@ -8098,7 +8019,6 @@
             updateProactiveToggleButtons,
             startProactiveScheduler,
             triggerTestProactiveMessage,
-            applyActivityMode,
             positionFab,
             buildThemeDropdownHtml,
             buildFontDropdownHtml,
@@ -8247,6 +8167,14 @@
             setFabUnreadIndicator,
             getEmotionState,
             getProactivePace: () => (emotionSystem ? emotionSystem.getProactivePace() : 1),
+            // How the character follows up when ignored (Personality tab; lib/proactive-rounds.js)
+            getTemperament: key => (emotionSystem ? emotionSystem.getTemperament(key) : 'normal'),
+            // Daily Life: the open character's block now ({ phone, endsAt }), or null
+            getScheduleNow: () => {
+                const now = currentScheduleBlock();
+                if (!now) return null;
+                return { phone: now.block.phone, endsAt: DailyLife.blockEndAt(activeSchedule(), new Date())?.getTime() || 0 };
+            },
             readReply,
             noteMoodReport,
             findLastUserMessageIndex,
@@ -8310,6 +8238,8 @@
         // Daily Life: replies parked while the character was busy or asleep go once they look;
         // also when the app comes back to the front (a phone suspends the timer meanwhile)
         setInterval(resumePendingReply, 60000);
+        // The proactive insights keep up on their own while they're on screen ("in 6m", what's due)
+        setInterval(refreshVisibleInsights, 30000);
         document.addEventListener('visibilitychange', () => { if (!document.hidden) resumePendingReply(); });
 
         jQuery('body').append(buildFabHtml());

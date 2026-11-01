@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 globalThis.window = {};
+new Function(readFileSync(new URL('../lib/proactive-rounds.js', import.meta.url), 'utf8'))();
 new Function(readFileSync(new URL('../lib/proactive-messaging.js', import.meta.url), 'utf8'))();
 
 const WECHAT = ['photo', 'voice', 'location', 'transfer', 'file', 'link', 'music'];
