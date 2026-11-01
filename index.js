@@ -1627,7 +1627,7 @@
 
         row.addClass('et-panel-status-clickable');
         row.attr('title', 'Open emotion details');
-        content.html(emotionSystem ? emotionSystem.buildStatusHtml() : '');
+        content.html(emotionSystem ? emotionSystem.buildStatusRowHtml() : '');
         if (emotionSystem) emotionSystem.refreshEmotionPopup();
     }
 
@@ -2119,6 +2119,9 @@
     // and the newest messages win; with long RP replies the character cap usually binds.
     const ST_STORY_MAX_MESSAGES = 20;
     const ST_STORY_MAX_CHARS = 6000;
+    // For putting a stretch of it in a sentence (13a), where the start of it counts too
+    const ST_STRETCH_MAX_MESSAGES = 60;
+    const ST_STRETCH_MAX_CHARS = 16000;
 
     /** Whether the open ST chat is one the given character takes part in. */
     function isCharInCurrentSTChat(char) {
@@ -2185,8 +2188,9 @@
      * Recent messages of the live ST roleplay as "Speaker: text" lines, oldest first.
      * Skips hidden messages and the character's greeting (injected separately as the
      * story opening). Returns '' when the open ST chat doesn't involve the character.
+     * With `from` and `until` (ms): only what was sent between them.
      */
-    function getSTStoryContext(char) {
+    function getSTStoryContext(char, { from = null, until = null, maxMessages = ST_STORY_MAX_MESSAGES, maxChars = ST_STORY_MAX_CHARS } = {}) {
         try {
             const chat = SillyTavern.getContext().chat;
             if (!Array.isArray(chat) || !chat.length || !isCharInCurrentSTChat(char)) return '';
@@ -2194,11 +2198,12 @@
             const openingIdx = findSTOpeningIndex(char);
             const userName = getUserName();
             const lines = [];
-            let budget = ST_STORY_MAX_CHARS;
+            let budget = maxChars;
 
-            for (let i = chat.length - 1; i >= 0 && lines.length < ST_STORY_MAX_MESSAGES; i--) {
+            for (let i = chat.length - 1; i >= 0 && lines.length < maxMessages; i--) {
                 const msg = chat[i];
                 if (!msg || msg.is_system || i === openingIdx) continue;
+                if (from !== null && !(stMessageTime(msg) >= from && stMessageTime(msg) <= until)) continue;
                 const text = cleanSTMessageText(msg.mes);
                 if (!text) continue;
                 const speaker = msg.is_user ? userName : (msg.name || char.name);
@@ -2216,6 +2221,13 @@
         } catch (e) {
             return '';
         }
+    }
+
+    /** When a message of the ST chat was sent, in ms; NaN when unknown. */
+    function stMessageTime(msg) {
+        const time = SillyTavern.getContext().timestampToMoment?.(msg.send_date);
+        if (time?.isValid?.()) return time.valueOf();
+        return typeof msg.send_date === 'number' ? msg.send_date : Date.parse(msg.send_date);
     }
 
     function getCurrentTimeMacroString() {
@@ -2492,15 +2504,10 @@
             // As getChatHistory: a stored copy of the greeting isn't a text
             const firstMes = (char.first_mes || '').trim();
             const texts = firstMes ? history.filter(msg => msg.is_user || (msg.mes || '').trim() !== firstMes) : history;
-            const timeOf = (msg) => {
-                const time = context.timestampToMoment?.(msg.send_date);
-                if (time?.isValid?.()) return time.valueOf();
-                return typeof msg.send_date === 'number' ? msg.send_date : Date.parse(msg.send_date);
-            };
             const inserted = StoryTexts.insertTexts(chat, texts, {
                 charName: char.name,
                 userName: getUserName(),
-                timeOf,
+                timeOf: stMessageTime,
                 keepLast: type === 'continue',
             });
             if (inserted) log(`Added EchoText messages to the prompt in ${inserted} place(s)`);
@@ -4008,6 +4015,7 @@
         // The open character changed or their chat loaded: their follow-up round's timer,
         // and a catch-up if one is due
         proactiveMessaging.armRoundTimer();
+        noteTogetherEnded();
         setTimeout(() => maybeCatchUp(), 0);
         keepLifeMemories();
     }
@@ -4573,6 +4581,10 @@
                             <i class="fa-solid fa-heart-pulse"></i>
                             <span>Status</span>
                         </div>
+                        <div class="et-overflow-menu-item" id="et-overflow-together" style="display:none">
+                            <i class="fa-solid fa-user-group"></i>
+                            <span></span>
+                        </div>
                         <div class="et-overflow-menu-item" id="et-overflow-gallery" style="display:none">
                             <i class="fa-regular fa-images"></i>
                             <span>Gallery</span>
@@ -4750,6 +4762,7 @@
             const menu = jQuery('#et-overflow-menu');
             const isOpen = menu.hasClass('et-overflow-menu-open');
             menu.toggleClass('et-overflow-menu-open', !isOpen);
+            updateTogetherItem();
         });
 
         function closeOverflowMenu() {
@@ -4814,6 +4827,12 @@
             closeOverflowMenu();
             if (gallery) gallery.openGalleryModal();
             moveModalToPortal('.et-gallery-overlay');
+        });
+
+        jQuery('#et-overflow-together').on('click', (e) => {
+            e.stopPropagation();
+            closeOverflowMenu();
+            if (emotionSystem) emotionSystem.toggleTogether();
         });
 
         // Shown only by platforms whose header hides the picker caret and status row
@@ -6008,18 +6027,82 @@
         return DailyLife.phoneEndsAt({ schedule: activeSchedule(), override: phoneOverride(), date: new Date() }) || 0;
     }
 
+    /** Whether the open character is with you in person now (13a). */
+    function isWithYou() {
+        return phoneNow()?.phone === 'together';
+    }
+
+    /** The ⋯ menu's With {name}: needs a schedule, like every change of plan, and shows when it's on. */
+    function updateTogetherItem() {
+        jQuery('#et-overflow-together').toggle(!!activeSchedule()).toggleClass('et-overflow-item-on', isWithYou())
+            .find('span').text(`With ${getCharacterName()}`);
+    }
+
     /**
-     * A change of plan was made or undone on the Life tab: a reply waiting for the
-     * character to look comes now if they're free now.
+     * A change of plan was made or undone (`before` is what it replaced): a reply waiting
+     * for the character to look comes now if they're free now, or with you; with you, their
+     * follow-ups stop; time together that's over is noted.
      */
-    function onPhoneOverride() {
+    function onPhoneOverride(before = null) {
         const key = getCharacterKey();
-        if (key && settings.pendingReplies?.[key] && phoneNow()?.phone === 'free') {
+        const phone = phoneNow()?.phone;
+        if (key && settings.pendingReplies?.[key] && (phone === 'free' || phone === 'together')) {
             settings.pendingReplies[key] = Date.now();
             saveSettings();
             resumePendingReply();
         }
+        if (phone === 'together' && proactiveMessaging) proactiveMessaging.dropRound(key);
+        if (before?.phone === 'together' && !before.noted && phone !== 'together') {
+            noteTogether(key, { from: before.from, until: Math.min(before.until, Date.now()) });
+        }
+        updatePanelStatusRow();
         refreshProactiveInsights();
+    }
+
+    /** With you ran out while nobody was changing it: what you two did is noted once. */
+    function noteTogetherEnded() {
+        const key = getCharacterKey();
+        const plan = phoneOverride();
+        if (!dailyLifeActive() || plan?.phone !== 'together' || plan.noted || Date.now() < plan.until) return;
+        plan.noted = true;
+        saveSettings();
+        noteTogether(key, plan);
+        updatePanelStatusRow();
+        refreshProactiveInsights();
+    }
+
+    /**
+     * Time together is over: it goes in the life's Recent list right away, and when the
+     * main chat has anything from that time, the model's sentence about it takes its place.
+     * An accidental moment leaves nothing.
+     */
+    async function noteTogether(key, { from, until }) {
+        const char = getCurrentCharacter();
+        if (!char || until - from < DailyLife.TOGETHER_MIN_MINUTES * 60000) return;
+        const userName = getUserName();
+        const entry = { id: `with${from.toString(36)}`, date: DailyLife.dateKey(new Date(until)), text: DailyLife.togetherEntry({ userName, from, until }) };
+        settings.lifeState[key] = DailyLife.noteInStart(settings.lifeState[key], entry);
+        saveSettings();
+        if (emotionSystem) emotionSystem.refresh();
+        const story = getSTStoryContext(char, { from, until, maxMessages: ST_STRETCH_MAX_MESSAGES, maxChars: ST_STRETCH_MAX_CHARS });
+        if (!story) return;
+        try {
+            const request = DailyLife.buildTogetherRequest({ charName: char.name || 'Character', userName, story });
+            const systemPrompt = withRefusalFrame(request.systemPrompt);
+            const raw = await sendCompletionRequest({
+                apiMessages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: request.prompt }],
+                rawPrompt: request.prompt, systemPrompt, signal: new AbortController().signal,
+            });
+            const text = DailyLife.cleanTogetherEntry(stripThinkingTags(String(raw ?? '')));
+            if (!text || ChatSummaries.looksLikeRefusal(text)) return;
+            // Deleted meanwhile, or the chat cleared: left that way
+            if (!DailyLife.normalizeLife(settings.lifeState[key]).start.log.some(e => e.id === entry.id)) return;
+            settings.lifeState[key] = DailyLife.noteInStart(settings.lifeState[key], { ...entry, text });
+            saveSettings();
+            if (emotionSystem) emotionSystem.refresh();
+        } catch (err) {
+            warn('Noting the time together failed:', err);
+        }
     }
 
     // Life memories kept per character: at most this many marks of what's been kept
@@ -6092,7 +6175,7 @@
     /** Where the character is in their life, for the system prompt; '' without Daily Life, or with nothing to say. */
     function buildDailyLifeContext(charName) {
         if (!dailyLifeActive()) return '';
-        const text = DailyLife.describeNow({ schedule: activeSchedule(), life: activeLife(), date: new Date(), charName, override: phoneOverride() });
+        const text = DailyLife.describeNow({ schedule: activeSchedule(), life: activeLife(), date: new Date(), charName, userName: getUserName(), override: phoneOverride() });
         return text ? `\n\n${text}` : '';
     }
 
@@ -6105,7 +6188,7 @@
         const now = currentScheduleBlock();
         const phoneNowAt = phoneNow();
         const clock = ms => new Date(ms).toTimeString().slice(0, 5);
-        const label = id => DailyLife.PHONES.find(p => p.id === id).label;
+        const label = id => DailyLife.PLAN_PHONES.find(p => p.id === id).label;
         const pending = settings.pendingReplies?.[getCharacterKey()];
         const unseen = pending ? ` · reads at ${clock(pending)}` : '';
         if (phoneNowAt.by === 'plan') return `${label(phoneNowAt.phone)} until ${clock(phoneNowAt.endsAt)}${unseen}`;
@@ -6162,6 +6245,13 @@
         generateEchoText(history, null, { noticed: true });
     }
 
+    /** A request's system prompt with the same framing the replies get, when it's on. */
+    function withRefusalFrame(systemPrompt) {
+        const frame = settings.antiRefusal === true
+            ? replaceMacros(settings.promptAntiRefusalFrame || window.EchoTextConfig?.defaultSettings?.promptAntiRefusalFrame || '') : '';
+        return frame ? `${systemPrompt}\n\n${frame}` : systemPrompt;
+    }
+
     /**
      * Drafts the character's week from their card and the user's persona (one request,
      * without the chat) and keeps it in place of the one they had. Throws when the
@@ -6182,10 +6272,7 @@
         let persona = '';
         try { persona = String(SillyTavern.getContext().powerUserSettings?.persona_description || '').trim(); } catch (e) { /* none */ }
         const request = DailyLife.buildScheduleRequest({ charName: name, userName: getUserName(), card, persona: persona ? replaceMacros(persona) : '' });
-        // The same framing as the replies get, when it's on
-        const frame = settings.antiRefusal === true
-            ? replaceMacros(settings.promptAntiRefusalFrame || window.EchoTextConfig?.defaultSettings?.promptAntiRefusalFrame || '') : '';
-        const systemPrompt = frame ? `${request.systemPrompt}\n\n${frame}` : request.systemPrompt;
+        const systemPrompt = withRefusalFrame(request.systemPrompt);
         const raw = await sendCompletionRequest({
             apiMessages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: request.prompt }],
             rawPrompt: request.prompt, systemPrompt, signal,
@@ -6285,6 +6372,7 @@
             const instruction = CatchUp.buildInstruction({
                 charName: char.name || 'Character', userName, from, now, settle, schedule: activeSchedule(),
                 errands: activeLife()?.errands || [], madeUp: settings.dailyLifeMadeUp === true, texts,
+                together: phoneOverride()?.phone === 'together' ? phoneOverride() : null,
             });
             apiMessages.push({ role: 'user', content: `[Instruction for this turn — not a message from ${userName}; never quote or answer it: ${instruction}]` });
             if (texts.length) proactiveMessaging.noteCatchUpRequest(key);
@@ -8145,10 +8233,7 @@
             const previous = ChatSummaries.summaries(history.slice(0, chunk.start)).pop()?.text || '';
             const request = ChatSummaries.buildRequest({ lines, previous, charName: char.name, userName: getUserName() });
             const { prompt } = request;
-            // The same framing as the replies get, when it's on
-            const frame = settings.antiRefusal === true
-                ? replaceMacros(settings.promptAntiRefusalFrame || window.EchoTextConfig?.defaultSettings?.promptAntiRefusalFrame || '') : '';
-            const systemPrompt = frame ? `${request.systemPrompt}\n\n${frame}` : request.systemPrompt;
+            const systemPrompt = withRefusalFrame(request.systemPrompt);
             const raw = await sendCompletionRequest({
                 apiMessages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: prompt }],
                 rawPrompt: prompt, systemPrompt, signal: new AbortController().signal,
@@ -8365,6 +8450,7 @@
             getChatHistory: getEmotionHistory,
             generateSchedule,
             onPhoneOverride,
+            isWithYou,
             // An edit by hand bakes in every report so far: what ended is kept first
             keepLifeMemories: () => keepLifeMemories({ settledBefore: Infinity }),
             isPanelOpen,
@@ -8644,9 +8730,10 @@
         // Daily Life: replies parked while the character was busy or asleep go once they look;
         // also when the app comes back to the front (a phone suspends the timer meanwhile)
         setInterval(resumePendingReply, 60000);
+        setInterval(noteTogetherEnded, 60000);
         // The proactive insights keep up on their own while they're on screen ("in 6m", what's due)
         setInterval(refreshVisibleInsights, 30000);
-        document.addEventListener('visibilitychange', () => { if (!document.hidden) { resumePendingReply(); maybeCatchUp(); } });
+        document.addEventListener('visibilitychange', () => { if (!document.hidden) { resumePendingReply(); noteTogetherEnded(); maybeCatchUp(); } });
         // Catch-up: proactive texts are running for the open character; a first run of this
         // marks every chat seen now, so old chats aren't caught up on all at once
         if (!settings.proactiveSeenAt || typeof settings.proactiveSeenAt !== 'object') {

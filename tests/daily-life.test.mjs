@@ -603,3 +603,77 @@ test('what the life lets go of, as memories', () => {
     assert.deepEqual(Life.weekMemory('2026-10-19', [{ date: '2026-10-25', text: '和小雨和好了' }, { date: '2026-10-20', text: '加班到十点' }], 'Mira'),
         { label: 'Week of 2026-10-19', content: 'What happened to Mira the week of 2026-10-19: 加班到十点 (10-20); 和小雨和好了 (10-25).' });
 });
+
+// ── With you (13a) ──────────────────────────────────────────────────────
+
+const WEEK_BUSY = { weekday: [{ from: '09:00', to: '18:00', place: '公司', doing: '上班', phone: 'busy' }, { from: '23:30', to: '07:00', place: '家', doing: '睡觉', phone: 'asleep' }] };
+
+test('with you is a change of plan, never part of a schedule', () => {
+    assert.deepEqual(Life.PHONE_IDS, ['free', 'busy', 'asleep']);
+    assert.equal(Life.PLAN_PHONES.at(-1).id, 'together');
+    assert.equal(Life.parseSchedule('weekday 09:00-18:00 | 家 | 陪他 | together').weekday[0].phone, 'free');
+    assert.equal(Life.normalizeSchedule({ weekday: [{ from: '09:00', to: '10:00', doing: 'x', phone: 'together' }] }).weekday[0].phone, 'free');
+    const plan = Life.makeOverride('together', '01:30', at(26, 22));
+    assert.deepEqual(plan, { phone: 'together', from: at(26, 22).getTime(), until: at(27, 1, 30).getTime() });
+    assert.equal(Life.activeOverride(plan, at(26, 23)).phone, 'together');
+    assert.equal(Life.activeOverride(plan, at(27, 2)), null);
+    assert.equal(Life.makeOverride('dancing', '01:30', at(26, 22)), null);
+});
+
+test('with you, they see every text and their phone is theirs till it ends', () => {
+    const override = Life.makeOverride('together', '12:00', at(26, 10));
+    const phone = Life.phoneAt({ schedule: WEEK_BUSY, override, date: at(26, 11) });
+    assert.deepEqual(phone, { phone: 'together', endsAt: at(26, 12).getTime(), by: 'plan' });
+    assert.equal(Life.noticeChance('together', 1), 1);
+    assert.equal(Life.unseenUntil({ schedule: WEEK_BUSY, override, date: at(26, 11), unread: 1, random: () => 0.999 }), null);
+    assert.equal(Life.phoneEndsAt({ schedule: WEEK_BUSY, override, date: at(26, 11) }), at(26, 12).getTime());
+    // Back to the schedule after
+    assert.equal(Life.phoneAt({ schedule: WEEK_BUSY, override, date: at(26, 13) }).phone, 'busy');
+});
+
+test('the prompt has them together, not in the block, and what comes after it', () => {
+    const date = at(26, 10);
+    const override = Life.makeOverride('together', '19:00', date);
+    const text = Life.describeNow({ schedule: WEEK_BUSY, date: at(26, 11), charName: 'Mira', userName: 'Qi', override,
+        life: { errands: [], log: [], today: { date: '2026-10-26', text: '去看电影' } } });
+    assert.match(text, /Right now Mira is with Qi in person \(since 10:00, until around 19:00\)/);
+    assert.match(text, /answer as if Qi is right there/);
+    assert.match(text, /Today, unlike usual \(this wins over the plan above\): 去看电影/);
+    // Not the block they'd have been in, nor the first thing after now that's inside the time together
+    assert.doesNotMatch(text, /上班/);
+    assert.doesNotMatch(text, /a change of plan/);
+    assert.match(text, /Next \(from 23:30\): 睡觉, at 家/);
+    // Done: as before
+    const after = Life.describeNow({ schedule: WEEK_BUSY, date: at(26, 20), charName: 'Mira', userName: 'Qi', override });
+    assert.doesNotMatch(after, /in person/);
+    // The other changes of plan read as they did
+    const free = Life.describeNow({ schedule: WEEK_BUSY, date: at(26, 11), charName: 'Mira', override: Life.makeOverride('free', '12:00', date) });
+    assert.match(free, /Right now \(09:00–18:00\): 上班, at 公司\./);
+    assert.match(free, /Until 12:00, a change of plan: Mira is up and free/);
+});
+
+test('a note in the life start leaves the reports and their replay as they were', () => {
+    const state = { start: { errands: [], log: [], today: null }, startAt: 500, settledAt: 400 };
+    const entry = { id: 'with1', date: '2026-10-26', text: 'With Qi (19:30–22:30)' };
+    const noted = Life.noteInStart(state, entry);
+    assert.equal(noted.startAt, 500);
+    assert.equal(noted.settledAt, 400);
+    const history = [{ is_user: false, send_date: 1000, life: [{ op: 'happened', text: '下雨了', date: '2026-10-26' }] }];
+    assert.deepEqual(Life.currentLife(noted, at(26, 23), history).log.map(e => e.text), ['With Qi (19:30–22:30)', '下雨了']);
+    // Under the same id it takes the place of what's there
+    const better = Life.noteInStart(noted, { ...entry, text: '和 Qi 去看了电影' });
+    assert.deepEqual(better.start.log.map(e => e.text), ['和 Qi 去看了电影']);
+    // With no life yet
+    assert.deepEqual(Life.noteInStart(undefined, entry).start.log.map(e => e.id), ['with1']);
+});
+
+test('time together in a sentence', () => {
+    assert.equal(Life.togetherEntry({ userName: 'Qi', from: at(26, 19, 30).getTime(), until: at(26, 22, 30).getTime() }), 'With Qi (19:30–22:30)');
+    const { systemPrompt, prompt } = Life.buildTogetherRequest({ charName: 'Mira', userName: 'Qi', story: 'Qi: 走吧' });
+    assert.match(systemPrompt, /what they did together, naming Qi/);
+    assert.equal(prompt, '<story>\nQi: 走吧\n</story>');
+    assert.equal(Life.cleanTogetherEntry('和 Qi 去看了电影'), '和 Qi 去看了电影');
+    assert.equal(Life.cleanTogetherEntry('\n"和 Qi 去看了电影。"\n还有别的'), '和 Qi 去看了电影。');
+    assert.equal(Life.cleanTogetherEntry('Summary: 「和 Qi 吃了饭」'), '和 Qi 吃了饭');
+    assert.equal(Life.cleanTogetherEntry('   '), '');
+});

@@ -186,3 +186,14 @@ test('the insights panel: the round\'s next text and the day\'s limit', async ()
     state().requests = { day: p.getDateKeyLocal(new Date(clock)), count: 15 };
     assert.equal(p.getProactiveInsightsSnapshot().next, 'Daily limit reached');
 });
+
+test('with you in person: no round starts, and one under way stops', () => {
+    const together = setup({ schedule: { phone: 'together', endsAt: clock + HOUR } });
+    together.talk();
+    assert.equal(together.state().round ?? null, null);
+    const running = setup();
+    running.talk();
+    assert.ok(running.state().round);
+    running.p.dropRound('mira.png');
+    assert.equal(running.state().round, null);
+});

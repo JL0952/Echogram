@@ -129,3 +129,7 @@ test('the insights panel: why nothing comes, and the own day\'s topics in place 
     const without = snapshot(null).triggerDiagnostics.map(t => t.id);
     assert.ok(without.includes('morning_wave') && !without.includes('errand'));
 });
+
+test('with you in person: no new topics', () => {
+    assert.equal(candidates({ day: day({ phone: 'together' }) }), null);
+});

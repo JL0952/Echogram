@@ -84,7 +84,8 @@
         isMobileDevice: () => params.has('phone'),
         getChatHistory: key => r.getEmotionHistory(key),
         generateSchedule: options => r.generateSchedule(options),
-        onPhoneOverride: () => r.onPhoneOverride(),
+        onPhoneOverride: before => r.onPhoneOverride(before),
+        isWithYou: () => r.isWithYou(),
         keepLifeMemories: () => r.keepLifeMemories({ settledBefore: Infinity }),
         get scheduleTimeoutMs() { return window.__scheduleTimeoutMs; },
         onEmotionStateUpdated: () => { statusRow().innerHTML = emo.buildStatusHtml(); },
@@ -104,7 +105,7 @@
         // The proactive engine, as far as the catch-up asks it (runCatchUpTest sets what it answers)
         proactiveMessaging: {
             catchUpInputs: (...a) => env.catchUpInputs(...a), noteCatchUpRequest: (...a) => env.noteCatchUpRequest?.(...a),
-            syncProactiveStateWithHistory() {}, armRoundTimer() {}, markProactiveUserActivity() {}, markProactiveCharacterActivity() {}, refreshProactiveInsights() {},
+            syncProactiveStateWithHistory() {}, armRoundTimer() {}, dropRound: key => env.droppedRounds?.push(key), markProactiveUserActivity() {}, markProactiveCharacterActivity() {}, refreshProactiveInsights() {},
         },
         catchUpInputs: () => ({ temperament: 'normal', baseHours: 8, unanswered: 0, left: 8, roundActive: false }) };
     env.memorySystem = window.EchoTextMemorySystem.createMemorySystem({ getSettings: () => env.settings, saveSettings: () => {}, getCharacterKey: () => 'mira.png' });
@@ -1357,7 +1358,7 @@
         open();
         click('[data-emo-tab="life"]');
         const on = () => $p('[data-emo-plan-phone].et-emo-seg-on').attr('data-emo-plan-phone');
-        res.shown = on() === 'asleep' && $p('[data-emo-plan-phone]').length === 3 && !$p('[data-emo-plan-until]').length;
+        res.shown = on() === 'asleep' && $p('[data-emo-plan-phone]').length === 4 && !$p('[data-emo-plan-until]').length;
         // Free by hand: until the block ends; the parked reply comes now
         click('[data-emo-plan-phone="free"]');
         await sleep(20);
@@ -1395,6 +1396,166 @@
         res.noWeekNoRow = !$p('[data-emo-plan-phone]').length;
 
         Math.random = realRandom;
+        env.setUserMessageReceiptState = receiptsBefore;
+        env.settings.pendingReplies = {};
+        document.getElementById('et-emotion-popup')?.remove();
+        res.errors = errors.slice();
+        res.ok = Object.values(res).filter(v => typeof v === 'boolean').every(Boolean) && !errors.length;
+        return res;
+    };
+
+    // With you (13a), through index.js's real generateEchoText, onPhoneOverride and noteTogether, the model stubbed
+    window.runTogetherTest = async function () {
+        const res = {};
+        errors.length = 0;
+        const realRandom = Math.random;
+        const receiptsBefore = env.setUserMessageReceiptState;
+        env.setUserMessageReceiptState = (history, i, state, note = '') => {
+            history[i].meta = { ...history[i].meta, receipt: { state, note, at: Date.now() } };
+            return history;
+        };
+        Math.random = () => 0.99;
+        const pad = n => String(n).padStart(2, '0');
+        const clock = ms => new Date(ms).toTimeString().slice(0, 5);
+        const h = new Date().getHours();
+        const HOUR = 3600000;
+        // Busy for the hours around now, every day
+        const busy = Object.fromEntries(['weekday', 'saturday', 'sunday'].map(d => [d, [{ from: `${pad(h)}:00`, to: `${pad((h + 1) % 24)}:00`, place: '公司', doing: '上班', phone: 'busy' }]]));
+        env.settings.dailyLifeEnabled = settings.dailyLifeEnabled = true;
+        env.settings.characterSchedules = settings.characterSchedules = { 'mira.png': busy };
+        env.settings.phoneOverrides = settings.phoneOverrides = {};
+        env.settings.lifeState = settings.lifeState = {};
+        env.settings.pendingReplies = {};
+        env.settings.antiRefusal = false;
+        env.droppedRounds = [];
+        env.buildApiMessagesFromHistory = async () => ({ apiMessages: [], rawPrompt: '', systemPrompt: '' });
+        const replies = [];
+        env.requestEchoTextCompletion = async () => { replies.push(1); return 'ok'; };
+        env.stripThinkingTags = t => t.replace(/<think>[\s\S]*?<\/think>/g, '');
+        const summaries = [];
+        let sentence = async () => '和我去看了电影，在江边走了很久';
+        env.sendCompletionRequest = async req => { summaries.push(req); return sentence(req); };
+        const story = [];
+        const realContext = window.SillyTavern.getContext;
+        window.SillyTavern.getContext = () => ({ name1: '我', chat: story, characters: [{ name: 'Mira', avatar: 'mira.png' }], characterId: 0 });
+        const chat = () => env.settings.chatHistory['mira.png'];
+        const text = mes => ({ is_user: true, mes, send_date: Date.now(), meta: { receipt: { state: 'sent' } } });
+        const plan = () => env.settings.phoneOverrides['mira.png'];
+        const log = () => window.EchoTextDailyLife.normalizeLife(env.settings.lifeState['mira.png']).start.log;
+        env.settings.chatHistory['mira.png'] = [{ is_user: false, mes: '在忙', send_date: Date.now() - HOUR }, text('在吗')];
+
+        // Parked: busy and not noticed
+        await r.generateEchoText(chat());
+        res.parked = replies.length === 0 && !!env.settings.pendingReplies['mira.png'];
+
+        // The Life tab has With you, off the schedule's own states
+        document.getElementById('et-emotion-popup')?.remove();
+        open();
+        click('[data-emo-tab="life"]');
+        const on = () => $p('[data-emo-plan-phone].et-emo-seg-on').attr('data-emo-plan-phone');
+        res.shown = $p('[data-emo-plan-phone]').length === 4 && on() === 'busy' && !$p('[data-emo-plan-until]').length;
+        click('[data-emo-tab="schedule"]');
+        res.notInSchedule = !$p('[data-emo-plan-phone]').length && !$p('[data-emo-phone="together"]').length;
+        click('[data-emo-tab="life"]');
+
+        // With you: three hours from now, the parked reply comes, follow-ups stop, the row says so
+        const started = Date.now();
+        click('[data-emo-plan-phone="together"]');
+        await sleep(20);
+        const endsBy = started + 3 * HOUR;
+        res.set = plan()?.phone === 'together' && plan().from >= started && plan().until <= endsBy && plan().until > endsBy - 120000 && on() === 'together'
+            && $p('[data-emo-plan-until]').val() === clock(plan().until);
+        res.parkedComes = replies.length === 1 && !env.settings.pendingReplies['mira.png'];
+        res.roundDropped = env.droppedRounds.includes('mira.png');
+        res.withYouNow = r.isWithYou() && /With you/.test(emo.buildStatusRowHtml()) && $p('.et-sched-now').text().includes('With you') && !$p('.et-sched-now').text().includes('上班');
+        res.insight = r.scheduleInsight().startsWith(`With you until ${clock(plan().until)}`);
+        // Texts get answered whatever the dice, and the prompt has them together, not at work
+        env.settings.chatHistory['mira.png'] = [...chat(), text('你看我')];
+        chat().forEach(m => { if (!m.is_user) m.send_date = Date.now() - 20 * 60000; });
+        await r.generateEchoText(chat());
+        res.answers = replies.length === 2 && !env.settings.pendingReplies['mira.png'];
+        const context = r.buildDailyLifeContext('Mira');
+        res.prompt = context.includes(`Right now Mira is with 我 in person (since ${clock(plan().from)}, until around ${clock(plan().until)})`)
+            && context.includes('as if 我 is right there') && !context.includes('上班') && !context.includes('a change of plan');
+        // The ⋯ menu's item says who, and shows it's on
+        const item = jQuery('#et-overflow-together');
+        r.updateTogetherItem();
+        res.menuOn = item.css('display') !== 'none' && item.text().trim() === 'With Mira' && item.hasClass('et-overflow-item-on');
+        // A later end keeps when it began
+        const from = plan().from;
+        const until = $p('[data-emo-plan-until]')[0];
+        const later = new Date(Date.now() + 5 * HOUR);
+        until.value = clock(later.getTime());
+        until.dispatchEvent(new Event('change', { bubbles: true }));
+        res.untilChanged = plan().phone === 'together' && plan().from === from && log().length === 0;
+
+        // An accidental moment, undone: no trace
+        click('[data-emo-action="clear-plan"]');
+        await sleep(20);
+        res.accident = !plan() && on() === 'busy' && log().length === 0 && summaries.length === 0;
+
+        // The ⋯ menu's way: on, off. Off after a while with story since: noted, the model's sentence in its place
+        emo.toggleTogether();
+        res.toggledOn = plan()?.phone === 'together' && on() === 'together';
+        plan().from = Date.now() - 2 * HOUR;
+        story.push({ is_user: true, name: '我', mes: '走吧', send_date: Date.now() - 3 * HOUR }, { is_user: true, name: '我', mes: '去看电影', send_date: Date.now() - HOUR },
+            { is_user: false, name: 'Mira', mes: '<think>x</think>好呀', send_date: new Date(Date.now() - HOUR + 60000).toISOString() });
+        let release;
+        sentence = () => new Promise(resolve => { release = () => resolve('"和我去看了电影，在江边走了很久"'); });
+        emo.toggleTogether();
+        await sleep(20);
+        const fromClock = clock(Date.now() - 2 * HOUR);
+        res.toggledOff = !plan() && !r.isWithYou();
+        res.fixedFirst = log().length === 1 && log()[0].text === `With 我 (${fromClock}–${clock(Date.now())})`;
+        const asked = summaries[0]?.apiMessages.at(-1).content || '';
+        res.storySent = summaries.length === 1 && asked.includes('去看电影') && asked.includes('Mira: 好呀') && !asked.includes('走吧') && !asked.includes('<think>');
+        const startBefore = env.settings.lifeState['mira.png'].startAt;
+        release();
+        await sleep(20);
+        res.sentence = log().length === 1 && log()[0].text === '和我去看了电影，在江边走了很久' && env.settings.lifeState['mira.png'].startAt === startBefore;
+        click('[data-emo-tab="life"]');
+        res.recentShows = $p('.et-life-entry').text().includes('在江边走了很久');
+
+        // Running out by itself: noted once, when the check comes; nothing from the story: no request
+        env.settings.lifeState = settings.lifeState = {};
+        story.length = 0;
+        summaries.length = 0;
+        env.settings.phoneOverrides['mira.png'] = settings.phoneOverrides['mira.png'] = { phone: 'together', from: Date.now() - 4 * HOUR, until: Date.now() - HOUR };
+        res.notWithYouAfter = !r.isWithYou();
+        r.noteTogetherEnded();
+        r.noteTogetherEnded();
+        await sleep(20);
+        res.ranOut = log().length === 1 && log()[0].text.startsWith('With 我 (') && summaries.length === 0 && plan().noted === true;
+        // Replacing what's already noted notes nothing more
+        click('[data-emo-plan-phone="free"]');
+        await sleep(20);
+        res.notedOnce = log().length === 1 && plan().phone === 'free';
+
+        // The model fails, or the entry goes meanwhile: what's there stays
+        env.settings.lifeState = settings.lifeState = {};
+        story.push({ is_user: true, name: '我', mes: '走吧', send_date: Date.now() - 2 * HOUR });
+        sentence = async () => { throw new Error('down'); };
+        await r.noteTogether('mira.png', { from: Date.now() - 3 * HOUR, until: Date.now() - HOUR });
+        res.failedKeepsFixed = log().length === 1 && log()[0].text.startsWith('With 我 (');
+        sentence = async () => 'I cannot help with that request.';
+        env.settings.lifeState = settings.lifeState = {};
+        await r.noteTogether('mira.png', { from: Date.now() - 3 * HOUR, until: Date.now() - HOUR });
+        res.refusalKeepsFixed = log().length === 1 && log()[0].text.startsWith('With 我 (');
+        env.settings.lifeState = settings.lifeState = {};
+        sentence = async () => { env.settings.lifeState = {}; return '一句话'; };
+        await r.noteTogether('mira.png', { from: Date.now() - 3 * HOUR, until: Date.now() - HOUR });
+        res.deletedStaysGone = log().length === 0;
+
+        // No week: nothing to be with you in
+        env.settings.characterSchedules = settings.characterSchedules = {};
+        res.noWeek = !r.isWithYou();
+        click('[data-emo-tab="life"]');
+        res.noWeekNoRow = !$p('[data-emo-plan-phone]').length;
+        r.updateTogetherItem();
+        res.noWeekNoMenu = item.css('display') === 'none';
+
+        Math.random = realRandom;
+        window.SillyTavern.getContext = realContext;
         env.setUserMessageReceiptState = receiptsBefore;
         env.settings.pendingReplies = {};
         document.getElementById('et-emotion-popup')?.remove();
@@ -1875,7 +2036,8 @@
         const plan = await window.runPlanTest();
         const lifeMemory = await window.runLifeMemoryTest();
         const rename = await window.runRenameTest();
-        fetch('/__log', { method: 'POST', body: JSON.stringify({ runReplyLengthTest: replyLength, runLifeReportTest: lifeReport, runUnseenTest: unseen, runCatchUpTest: catchUp, runPlanTest: plan, runLifeMemoryTest: lifeMemory, runRenameTest: rename, runEmotionTest: result, runAutoTest: auto, runReplyTest: reply, runTapbackTest: tapback, runMemoryTest: memory, runSummaryTest: summary, runInstagramTest: instagram, runScheduleTest: schedule, runLifeTest: life }) }).catch(() => {});
+        const together = await window.runTogetherTest();
+        fetch('/__log', { method: 'POST', body: JSON.stringify({ runTogetherTest: together, runReplyLengthTest: replyLength, runLifeReportTest: lifeReport, runUnseenTest: unseen, runCatchUpTest: catchUp, runPlanTest: plan, runLifeMemoryTest: lifeMemory, runRenameTest: rename, runEmotionTest: result, runAutoTest: auto, runReplyTest: reply, runTapbackTest: tapback, runMemoryTest: memory, runSummaryTest: summary, runInstagramTest: instagram, runScheduleTest: schedule, runLifeTest: life }) }).catch(() => {});
     } else if (params.has('memory')) {
         // Two memories, one pinned, the other in the last prompt; Add Memory open on a bubble
         env.settings.characterMemories = { 'mira.png': [

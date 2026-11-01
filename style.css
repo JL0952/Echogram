@@ -4473,6 +4473,12 @@ html.et-bg-light {
     color: var(--et-theme-color);
 }
 
+/* The ⋯ menu's With you, while it's on */
+.et-overflow-item-on,
+.et-overflow-item-on i {
+    color: var(--et-theme-color);
+}
+
 /* The Life tab: their phone now and until when it's set by hand, today's change, an errand's due day (red once it's passed) */
 .et-emo-seg.et-life-phone {
     margin: 4px 0 0;
