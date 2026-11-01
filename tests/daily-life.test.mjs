@@ -27,15 +27,17 @@ test('a schedule is filled in and cleaned up', () => {
             { from: '09:00', to: '9:30', doing: 'bad end' },
             { from: '10:00', to: '10:00', doing: 'no time at all' },
             { from: '07:00', to: '08:00', doing: 'x'.repeat(80), phone: 'dancing' },
+            { from: '20:00', to: '21:00', doing: 'y'.repeat(900) },
             'not a block',
         ],
         friday: [{ from: '01:00', to: '02:00' }],
     });
-    assert.deepEqual(s.weekday.map(b => b.from), ['07:00', '18:00']);
+    assert.deepEqual(s.weekday.map(b => b.from), ['07:00', '18:00', '20:00']);
     assert.equal(s.weekday[0].phone, 'free');
     assert.equal(s.weekday[0].place, '');
-    assert.equal(s.weekday[0].doing.length, 60);
-    assert.ok(s.weekday[0].doing.endsWith('…'));
+    // Long text is kept whole; only runaway text is cut, with no ellipsis added
+    assert.equal(s.weekday[0].doing, 'x'.repeat(80));
+    assert.equal(s.weekday[2].doing, 'y'.repeat(500));
     assert.deepEqual(Object.keys(s), ['weekday', 'saturday', 'sunday']);
     assert.equal(Life.hasSchedule(s), true);
     assert.equal(Life.hasSchedule(Life.normalizeSchedule({})), false);

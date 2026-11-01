@@ -4553,7 +4553,12 @@ html.et-bg-light {
     gap: 1px;
 }
 
+/* Long text is kept whole; the rows show two lines of it (one of the place) and hide the rest */
 .et-sched-doing {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    overflow: hidden;
     font-size: 0.78rem;
     font-weight: 600;
     color: var(--et-text);
@@ -4561,9 +4566,11 @@ html.et-bg-light {
 }
 
 .et-sched-place {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
     font-size: 0.68rem;
     color: var(--et-text-muted);
-    overflow-wrap: anywhere;
 }
 
 .et-sched-phone {
@@ -4741,6 +4748,11 @@ html.et-bg-light {
 
 .et-sched-in:focus {
     border-color: var(--et-theme-color);
+}
+
+textarea.et-sched-in {
+    resize: none;
+    line-height: 1.35;
 }
 
 .et-sched-in.et-sched-in-bad {

@@ -47,6 +47,7 @@
 //   ?report                    runs runEmotionTest(), runAutoTest(), runReplyTest(), runTapbackTest(), runMemoryTest(), runSummaryTest(),
 //                              runInstagramTest(), runScheduleTest(), runLifeTest(), runReplyLengthTest(), runLifeReportTest() and runUnseenTest() and posts their results
 //   ?draft=N                   Reply picked on message N: the quote waiting above the input bar
+//   ?phone                     the popup as a phone shows it; runPhoneHeightTest() checks every tab is as tall as Emotions
 //   ?memory                    Add Memory open on a bubble, and the settings panel's memory list and summaries beside the panel
 //   ?art                       Songs' covers looked up on iTunes for real (lib/music-lookup.js; kept in window.__songArt
 //                              for the page's life); ?art=offline: a network that never answers, to watch the timeouts
@@ -57,6 +58,13 @@
     const scheme = params.get('scheme') || 'dark';
     if (params.get('width')) document.documentElement.style.setProperty('--w', params.get('width') + 'px');
     const sc = window.EchoTextScenarios[Number(params.get('scenario')) || 0];
+    // ?phone: the popup as a phone shows it (inside the panel, mobile-style.css)
+    if (params.has('phone')) {
+        const sheet = document.createElement('link');
+        sheet.rel = 'stylesheet';
+        sheet.href = '../../mobile-style.css';
+        await new Promise(resolve => { sheet.onload = sheet.onerror = resolve; document.head.appendChild(sheet); });
+    }
     const history = JSON.parse(JSON.stringify(sc.history));
 
     // The extension's settings, as the old emotion system left them
@@ -70,6 +78,7 @@
     const emo = window.EchoTextEmotionSystem.createEmotionSystem({
         getSettings: () => settings, saveSettings: () => { saves++; },
         getCharacterKey: () => 'mira.png', getCharacterName: () => 'Mira', isPanelOpen: () => true,
+        isMobileDevice: () => params.has('phone'),
         getChatHistory: key => r.getEmotionHistory(key),
         generateSchedule: options => r.generateSchedule(options),
         get scheduleTimeoutMs() { return window.__scheduleTimeoutMs; },
@@ -1275,6 +1284,40 @@
         delete env.settings.characterSchedules;
         res.errors = errors.slice();
         res.ok = Object.values(res).filter(v => typeof v === 'boolean').every(Boolean) && !errors.length;
+        return res;
+    };
+
+    // ?phone: every tab as tall as Emotions with its sliders, Emotions off included; a longer one scrolls inside
+    window.runPhoneHeightTest = async function () {
+        const res = {};
+        const day = n => window.EchoTextDailyLife.dateKey(new Date(Date.now() + n * 86400000));
+        settings.dailyLifeEnabled = true;
+        settings.characterSchedules = { 'mira.png': window.EchoTextDailyLife.parseSchedule(['weekday', 'saturday', 'sunday'].flatMap(d => [
+            `${d} 07:00-08:00 | 家 | 起床 | free`, `${d} 09:00-18:00 | 事务所 | 整理案卷、见客户、写一份很长很长的意见书给合伙人看，还要顺路去法院递交材料 | busy`,
+            `${d} 23:30-07:00 | 家 | 睡觉 | asleep`]).join('\n')) };
+        settings.lifeState = { 'mira.png': { startAt: Date.now(), start: { errands: [{ text: '周六搬家', progress: '打包了一半', due: day(2), feeling: '嫌麻烦' }], log: [], today: null } } };
+        document.getElementById('et-emotion-popup')?.remove();
+        const popup = open();
+        res.inPanel = !popup.classList.contains('et-emotion-popup-floating') && popup.parentNode.id === 'et-panel';
+        const heights = {};
+        for (const tab of ['emotions', 'personality', 'schedule', 'life']) {
+            click(`[data-emo-tab="${tab}"]`);
+            heights[tab] = popup.offsetHeight;
+        }
+        const modeBefore = settings.emotionMode;
+        click('[data-emo-tab="emotions"]');
+        click('[data-emo-mode="off"]');
+        heights.emotionsOff = popup.offsetHeight;
+        click(`[data-emo-mode="${modeBefore || 'manual'}"]`);
+        res.heights = heights;
+        res.same = new Set(Object.values(heights)).size === 1;
+        // Long text: two lines, the rest hidden
+        click('[data-emo-tab="schedule"]');
+        click('[data-emo-day="weekday"]');
+        const long = [...popup.querySelectorAll('.et-sched-doing')].find(el => el.textContent.includes('意见书'));
+        const lineHeight = parseFloat(getComputedStyle(long).lineHeight) || 16;
+        res.twoLines = long.scrollHeight > long.clientHeight && long.clientHeight <= lineHeight * 2 + 2;
+        res.ok = Object.values(res).filter(v => typeof v === 'boolean').every(Boolean);
         return res;
     };
 
