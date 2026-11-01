@@ -1538,6 +1538,16 @@
         delete s.chatHistory['a.png'];
         delete s.characterMemories;
 
+        // A card's name is remembered: once it's gone, its data shows under it, not its file
+        window.SillyTavern.getContext = () => ({ characters: [{ avatar: 'mira.png', name: 'Mira' }, { avatar: 'tavern-sync-b92a.png', name: '丹尼尔' }] });
+        r.renderRecoverRows();
+        window.SillyTavern.getContext = () => ({ characters: [{ avatar: 'mira.png', name: 'Mira' }] });
+        s.characterSchedules['tavern-sync-b92a.png'] = { weekday: [{ from: '09:00', to: '18:00', place: '', doing: 'work', phone: 'busy' }], saturday: [], sunday: [] };
+        r.renderRecoverRows();
+        res.namedByCard = [...pick.options].map(o => o.textContent).join('|') === '丹尼尔 · schedule' && s.characterNames['mira.png'] === 'Mira';
+        delete s.characterSchedules['tavern-sync-b92a.png'];
+        delete s.characterNames;
+
         s.chatHistory['mira.png'] = mira;
         delete s.characterSchedules;
         delete s.proactiveTemperament;

@@ -406,6 +406,9 @@
         if (!s.lifeKept || typeof s.lifeKept !== 'object' || Array.isArray(s.lifeKept)) {
             s.lifeKept = {};
         }
+        if (!s.characterNames || typeof s.characterNames !== 'object' || Array.isArray(s.characterNames)) {
+            s.characterNames = {};
+        }
         if (!s.proactiveCharacterConfig || typeof s.proactiveCharacterConfig !== 'object' || Array.isArray(s.proactiveCharacterConfig)) {
             s.proactiveCharacterConfig = {};
         }
@@ -5879,12 +5882,18 @@
         return (SillyTavern.getContext().characters || []).map(char => char.avatar || char.name).filter(Boolean);
     }
 
+    /** Remembers every card's name under its key, for naming its data if the card goes. */
+    function rememberCharacterNames() {
+        if (CharacterData.rememberNames(settings, SillyTavern.getContext().characters || [])) saveSettings();
+    }
+
     /**
      * Settings → General, both copies: data no card has any more (renamed before Echogram
      * moved it, or the card deleted), to move onto the open character or delete. Hidden
      * when there's none, in a group, or before SillyTavern has listed its cards.
      */
     function renderRecoverRows() {
+        rememberCharacterNames();
         const rows = jQuery('[data-et-recover]');
         if (!rows.length) return;
         const live = liveCharacterKeys();

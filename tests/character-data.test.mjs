@@ -89,3 +89,21 @@ test('deleting what\'s filed under a key', () => {
     assert.equal(D.deleteCharacterData(s, 'mira.png'), false);
     assert.deepEqual(D.orphanedKeys(s, []), []);
 });
+
+test('the names cards had, for naming their data once they\'re gone', () => {
+    const s = settings();
+    assert.equal(D.rememberNames(s, [{ avatar: 'mira.png', name: 'Mira' }, { avatar: 'tavern-sync-b92a.png', name: '丹尼尔' }, { avatar: 'x.png', name: ' ' }]), true);
+    assert.equal(D.rememberNames(s, [{ avatar: 'mira.png', name: 'Mira' }]), false);
+    assert.deepEqual(s.characterNames, { 'mira.png': 'Mira', 'tavern-sync-b92a.png': '丹尼尔' });
+    // 丹尼尔 renamed (by hand, before Echogram moved data): the old file shows under the old name
+    s.characterSchedules['tavern-sync-b92a.png'] = { weekday: [{ from: '09:00', to: '18:00' }], saturday: [], sunday: [] };
+    const gone = D.orphanedKeys(s, ['mira.png', 'qi.png']);
+    assert.deepEqual(gone.map(o => o.name), ['丹尼尔']);
+    // Moved or deleted, the name goes with it; a key never named shows its file
+    D.moveCharacterData(s, 'tavern-sync-b92a.png', 'mira.png');
+    assert.ok(!('tavern-sync-b92a.png' in s.characterNames) && s.characterNames['mira.png'] === 'Mira');
+    D.deleteCharacterData(s, 'mira.png');
+    assert.ok(!('mira.png' in s.characterNames));
+    s.chatHistory['unnamed.png'] = [{ mes: 'x' }];
+    assert.equal(D.orphanedKeys(s, [])[0].name, 'unnamed');
+});
