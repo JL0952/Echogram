@@ -4490,6 +4490,21 @@ html.et-bg-light {
     color: var(--et-theme-color);
 }
 
+/* The Life tab's With you switch, on the Now line: it isn't one of the phone states */
+.et-life-now-label {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.et-emo-seg-btn.et-life-together {
+    flex: 0 0 auto;
+    padding: 3px 10px;
+    border-radius: 999px;
+    text-transform: none;
+}
+
 /* The Life tab: their phone now and until when it's set by hand, today's change, an errand's due day (red once it's passed) */
 .et-emo-seg.et-life-phone {
     margin: 4px 0 0;

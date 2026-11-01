@@ -1358,7 +1358,7 @@
         open();
         click('[data-emo-tab="life"]');
         const on = () => $p('[data-emo-plan-phone].et-emo-seg-on').attr('data-emo-plan-phone');
-        res.shown = on() === 'asleep' && $p('[data-emo-plan-phone]').length === 4 && !$p('[data-emo-plan-until]').length;
+        res.shown = on() === 'asleep' && $p('[data-emo-plan-phone]').length === 3 && !$p('[data-emo-plan-until]').length;
         // Free by hand: until the block ends; the parked reply comes now
         click('[data-emo-plan-phone="free"]');
         await sleep(20);
@@ -1471,6 +1471,11 @@
         await sleep(20);
         res.nothingHeld = asked.length === 0;
 
+        // Leaves no pause behind for what runs next
+        r.noteStoryActivity(5);
+        const kept = env.settings.chatHistory['mira.png'];
+        r.postUserMessage({ is_user: true, mes: '回来了', send_date: Date.now(), meta: {} });
+        env.settings.chatHistory['mira.png'] = kept;
         Date.now = realNow;
         res.errors = errors.slice();
         res.ok = Object.values(res).filter(v => typeof v === 'boolean').every(Boolean) && !errors.length;
@@ -1527,17 +1532,18 @@
         open();
         click('[data-emo-tab="life"]');
         const on = () => $p('[data-emo-plan-phone].et-emo-seg-on').attr('data-emo-plan-phone');
-        res.shown = $p('[data-emo-plan-phone]').length === 4 && on() === 'busy' && !$p('[data-emo-plan-until]').length;
+        const withYouOn = () => $p('[data-emo-action="toggle-together"]').hasClass('et-emo-seg-on');
+        res.shown = $p('[data-emo-plan-phone]').length === 3 && !$p('[data-emo-plan-phone="together"]').length && $p('.et-life-now-label [data-emo-action="toggle-together"]').length === 1 && !withYouOn() && on() === 'busy' && !$p('[data-emo-plan-until]').length;
         click('[data-emo-tab="schedule"]');
         res.notInSchedule = !$p('[data-emo-plan-phone]').length && !$p('[data-emo-phone="together"]').length;
         click('[data-emo-tab="life"]');
 
         // With you: three hours from now, the parked reply comes, follow-ups stop, the row says so
         const started = Date.now();
-        click('[data-emo-plan-phone="together"]');
+        click('[data-emo-action="toggle-together"]');
         await sleep(20);
         const endsBy = started + 3 * HOUR;
-        res.set = plan()?.phone === 'together' && plan().from >= started && plan().until <= endsBy && plan().until > endsBy - 120000 && on() === 'together'
+        res.set = plan()?.phone === 'together' && plan().from >= started && plan().until <= endsBy && plan().until > endsBy - 120000 && withYouOn() && !$p('[data-emo-plan-phone]').length && !$p('[data-emo-action="clear-plan"]').length
             && $p('[data-emo-plan-until]').val() === clock(plan().until);
         res.parkedComes = replies.length === 1 && !env.settings.pendingReplies['mira.png'];
         res.roundDropped = env.droppedRounds.includes('mira.png');
@@ -1564,13 +1570,13 @@
         res.untilChanged = plan().phone === 'together' && plan().from === from && log().length === 0;
 
         // An accidental moment, undone: no trace
-        click('[data-emo-action="clear-plan"]');
+        click('[data-emo-action="toggle-together"]');
         await sleep(20);
-        res.accident = !plan() && on() === 'busy' && log().length === 0 && summaries.length === 0 && env.partedPlans.length === 0;
+        res.accident = !plan() && !withYouOn() && on() === 'busy' && log().length === 0 && summaries.length === 0 && env.partedPlans.length === 0;
 
         // The ⋯ menu's way: on, off. Off after a while with story since: noted, the model's sentence in its place
         emo.toggleTogether();
-        res.toggledOn = plan()?.phone === 'together' && on() === 'together';
+        res.toggledOn = plan()?.phone === 'together' && withYouOn();
         plan().from = Date.now() - 2 * HOUR;
         story.push({ is_user: true, name: '我', mes: '走吧', send_date: Date.now() - 3 * HOUR }, { is_user: true, name: '我', mes: '去看电影', send_date: Date.now() - HOUR },
             { is_user: false, name: 'Mira', mes: '<think>x</think>好呀', send_date: new Date(Date.now() - HOUR + 60000).toISOString() });
