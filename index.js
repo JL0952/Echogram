@@ -1897,9 +1897,10 @@
         //
         //  1. IDENTITY   — who the character IS (primacy anchor)
         //  2. CHARACTER  — description, personality, scenario, persona, world info,
-        //                  plus the story opening and recent ST roleplay (narrative
-        //                  background kept far from the end so its prose style
-        //                  doesn't leak into replies; it changes only as the story moves)
+        //                  plus the story opening and, where the request isn't split
+        //                  (splitsLiveContext), the recent ST roleplay. Split, the roleplay
+        //                  goes between the texts by time instead, so the model can tell
+        //                  what came first and the story moving on changes nothing before it
         //  3. LOCK       — fiction frame + persona-lock reminder
         //  4. PERSONALITY — NSFW permission, texting style
         //  5. FORMAT     — texting-medium anchor, message format, the <life> rule
@@ -1960,15 +1961,17 @@
         // The greeting establishes the setting, the relationship with the user and —
         // through the character's spoken lines — their voice; the recent ST roleplay
         // keeps replies consistent with what has actually happened.
-        // Both are narrative prose, so they sit with the stable character knowledge,
-        // far from the end, and are framed as reference rather than text to continue.
+        // Both are narrative prose, so they are framed as reference rather than text to continue.
         const userName = getUserName();
         const openingText = getEchoTextFirstMessage(char);
         if (openingText) {
             const openingUse = `This is how the roleplay between ${name} and ${userName} began. Treat its setting and relationships as established facts.`;
             prompt += `\n\n${openingUse} ${name}'s spoken lines in it show how ${name} talks — vocabulary, tone, attitude toward ${userName}, and speech quirks. It is reference material written as narrative prose: never continue it or copy its narration.\n<story_opening>\n${openingText}\n</story_opening>`;
         }
-        const storyText = getSTStoryContext(char);
+        const storyText = splitsLiveContext() ? '' : getSTStoryContext(char);
+        if (splitsLiveContext() && getSTStoryMessages(char).length) {
+            prompt += `\n\nThe roleplay's recent events are in the chat below, in <story_events>, where they happened between the texts: what comes after one happened after it. ${name} remembers all of this, and the text messages must stay consistent with it.`;
+        }
         if (storyText) {
             prompt += `\n\nRecent events in the roleplay, oldest first. ${name} remembers all of this, and the text messages must stay consistent with it. It is reference material written as narrative prose: never continue the scene — ${name} is now texting ${userName} by phone.\n<story_so_far>\n${storyText}\n</story_so_far>`;
         }
@@ -2054,6 +2057,38 @@
      */
     function splitsLiveContext() {
         return settings.source === 'profile';
+    }
+
+    /**
+     * A chat's messages as turns for the model, each with when it was sent: a message, and
+     * your tapbacks on it right after.
+     */
+    function buildChatTurns(sent) {
+        return sent.flatMap(msg => {
+            // Strip thinking/reasoning tags from history messages before sending to context.
+            // This prevents internal model reasoning blocks from inflating token budgets.
+            // resolveHistoryMessageText also fills in a natural stub for silent image turns
+            // so the model never sees an empty assistant response to a photo request.
+            const time = Number(msg.send_date) || Date.parse(msg.send_date);
+            const contextText = resolveHistoryMessageText(msg);
+            const reactionText = buildUserReactionText(msg);
+            return [
+                ...(contextText !== null ? [{ role: msg.is_user ? 'user' : 'assistant', content: contextText, time }] : []),
+                ...(reactionText ? [{ role: 'user', content: reactionText, time }] : []),
+            ];
+        });
+    }
+
+    /** The chat's turns as sent; split, with the story between them, and what to remind the model of then. */
+    function buildChatMessages(sent, char, apart) {
+        const turns = buildChatTurns(sent);
+        const story = apart && char ? getSTStoryMessages(char) : [];
+        if (!story.length) return { messages: turns.map(({ role, content }) => ({ role, content })), reminder: '' };
+        const name = char.name || 'Character';
+        return {
+            messages: StoryTexts.weaveStory(turns, story),
+            reminder: `${name} is texting ${getUserName()} by phone: reply only with the texts ${name} sends, in the usual format, never in the story's narrative prose.`,
+        };
     }
 
     /**
@@ -2158,6 +2193,9 @@
     // and the newest messages win; with long RP replies the character cap usually binds.
     const ST_STORY_MAX_MESSAGES = 20;
     const ST_STORY_MAX_CHARS = 6000;
+    // Sent between the texts it leaves a chunk at a time, so a prompt cache holds
+    const ST_STORY_CHUNK_MESSAGES = 10;
+    const ST_STORY_CHUNK_CHARS = 2000;
     // For putting a stretch of it in a sentence (13a), where the start of it counts too
     const ST_STRETCH_MAX_MESSAGES = 60;
     const ST_STRETCH_MAX_CHARS = 16000;
@@ -2259,6 +2297,29 @@
             return lines.join('\n\n');
         } catch (e) {
             return '';
+        }
+    }
+
+    /**
+     * The live ST roleplay to send between the texts (lib/story-texts.js), oldest first:
+     * { speaker, text, time }. Skips what getSTStoryContext does. Empty when the open ST
+     * chat doesn't involve the character.
+     */
+    function getSTStoryMessages(char) {
+        try {
+            const chat = SillyTavern.getContext().chat;
+            if (!Array.isArray(chat) || !chat.length || !isCharInCurrentSTChat(char)) return [];
+            const openingIdx = findSTOpeningIndex(char);
+            const userName = getUserName();
+            const story = chat.flatMap((msg, i) => {
+                if (!msg || msg.is_system || i === openingIdx) return [];
+                const text = cleanSTMessageText(msg.mes);
+                return text ? [{ speaker: msg.is_user ? userName : (msg.name || char.name), text, time: stMessageTime(msg) }] : [];
+            });
+            return StoryTexts.storyWindow(story, { maxMessages: ST_STORY_MAX_MESSAGES, maxChars: ST_STORY_MAX_CHARS,
+                chunkMessages: ST_STORY_CHUNK_MESSAGES, chunkChars: ST_STORY_CHUNK_CHARS });
+        } catch (e) {
+            return [];
         }
     }
 
@@ -2806,17 +2867,9 @@
 
         // Summarized early messages go in the system prompt instead
         const sent = historyToSend(history);
-        sent.forEach(msg => {
-            // Strip thinking/reasoning tags from history messages before sending to context.
-            // This prevents internal model reasoning blocks from inflating token budgets.
-            // resolveHistoryMessageText also fills in a natural stub for silent image turns
-            // so the model never sees an empty assistant response to a photo request.
-            const contextText = resolveHistoryMessageText(msg);
-            if (contextText !== null) apiMessages.push({ role: msg.is_user ? 'user' : 'assistant', content: contextText });
-            const reactionText = buildUserReactionText(msg);
-            if (reactionText) apiMessages.push({ role: 'user', content: reactionText });
-        });
-        if (apart) placeLiveContext(apiMessages, [live, ...extraSystemMessages]);
+        const { messages, reminder } = buildChatMessages(sent, targetCharOverride || getCurrentCharacter(), apart);
+        apiMessages.push(...messages);
+        if (apart) placeLiveContext(apiMessages, [live, reminder, ...extraSystemMessages]);
 
         // --- Layer 3: Pre-fill assistant turn (anti-refusal, chat-completion backends only) ---
         // Planting the assistant prefix forces the model to continue in-character rather than
@@ -2874,15 +2927,9 @@
         }
 
         const sent = historyToSend(history);
-        sent.forEach(msg => {
-            // Apply the same silent-image-turn resolution used in buildApiMessagesFromHistory
-            // so group-member context windows also see a closed loop for image turns.
-            const contextText = resolveHistoryMessageText(msg);
-            if (contextText !== null) apiMessages.push({ role: msg.is_user ? 'user' : 'assistant', content: contextText });
-            const reactionText = buildUserReactionText(msg);
-            if (reactionText) apiMessages.push({ role: 'user', content: reactionText });
-        });
-        if (apart) placeLiveContext(apiMessages, [live, ...extraSystemMessages]);
+        const { messages, reminder } = buildChatMessages(sent, char, apart);
+        apiMessages.push(...messages);
+        if (apart) placeLiveContext(apiMessages, [live, reminder, ...extraSystemMessages]);
 
         const charName = (char && char.name) || getCharacterName();
         const userName = getUserName();

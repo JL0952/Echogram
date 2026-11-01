@@ -3651,6 +3651,17 @@ html.et-bg-light {
     gap: 6px;
 }
 
+/* The NSFW toggle's icon ("adult 18" from SVG Repo, supplied 2026-11-01), a mask so it takes the text colour like a glyph */
+.et-icon-adult {
+    display: inline-block;
+    width: 1em;
+    height: 1em;
+    vertical-align: -0.125em;
+    background-color: currentColor;
+    -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.91' stroke-miterlimit='10'%3E%3Cpath d='M19.45,19.42a10.5,10.5,0,1,1,0-14.84'/%3E%3Crect x='11.07' y='8.18' width='4.77' height='3.82' rx='1.91'/%3E%3Crect x='11.07' y='12' width='4.77' height='3.82' rx='1.91'/%3E%3Cpath d='M7.25 7.23V15.82M5.34 15.82H9.16M5.34 9.14H8.2M17.75 12H23.48M20.61 9.14V14.86'/%3E%3C/svg%3E") center / contain no-repeat;
+    mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.91' stroke-miterlimit='10'%3E%3Cpath d='M19.45,19.42a10.5,10.5,0,1,1,0-14.84'/%3E%3Crect x='11.07' y='8.18' width='4.77' height='3.82' rx='1.91'/%3E%3Crect x='11.07' y='12' width='4.77' height='3.82' rx='1.91'/%3E%3Cpath d='M7.25 7.23V15.82M5.34 15.82H9.16M5.34 9.14H8.2M17.75 12H23.48M20.61 9.14V14.86'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+
 .et-label-text i {
     color: var(--et-theme-color);
     width: 16px;

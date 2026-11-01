@@ -162,3 +162,63 @@ test('nothing to add leaves the chat alone', () => {
     assert.equal(insertTexts([], [text('a', 1, true)], options), 0);
     assert.deepEqual(shape(chat), ['开场']);
 });
+
+const { storyWindow, weaveStory } = window.EchoTextStoryTexts;
+const said = (text, min) => ({ speaker: '男朋友', text, time: at(min) });
+const turnAt = (role, content, min) => ({ role, content, time: at(min) });
+
+test('the story goes between the texts by time, a run as one turn with its time', () => {
+    const out = weaveStory(
+        [turnAt('user', '帮我带可乐', 6), turnAt('assistant', '好', 7), turnAt('user', '嘿', 12)],
+        [said('她出门了', -5), said('她进门，把可乐递给他', 9), said('他喝了一口', 10)],
+    );
+    assert.deepEqual(out.map(m => m.role), ['system', 'user', 'assistant', 'system', 'user']);
+    assert.ok(out[3].content.startsWith('<story_events>\nThe roleplay went on here'));
+    assert.ok(out[3].content.endsWith('\n[2026-10-10 Sat 14:09]\n男朋友: 她进门，把可乐递给他\n男朋友: 他喝了一口\n</story_events>'));
+    assert.deepEqual(Object.keys(out[1]), ['role', 'content']);
+});
+
+test('story after the last text comes last, a tie goes first, and no time takes the one before it', () => {
+    assert.equal(weaveStory([turnAt('user', 'a', 1)], [said('后来', 2)]).at(-1).role, 'system');
+    assert.equal(weaveStory([turnAt('user', 'a', 1)], [said('同时', 1)])[0].role, 'system');
+    const noTime = weaveStory([turnAt('user', 'a', 1), turnAt('user', 'b', 5)], [said('前', 2), { speaker: '男朋友', text: '没时间', time: NaN }]);
+    assert.deepEqual(noTime.map(m => m.role), ['user', 'system', 'user']);
+    assert.match(noTime[1].content, /前\n男朋友: 没时间/);
+    // A turn with no time counts as the earliest; story with none at all says no time
+    assert.equal(weaveStory([{ role: 'user', content: 'a' }], [said('后', 2)]).at(-1).role, 'system');
+    const undated = weaveStory([turnAt('user', 'a', 1)], [{ speaker: '男朋友', text: '没时间', time: NaN }]);
+    assert.equal(undated[0].role, 'system');
+    assert.doesNotMatch(undated[0].content, /\[\d{4}/);
+    assert.deepEqual(weaveStory([], []), []);
+});
+
+test('what was woven stays the same as the story and the chat go on', () => {
+    const turns = [turnAt('user', 'a', 1), turnAt('assistant', 'b', 2)];
+    const story = [said('一', 0), said('二', 3)];
+    const before = weaveStory(turns, story);
+    const after = weaveStory([...turns, turnAt('user', 'c', 5)], [...story, said('三', 6)]);
+    assert.deepEqual(after.slice(0, 4), before);
+});
+
+test('old story leaves a chunk at a time, inside the limits', () => {
+    const limits = { maxMessages: 20, maxChars: 6000, chunkMessages: 10, chunkChars: 2000 };
+    const line = i => ({ speaker: 'a', text: `${i}`.padEnd(99, 'x'), time: i });
+    const story = n => Array.from({ length: n }, (_, i) => line(i));
+    assert.equal(storyWindow(story(5), limits).length, 5);
+    assert.equal(storyWindow(story(20), limits).length, 20);
+    // One more: the oldest chunk goes, and what's left stays put as more come
+    const first = storyWindow(story(21), limits);
+    assert.equal(first.length, 11);
+    assert.equal(storyWindow(story(30), limits)[0].text, first[0].text);
+    assert.notEqual(storyWindow(story(31), limits)[0].text, first[0].text);
+    // Long messages: the characters bind, and a window's start holds as the story grows
+    const long = n => Array.from({ length: n }, (_, i) => ({ speaker: 'a', text: `${i}`.padEnd(899, 'x'), time: i }));
+    const sizes = s => s.reduce((sum, m) => sum + m.speaker.length + m.text.length, 0);
+    for (const n of [5, 7, 9, 13, 20]) assert.ok(sizes(storyWindow(long(n), limits)) <= 6000, `${n}`);
+    const starts = [8, 9, 10, 11, 12, 13, 14, 15].map(n => Number.parseInt(storyWindow(long(n), limits)[0].text, 10));
+    assert.deepEqual(starts, [...starts].sort((a, b) => a - b));
+    assert.ok(new Set(starts).size < starts.length, 'in steps');
+    // One message over the limits is still sent
+    const huge = [{ speaker: 'a', text: 'x'.repeat(9000), time: 0 }];
+    assert.equal(storyWindow(huge, limits).length, 1);
+});

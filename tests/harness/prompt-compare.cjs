@@ -19,11 +19,11 @@ const REF = args.find(a => !a.startsWith('--')) || 'HEAD';
 const PRINT = (args.find(a => a.startsWith('--print=')) || '').slice('--print='.length);
 
 global.window = {};
-for (const f of ['lib/config.js', 'lib/rich-messages.js', 'lib/features.js', 'lib/chat-view-model.js', 'lib/daily-life.js', 'platforms/echotext/platform.js', 'platforms/wechat/platform.js', 'platforms/instagram/platform.js']) new Function(fs.readFileSync(`${REPO}/${f}`, 'utf8'))();
+for (const f of ['lib/config.js', 'lib/rich-messages.js', 'lib/features.js', 'lib/chat-view-model.js', 'lib/daily-life.js', 'lib/story-texts.js', 'platforms/echotext/platform.js', 'platforms/wechat/platform.js', 'platforms/instagram/platform.js']) new Function(fs.readFileSync(`${REPO}/${f}`, 'utf8'))();
 new Function(fs.readFileSync(`${__dirname}/scenarios.js`, 'utf8'))();
 
 // Real index.js code: the prompt builder and the helpers it uses
-const NAMES = ['buildSystemPrompt', 'buildPromptParts', 'buildLifeDate', 'buildApiMessagesFromHistory', 'buildApiMessagesFromHistoryForChar', 'placeLiveContext', 'splitsLiveContext', 'getVerbosityPrompt', 'getCharacterVerbosity', 'getEchoTextFirstMessage', 'getSTStoryContext', 'findSTOpeningIndex',
+const NAMES = ['buildSystemPrompt', 'buildPromptParts', 'buildLifeDate', 'buildApiMessagesFromHistory', 'buildApiMessagesFromHistoryForChar', 'placeLiveContext', 'splitsLiveContext', 'buildChatTurns', 'buildChatMessages', 'getSTStoryMessages', 'stMessageTime', 'StoryTexts', 'ST_STORY_CHUNK_MESSAGES', 'ST_STORY_CHUNK_CHARS', 'getVerbosityPrompt', 'getCharacterVerbosity', 'getEchoTextFirstMessage', 'getSTStoryContext', 'findSTOpeningIndex',
     'isCharInCurrentSTChat', 'cleanSTMessageText', 'ST_STORY_MAX_MESSAGES', 'ST_STORY_MAX_CHARS', 'replaceMacros', 'buildMessageFormatPrompt',
     'RichMessages', 'Features', 'Platforms', 'activePlatformMemo', 'getActivePlatform', 'getActiveFeatures', 'platformHas', 'getReactionIds', 'isTetheredMode',
     'DailyLife', 'dailyLifeActive', 'activeSchedule', 'activeLife', 'buildDailyLifeContext', 'phoneOverride', 'buildLifeRules', 'getEmotionHistory'];
@@ -126,45 +126,75 @@ console.log(`\n${Object.keys(CASES).length} cases, ${diffs} different`);
 const assert = require('assert');
 const api = load(fs.readFileSync(`${REPO}/index.js`, 'utf8'));
 if (api) {
-    const turn = (is_user, mes) => ({ is_user, mes });
+    const T0 = new Date(2026, 9, 31, 15, 0).getTime();
+    const at = min => T0 + min * 60000;
+    const turn = (is_user, mes, min = 0) => ({ is_user, mes, send_date: at(min) });
+    const stMessage = (is_user, name, mes, min) => ({ is_user, name, mes, send_date: new Date(at(min)).toISOString() });
+    let story = [];
     const env = {
         FA_REACTIONS: window.EchoTextScenarioReactions,
         settings: { ...defaults, defaultPlatform: 'echotext', platformByCharacter: {}, source: 'profile' },
-        SillyTavern: { getContext: () => context(stChat) }, char: card,
+        SillyTavern: { getContext: () => context(story, { name1: 'Qi' }) }, char: card,
     };
     const send = async (history, extra = []) => (await api(env).buildApiMessagesFromHistory(history, extra));
-    const history = [turn(true, 'hi'), turn(false, 'hey'), turn(true, 'you there?')];
+    const roles = r => r.apiMessages.map(m => m.role);
+    const history = [turn(true, 'hi'), turn(false, 'hey', 1), turn(true, 'you there?', 2)];
+
+    // With no story: what changes after the chat, the same up to there next time
     const first = await send(history);
-    assert.deepEqual(first.apiMessages.map(m => m.role), ['system', 'user', 'assistant', 'system', 'user'], 'before your latest text');
+    assert.deepEqual(roles(first), ['system', 'user', 'assistant', 'system', 'user'], 'before your latest text');
     assert.ok(!first.apiMessages[0].content.includes('MEMORY STUB') && !first.apiMessages[0].content.includes('BEHAVIOR'), 'nothing that changes up front');
-    assert.ok(first.apiMessages[0].content.includes('<story_so_far>'), 'the story stays far from the end');
+    assert.ok(!first.apiMessages[0].content.includes('story_events') && !first.apiMessages[3].content.includes('texting Qi by phone'), 'no story, no word of it');
     assert.ok(first.apiMessages[3].content.includes('MEMORY STUB') && first.apiMessages[3].content.includes('BEHAVIOR'));
     assert.ok(first.apiMessages[3].content.startsWith('<context_for_this_reply>\nNot written by Qi: never quote or answer it.\n\n'), 'says it is not from you');
     assert.ok(first.apiMessages[3].content.endsWith('</context_for_this_reply>'));
-    // The next reply: other memories and feelings, and the chat moved on. Same up to where it was
     env.memory = 'ANOTHER MEMORY';
     env.feeling = 'ANGRY ';
-    const next = await send([...history, turn(false, 'yes'), turn(true, 'good')]);
+    const next = await send([...history, turn(false, 'yes', 3), turn(true, 'good', 4)]);
     assert.deepEqual(next.apiMessages.slice(0, 3), first.apiMessages.slice(0, 3), 'the same up to the last reply');
-    assert.deepEqual(next.apiMessages.map(m => m.role), ['system', 'user', 'assistant', 'user', 'assistant', 'system', 'user']);
+    assert.deepEqual(roles(next), ['system', 'user', 'assistant', 'user', 'assistant', 'system', 'user']);
     assert.ok(next.apiMessages[5].content.includes('ANOTHER MEMORY') && next.apiMessages[5].content.includes('ANGRY'));
-    // Two texts in a row wait after it; a reply owed nothing goes last; a proactive text's notes go with it
-    assert.deepEqual((await send([...history, turn(true, 'hello?')])).apiMessages.map(m => m.role), ['system', 'user', 'assistant', 'system', 'user', 'user']);
+    assert.deepEqual(roles(await send([...history, turn(true, 'hello?', 3)])), ['system', 'user', 'assistant', 'system', 'user', 'user']);
     assert.equal((await send(history.slice(0, 2))).apiMessages.at(-1).role, 'system');
     const proactive = await send(history.slice(0, 2), ['PROACTIVE NOTE']);
     assert.ok(proactive.apiMessages.at(-1).content.includes('PROACTIVE NOTE') && proactive.apiMessages.at(-1).content.includes('MEMORY'), 'one message, its notes with it');
     assert.equal(proactive.apiMessages[1].role, 'user');
-    // The prefill stays last
     env.settings.antiRefusal = true;
-    assert.deepEqual((await send(history)).apiMessages.map(m => m.role), ['system', 'user', 'assistant', 'system', 'user', 'assistant']);
+    assert.deepEqual(roles(await send(history)), ['system', 'user', 'assistant', 'system', 'user', 'assistant'], 'the prefill stays last');
     env.settings.antiRefusal = false;
+
+    // The cola: asked for by text at 15:06, handed over in the story at 15:09, texts after. The order it happened in
+    story = [stMessage(true, 'Qi', 'Going out for a bit.', -10), stMessage(false, 'Mira', 'She shuts the door behind her.', -9),
+        stMessage(true, 'Qi', '"I\'m back."', 9), stMessage(false, 'Mira', 'He takes the cola and drinks.', 10)];
+    const thread = [turn(true, 'getting the parcel, want anything?', 6), turn(false, 'a cola, cold', 6.5), turn(true, 'back soon', 7), turn(false, 'ok', 7.5), turn(true, 'hey', 12)];
+    const woven = await send(thread);
+    const shown = woven.apiMessages.slice(1).map(m => (m.role === 'system' ? m.content.split('\n')[0] : m.content));
+    assert.deepEqual(shown, ['<story_events>', thread[0].mes, thread[1].mes, thread[2].mes, thread[3].mes, '<story_events>', '<context_for_this_reply>', 'hey']);
+    assert.ok(!woven.apiMessages[0].content.includes('<story_so_far>') && !woven.apiMessages[0].content.includes('He takes the cola'), 'none of the story up front');
+    assert.ok(woven.apiMessages[0].content.includes('in <story_events>, where they happened between the texts'));
+    assert.ok(woven.apiMessages[6].content.includes('\n[2026-10-31 Sat 15:09]\nQi: "I\'m back."\nMira: He takes the cola and drinks.\n</story_events>'), 'the run with its time');
+    assert.ok(woven.apiMessages[7].content.includes("Mira is texting Qi by phone: reply only with the texts Mira sends"), 'the reminder is with what changes');
+    // The story moves on and the chat goes on: everything before stays exactly as it was
+    story = [...story, stMessage(true, 'Qi', 'She washes the melon.', 13), stMessage(false, 'Mira', 'He drinks again.', 14)];
+    const later = await send([...thread, turn(false, 'hey what', 12.5), turn(true, 'nice cola?', 15)]);
+    assert.deepEqual(later.apiMessages.slice(0, 7), woven.apiMessages.slice(0, 7), 'the story moving on changes nothing before it');
+    assert.deepEqual(later.apiMessages.slice(7).map(m => m.role), ['user', 'assistant', 'system', 'system', 'user']);
+    assert.ok(later.apiMessages[9].content.includes('He drinks again.'));
+    // Story after your last text comes last; the context follows it
+    const storyLast = await send(thread.slice(0, 4));
+    assert.deepEqual(storyLast.apiMessages.slice(-2).map(m => m.content.split('\n')[0]), ['<story_events>', '<context_for_this_reply>']);
+    // A chat this character isn't in: nothing woven
+    const elsewhere = await (async () => { const char = env.char; env.char = { ...card, avatar: 'other.png', name: 'Other' }; const r = await send(thread); env.char = char; return r; })();
+    assert.ok(!elsewhere.apiMessages.some(m => m.content.includes('story_events')));
+
     // The default connection takes the system prompt: all of it. So do the others, in one system message
     for (const source of ['default', 'ollama', 'openai']) {
         env.settings.source = source;
-        const whole = await send(history, ['NOTE']);
-        assert.deepEqual(whole.apiMessages.map(m => m.role), ['system', 'system', 'user', 'assistant', 'user'], source);
+        const whole = await send(thread, ['NOTE']);
+        assert.deepEqual(roles(whole), ['system', 'system', 'user', 'assistant', 'user', 'assistant', 'user'], source);
         assert.equal(whole.apiMessages[0].content, whole.systemPrompt);
         assert.ok(whole.systemPrompt.includes('ANOTHER MEMORY') && whole.systemPrompt.includes('ANGRY'));
+        assert.ok(whole.systemPrompt.includes('<story_so_far>') && whole.systemPrompt.includes('He drinks again.') && !whole.systemPrompt.includes('story_events'), 'the story up front, as ever');
     }
     console.log('order: ok');
 }
