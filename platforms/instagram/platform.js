@@ -296,6 +296,8 @@
         sharedFill: '.ig-row-me .ig-bubble',
         // Voice messages are typed from the mic in the input field, as Instagram records them
         voiceButton: { placeholder: 'Voice message…' },
+        // The input says this, whoever you're texting
+        inputPlaceholder: 'Message...',
         templates: {
             message,
             part,

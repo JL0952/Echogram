@@ -1525,7 +1525,8 @@
             jQuery('#et-panel-drag-handle').removeClass('et-panel-header-no-char');
             jQuery('#et-panel').removeClass('et-panel-no-char');
             jQuery('#et-char-name').html(`Group: ${escapeHtml(charNames)}<i class="fa-solid fa-chevron-down et-char-name-caret" aria-hidden="true"></i>`);
-            jQuery('#et-input').attr('placeholder', `Message all: ${charNames}...`).prop('disabled', false);
+            setInputPlaceholder(`Message all: ${charNames}...`);
+            jQuery('#et-input').prop('disabled', false);
             jQuery('#et-send-btn, #et-attach-btn, #et-voice-btn').prop('disabled', false);
             setComposeMode(null);
             updatePanelStatusRow();
@@ -1545,7 +1546,8 @@
         jQuery('#et-panel').toggleClass('et-panel-no-char', !hasChar);
         jQuery('#et-char-name').html(`${escapeHtml(hasChar ? charName : 'Choose A Character')}<i class="fa-solid fa-chevron-down et-char-name-caret" aria-hidden="true"></i>`);
         jQuery('#et-char-avatar-wrap').replaceWith(buildAvatarHtml(charName, '', 'et-char-avatar-wrap'));
-        jQuery('#et-input').attr('placeholder', hasChar ? `Text ${charName}...` : 'Text a character...').prop('disabled', !hasChar);
+        setInputPlaceholder(hasChar ? `Text ${charName}...` : 'Text a character...');
+        jQuery('#et-input').prop('disabled', !hasChar);
         jQuery('#et-send-btn, #et-attach-btn, #et-voice-btn').prop('disabled', !hasChar);
         setComposeMode(null);
         updatePanelStatusRow();
@@ -1560,6 +1562,20 @@
         if (charKey && !inGroup) {
             syncProactiveStateWithHistory(charKey, history);
         }
+    }
+
+    /** What the input says: the platform's own wording (Instagram's "Message...", none on WeChat), else `text`. */
+    function inputPlaceholder(text) {
+        const own = getActivePlatform().inputPlaceholder;
+        return typeof own === 'string' ? own : text;
+    }
+
+    /**
+     * Sets the input's placeholder from what it says without a platform's own ("Text Mira..."),
+     * kept so a platform switch can word it again (onPlatformChoiceChanged).
+     */
+    function setInputPlaceholder(text) {
+        jQuery('#et-input').attr('placeholder', inputPlaceholder(text)).data('et-text-placeholder', text);
     }
 
     function escapeHtml(value) {
@@ -3429,7 +3445,7 @@
             const charNames = members.map(c => c.name).join(', ');
             jQuery('#et-panel-drag-handle').removeClass('et-panel-header-no-char');
             jQuery('#et-char-name').html(`Group: ${escapeHtml(charNames)}<i class="fa-solid fa-chevron-down et-char-name-caret" aria-hidden="true"></i>`);
-            jQuery('#et-input').attr('placeholder', `Message all: ${charNames}...`);
+            setInputPlaceholder(`Message all: ${charNames}...`);
         } else {
             // Restore to the currently active individual character
             applySelectedCharacterToPanel();
@@ -4469,7 +4485,8 @@
         jQuery('#et-panel-drag-handle').removeClass('et-panel-header-no-char');
         jQuery('#et-panel').removeClass('et-panel-no-char');
         jQuery('#et-char-name').html(`${escapeHtml(charName)}<i class="fa-solid fa-chevron-down et-char-name-caret" aria-hidden="true"></i>`);
-        jQuery('#et-input').attr('placeholder', `Text ${charName}...`).prop('disabled', false);
+        setInputPlaceholder(`Text ${charName}...`);
+        jQuery('#et-input').prop('disabled', false);
         jQuery('#et-send-btn, #et-attach-btn, #et-voice-btn').prop('disabled', false);
         setComposeMode(null);
         cancelScheduledReply();
@@ -4508,6 +4525,7 @@
             hasChar = !!getCurrentCharacter();
             displayName = hasChar ? charName : 'Choose A Character';
         }
+        const inputText = inCombine ? `Message all: ${charName}...` : (hasChar ? `Text ${charName}...` : 'Text a character...');
         const noCharClass = hasChar ? '' : ' et-panel-header-no-char';
         const panelNoCharClass = hasChar ? '' : ' et-panel-no-char';
 
@@ -4581,7 +4599,7 @@
                     <button class="et-voice-btn" id="et-voice-btn" type="button" title="Voice message" hidden${hasChar ? '' : ' disabled'}><i class="fa-solid fa-microphone"></i></button>
                     <button class="et-attach-btn" id="et-attach-btn" type="button" title="Attach"${hasChar ? '' : ' disabled'}><i class="fa-solid fa-plus"></i></button>
                     <button class="et-share-type" id="et-share-type" type="button" title="File type" hidden></button>
-                    <textarea class="et-input" id="et-input" enterkeyhint="send" placeholder="${inCombine ? `Message all: ${charName}...` : (hasChar ? `Text ${charName}...` : 'Text a character...')}" rows="1"${hasChar ? '' : ' disabled'}></textarea>
+                    <textarea class="et-input" id="et-input" enterkeyhint="send" placeholder="${escapeHtml(inputPlaceholder(inputText))}" data-et-text-placeholder="${escapeHtml(inputText)}" rows="1"${hasChar ? '' : ' disabled'}></textarea>
                 </div>
                 <button class="et-send-btn" id="et-send-btn" title="Send message"${hasChar ? '' : ' disabled'}>
                     <i class="fa-solid fa-paper-plane"></i>
@@ -6978,6 +6996,11 @@
         saveSettings();
         activePlatformMemo = null;
         populatePlatformSelects();
+        // The input's own wording on the new platform (not while a photo or voice is being composed)
+        const input = jQuery('#et-input');
+        if (input.data('et-text-placeholder') !== undefined && input.data('et-compose-placeholder') === undefined) {
+            setInputPlaceholder(input.data('et-text-placeholder'));
+        }
         if (panelOpen) renderMessages(getChatHistory(), true);
     }
 

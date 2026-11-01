@@ -281,6 +281,8 @@
         stylesheet: 'platform.css',
         // Voice messages are typed from the input bar's voice button, as WeChat records them
         voiceButton: { placeholder: '输入要说的话，作为语音发出' },
+        // WeChat's input is blank
+        inputPlaceholder: '',
         // "+" raises a panel of these tiles (lib/features.js composer entries), labelled the WeChat way
         composerPanel: {
             photo: { label: '照片', icon: 'fa-image', placeholder: '描述你要发的照片' },
