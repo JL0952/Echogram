@@ -23,7 +23,7 @@ for (const f of ['lib/config.js', 'lib/rich-messages.js', 'lib/features.js', 'li
 new Function(fs.readFileSync(`${__dirname}/scenarios.js`, 'utf8'))();
 
 // Real index.js code: the prompt builder and the helpers it uses
-const NAMES = ['buildSystemPrompt', 'getVerbosityPrompt', 'getCharacterVerbosity', 'getEchoTextFirstMessage', 'getSTStoryContext', 'findSTOpeningIndex',
+const NAMES = ['buildSystemPrompt', 'buildPromptParts', 'buildLifeDate', 'buildApiMessagesFromHistory', 'buildApiMessagesFromHistoryForChar', 'placeLiveContext', 'splitsLiveContext', 'getVerbosityPrompt', 'getCharacterVerbosity', 'getEchoTextFirstMessage', 'getSTStoryContext', 'findSTOpeningIndex',
     'isCharInCurrentSTChat', 'cleanSTMessageText', 'ST_STORY_MAX_MESSAGES', 'ST_STORY_MAX_CHARS', 'replaceMacros', 'buildMessageFormatPrompt',
     'RichMessages', 'Features', 'Platforms', 'activePlatformMemo', 'getActivePlatform', 'getActiveFeatures', 'platformHas', 'getReactionIds', 'isTetheredMode',
     'DailyLife', 'dailyLifeActive', 'activeSchedule', 'activeLife', 'buildDailyLifeContext', 'phoneOverride', 'buildLifeRules', 'getEmotionHistory'];
@@ -34,11 +34,12 @@ const STUBS = `
     const getCharacterName = () => env.char?.name || 'Character'; const getUserName = () => 'Qi';
     const isCombinedGroupMode = () => false; const inGroupSession = () => false; const groupManager = null; const stripThinkingTags = t => t;
     const expandTimeDateMacros = t => t; const getActiveWorldInfoEntries = async () => 'WORLD INFO STUB';
-    const buildInsideJokesContext = () => '\\n\\n<memories>MEMORY STUB</memories>';
+    const buildInsideJokesContext = () => \`\\n\\n<memories>\${env.memory || 'MEMORY STUB'}</memories>\`;
+    const historyToSend = h => h; const resolveHistoryMessageText = m => m.mes; const buildUserReactionText = () => '';
     const buildMemoryContext = buildInsideJokesContext; const getChatHistory = () => [];
     const buildEmotionContext = () => '\\n\\n<emotional_state>EMOTION STUB</emotional_state>';
     const buildTextingStyleContext = () => '\\n\\n<texting_style>STYLE STUB</texting_style>';
-    const buildBehaviorContext = (char, verbosity) => ({ nsfw: '\\n\\nNSFW STUB', text: '\\n\\n<texting_behavior>BEHAVIOR STUB</texting_behavior>', verbosity });
+    const buildBehaviorContext = (char, verbosity) => ({ nsfw: '\\n\\nNSFW STUB', text: '\\n\\n<texting_behavior>' + (env.feeling || '') + 'BEHAVIOR STUB</texting_behavior>', verbosity });
     const buildMoodRules = () => '';`;
 
 function load(code) {
@@ -49,7 +50,7 @@ function load(code) {
         const names = node.type === 'FunctionDeclaration' ? [node.id.name] : node.type === 'VariableDeclaration' ? node.declarations.map(d => d.id.name) : [];
         if (names.some(n => NAMES.includes(n))) parts.push(code.slice(node.start, node.end));
     }
-    return new Function('env', `${STUBS}\n${parts.join('\n')}\nreturn { buildSystemPrompt };`);
+    return new Function('env', `${STUBS}\n${parts.join('\n')}\nreturn { buildSystemPrompt, buildApiMessagesFromHistory };`);
 }
 
 const defaults = window.EchoTextConfig.defaultSettings;
@@ -119,6 +120,52 @@ for (const id of Object.keys(CASES)) {
     console.log(`${id}: DIFFERENT at ${at}\n  ${REF}: ${JSON.stringify(a[id].slice(Math.max(0, at - 60), at + 120))}\n  work: ${JSON.stringify(b[id].slice(Math.max(0, at - 60), at + 120))}`);
 }
 console.log(`\n${Object.keys(CASES).length} cases, ${diffs} different`);
+
+// The working tree's order of the request: what changes goes after the chat with a
+// connection profile, so everything before it is the same next time (a prompt cache)
+const assert = require('assert');
+const api = load(fs.readFileSync(`${REPO}/index.js`, 'utf8'));
+if (api) {
+    const turn = (is_user, mes) => ({ is_user, mes });
+    const env = {
+        FA_REACTIONS: window.EchoTextScenarioReactions,
+        settings: { ...defaults, defaultPlatform: 'echotext', platformByCharacter: {}, source: 'profile' },
+        SillyTavern: { getContext: () => context(stChat) }, char: card,
+    };
+    const send = async (history, extra = []) => (await api(env).buildApiMessagesFromHistory(history, extra));
+    const history = [turn(true, 'hi'), turn(false, 'hey'), turn(true, 'you there?')];
+    const first = await send(history);
+    assert.deepEqual(first.apiMessages.map(m => m.role), ['system', 'user', 'assistant', 'system', 'user'], 'before your latest text');
+    assert.ok(!first.apiMessages[0].content.includes('MEMORY STUB') && !first.apiMessages[0].content.includes('BEHAVIOR'), 'nothing that changes up front');
+    assert.ok(first.apiMessages[0].content.includes('<story_so_far>'), 'the story stays far from the end');
+    assert.ok(first.apiMessages[3].content.includes('MEMORY STUB') && first.apiMessages[3].content.includes('BEHAVIOR'));
+    // The next reply: other memories and feelings, and the chat moved on. Same up to where it was
+    env.memory = 'ANOTHER MEMORY';
+    env.feeling = 'ANGRY ';
+    const next = await send([...history, turn(false, 'yes'), turn(true, 'good')]);
+    assert.deepEqual(next.apiMessages.slice(0, 3), first.apiMessages.slice(0, 3), 'the same up to the last reply');
+    assert.deepEqual(next.apiMessages.map(m => m.role), ['system', 'user', 'assistant', 'user', 'assistant', 'system', 'user']);
+    assert.ok(next.apiMessages[5].content.includes('ANOTHER MEMORY') && next.apiMessages[5].content.includes('ANGRY'));
+    // Two texts in a row wait after it; a reply owed nothing goes last; a proactive text's notes go with it
+    assert.deepEqual((await send([...history, turn(true, 'hello?')])).apiMessages.map(m => m.role), ['system', 'user', 'assistant', 'system', 'user', 'user']);
+    assert.equal((await send(history.slice(0, 2))).apiMessages.at(-1).role, 'system');
+    const proactive = await send(history.slice(0, 2), ['PROACTIVE NOTE']);
+    assert.deepEqual(proactive.apiMessages.slice(-2).map(m => m.content.includes('PROACTIVE NOTE')), [false, true]);
+    assert.equal(proactive.apiMessages[1].role, 'user');
+    // The prefill stays last
+    env.settings.antiRefusal = true;
+    assert.deepEqual((await send(history)).apiMessages.map(m => m.role), ['system', 'user', 'assistant', 'system', 'user', 'assistant']);
+    env.settings.antiRefusal = false;
+    // The default connection takes the system prompt: all of it. So do the others, in one system message
+    for (const source of ['default', 'ollama', 'openai']) {
+        env.settings.source = source;
+        const whole = await send(history, ['NOTE']);
+        assert.deepEqual(whole.apiMessages.map(m => m.role), ['system', 'system', 'user', 'assistant', 'user'], source);
+        assert.equal(whole.apiMessages[0].content, whole.systemPrompt);
+        assert.ok(whole.systemPrompt.includes('ANOTHER MEMORY') && whole.systemPrompt.includes('ANGRY'));
+    }
+    console.log('order: ok');
+}
 if (PRINT) console.log(`\n--- ${PRINT} (working tree) ---\n${b[PRINT]}`);
 process.exitCode = diffs ? 1 : 0;
 })();

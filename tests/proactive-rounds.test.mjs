@@ -129,3 +129,22 @@ test('what the model is told for a topic', () => {
     assert.match(t('errand', 'x'), /^On Mira's mind: x\. It has been 5 hours/);
     assert.match(t('life_event', 'x'), /^Something from Mira's day: x\./);
 });
+
+test('after time together: when they text, by temperament, and what the model is told', () => {
+    const end = 1000000;
+    const minutes = (temperament, roll) => (R.partedAt({ temperament, endedAt: end, random: () => roll }) - end) / 60000;
+    assert.equal(minutes('clingy', 0), 10);
+    assert.equal(minutes('clingy', 0.999) <= 20, true);
+    assert.equal(minutes('obsessed', 0), 10);
+    assert.equal(minutes('normal', 0), 15);
+    assert.equal(minutes('aloof', 0), 20);
+    for (const t of R.TEMPERAMENTS) assert.ok(t.partedMinutes[0] >= 10 && t.partedMinutes[1] <= 30, t.id);
+    // Some let it go
+    assert.equal(R.partedAt({ temperament: 'aloof', endedAt: end, random: () => 0.5 }), null);
+    assert.equal(R.partedAt({ temperament: 'normal', endedAt: end, random: () => 0.8 }), null);
+    assert.notEqual(R.partedAt({ temperament: 'clingy', endedAt: end, random: () => 0.999 }), null);
+    const told = R.topicInstruction({ type: 'parted', charName: 'Mira', userName: 'Qi' });
+    assert.match(told, /Mira and Qi were together in person and have just parted/);
+    assert.doesNotMatch(told, /since Qi last texted/);
+    assert.ok(R.LIFE_TRIGGERS.includes('parted'));
+});

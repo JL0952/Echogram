@@ -378,11 +378,12 @@ test('finding the errand a report names', () => {
 });
 
 test('the rule for the <life> line', () => {
-    const off = Life.lifeRules({ charName: 'Mira', userName: 'Qi', date: SAT });
+    const off = Life.lifeRules({ charName: 'Mira', userName: 'Qi' });
     assert.match(off, /^LIFE: /);
-    assert.match(off, /Today is 2026-10-31 \(Saturday\)/);
+    assert.doesNotMatch(off, /2026/);
+    assert.equal(Life.lifeDate(SAT), 'Today is 2026-10-31 (Saturday).');
     assert.match(off, /don't make up new ones/);
-    assert.match(Life.lifeRules({ charName: 'Mira', userName: 'Qi', date: SAT, madeUp: true }), /now and then one of Mira's own/);
+    assert.match(Life.lifeRules({ charName: 'Mira', userName: 'Qi', madeUp: true }), /now and then one of Mira's own/);
     assert.doesNotMatch(off, /[一-鿿]/);
 });
 

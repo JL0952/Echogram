@@ -133,3 +133,49 @@ test('the insights panel: why nothing comes, and the own day\'s topics in place 
 test('with you in person: no new topics', () => {
     assert.equal(candidates({ day: day({ phone: 'together' }) }), null);
 });
+
+test('after parting: that text comes first and once, whatever the wait, unless it is too late', () => {
+    const t = NOW.getTime();
+    const run = ({ parted, dayOver = {}, proactiveHours = 0.1 }) => {
+        const p = engine({ temperament: 'normal', day: day(dayOver) });
+        const userAt = t - 10 * HOUR;
+        const history = [{ is_user: false, mes: 'hi', send_date: userAt - HOUR }, { is_user: true, mes: 'ok', send_date: userAt }];
+        const state = { lastUserMessageAt: userAt, lastCharacterMessageAt: userAt, triggerHistory: {}, lastEmotionSnapshot: null, lastProactiveAt: t - proactiveHours * HOUR, parted };
+        const config = { ...p.getDefaultProactiveConfigForCharacter({}), temperament: 'normal' };
+        return { state, trigger: p.evaluateProactiveTrigger({ history, state, config, now: NOW }) };
+    };
+    // Due: right after another text, the wait doesn't count
+    const due = run({ parted: { at: t - 60000 } });
+    assert.equal(due.trigger.type, 'parted');
+    assert.match(due.trigger.prompt, /Mira and Qi were together in person/);
+    // Not yet: the usual wait holds
+    assert.equal(run({ parted: { at: t + 60000 } }).trigger, null);
+    // An hour late: gone, and the usual wait holds
+    const late = run({ parted: { at: t - HOUR } });
+    assert.equal(late.trigger, null);
+    assert.equal(late.state.parted, null);
+    // Asleep by now, or together again: not now, still there
+    const asleep = run({ parted: { at: t - 60000 }, dayOver: { phone: 'asleep' } });
+    assert.equal(asleep.trigger, null);
+    assert.ok(asleep.state.parted);
+    assert.equal(run({ parted: { at: t - 60000 }, dayOver: { phone: 'together' } }).trigger, null);
+});
+
+test('the insights say with you, when the text after parting comes, and list it with a schedule', () => {
+    const history = [{ is_user: true, mes: 'ok', send_date: Date.now() - 10 * HOUR }, { is_user: false, mes: 'hi', send_date: Date.now() - 9 * HOUR }];
+    const insight = (dayInfo, parted) => {
+        const settings = { proactiveMessagingEnabled: true, proactiveState: { 'mira.png': { lastUserMessageAt: 0, lastCharacterMessageAt: 0, lastProactiveAt: 0, triggerHistory: {}, parted } } };
+        return window.EchoTextProactiveMessaging.createProactiveMessaging({
+            getSettings: () => settings, getUserName: () => 'Qi', getActiveFeatures: () => [],
+            expandTimeDateMacros: t => t, replaceMacros: t => t, getEmotionState: () => null, getProactivePace: () => 1,
+            getTemperament: () => 'normal', getDailyLife: () => (dayInfo ? { ...dayInfo } : null),
+            getCurrentCharacter: () => ({ name: 'Mira', avatar: 'mira.png' }), getCharacterKey: () => 'mira.png',
+            getChatHistory: () => history,
+        }).getProactiveInsightsSnapshot();
+    };
+    assert.equal(insight(day({ phone: 'together' })).next, 'With you');
+    assert.match(insight(day(), { at: Date.now() + 12 * 60000 }).next, /^After parting in /);
+    const parted = list => list.triggerDiagnostics.find(t => t.id === 'parted');
+    assert.ok(parted(insight(day())));
+    assert.equal(parted(insight(null)), undefined);
+});

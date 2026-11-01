@@ -105,7 +105,7 @@
         // The proactive engine, as far as the catch-up asks it (runCatchUpTest sets what it answers)
         proactiveMessaging: {
             catchUpInputs: (...a) => env.catchUpInputs(...a), noteCatchUpRequest: (...a) => env.noteCatchUpRequest?.(...a),
-            syncProactiveStateWithHistory() {}, armRoundTimer() {}, dropRound: key => env.droppedRounds?.push(key), markProactiveUserActivity() {}, markProactiveCharacterActivity() {}, refreshProactiveInsights() {},
+            syncProactiveStateWithHistory() {}, armRoundTimer() {}, dropRound: key => env.droppedRounds?.push(key), planParted: (...a) => env.partedPlans?.push(a), markProactiveUserActivity() {}, markProactiveCharacterActivity() {}, refreshProactiveInsights() {},
         },
         catchUpInputs: () => ({ temperament: 'normal', baseHours: 8, unanswered: 0, left: 8, roundActive: false }) };
     env.memorySystem = window.EchoTextMemorySystem.createMemorySystem({ getSettings: () => env.settings, saveSettings: () => {}, getCharacterKey: () => 'mira.png' });
@@ -1428,6 +1428,7 @@
         env.settings.pendingReplies = {};
         env.settings.antiRefusal = false;
         env.droppedRounds = [];
+        env.partedPlans = [];
         env.buildApiMessagesFromHistory = async () => ({ apiMessages: [], rawPrompt: '', systemPrompt: '' });
         const replies = [];
         env.requestEchoTextCompletion = async () => { replies.push(1); return 'ok'; };
@@ -1492,7 +1493,7 @@
         // An accidental moment, undone: no trace
         click('[data-emo-action="clear-plan"]');
         await sleep(20);
-        res.accident = !plan() && on() === 'busy' && log().length === 0 && summaries.length === 0;
+        res.accident = !plan() && on() === 'busy' && log().length === 0 && summaries.length === 0 && env.partedPlans.length === 0;
 
         // The ⋯ menu's way: on, off. Off after a while with story since: noted, the model's sentence in its place
         emo.toggleTogether();
@@ -1506,6 +1507,7 @@
         await sleep(20);
         const fromClock = clock(Date.now() - 2 * HOUR);
         res.toggledOff = !plan() && !r.isWithYou();
+        res.partedPlanned = env.partedPlans.length === 1 && env.partedPlans[0][0] === 'mira.png' && Math.abs(env.partedPlans[0][1] - Date.now()) < 60000;
         res.fixedFirst = log().length === 1 && log()[0].text === `With 我 (${fromClock}–${clock(Date.now())})`;
         const asked = summaries[0]?.apiMessages.at(-1).content || '';
         res.storySent = summaries.length === 1 && asked.includes('去看电影') && asked.includes('Mira: 好呀') && !asked.includes('走吧') && !asked.includes('<think>');
@@ -1525,7 +1527,8 @@
         r.noteTogetherEnded();
         r.noteTogetherEnded();
         await sleep(20);
-        res.ranOut = log().length === 1 && log()[0].text.startsWith('With 我 (') && summaries.length === 0 && plan().noted === true;
+        res.ranOut = log().length === 1 && log()[0].text.startsWith('With 我 (') && summaries.length === 0 && plan().noted === true
+            && env.partedPlans.length === 2 && env.partedPlans[1][1] === plan().until;
         // Replacing what's already noted notes nothing more
         click('[data-emo-plan-phone="free"]');
         await sleep(20);

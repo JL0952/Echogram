@@ -31,7 +31,8 @@ function setup({ temperament = 'clingy', answer = '?\n---\n人呢\n---\n你去�
         getSettings: () => settings, saveSettings: () => {}, warn: (...a) => warnings.push(a.join(' ')),
         getCurrentCharacter: () => ({ name: 'Mira', avatar: 'mira.png' }), getCharacterKey: () => 'mira.png',
         getChatHistory: () => settings.chatHistory['mira.png'], getUserName: () => 'Qi',
-        getTemperament: () => env.temperament, getScheduleNow: () => env.schedule,
+        getTemperament: () => env.temperament, getScheduleNow: () => env.schedule, getDailyLife: () => env.day || null,
+        expandTimeDateMacros: t => t, replaceMacros: t => t, getActiveFeatures: () => [], getProactivePace: () => 1,
         isGroupSession: () => env.group, isPanelOpen: () => true, getIsGenerating: () => false, getEmotionState: () => null,
         buildApiMessagesFromHistoryForChar: async (history, extraSystem) => ({ apiMessages: [{ role: 'system', content: extraSystem.join('\n') }], rawPrompt: '', systemPrompt: '' }),
         requestEchoTextCompletion: async ({ apiMessages }) => { asked.push(apiMessages); return env.answer; },
@@ -196,4 +197,72 @@ test('with you in person: no round starts, and one under way stops', () => {
     assert.ok(running.state().round);
     running.p.dropRound('mira.png');
     assert.equal(running.state().round, null);
+});
+
+test('the text after parting is planned by temperament and gone once you text', () => {
+    clock = T0;
+    const realRandom = Math.random;
+    Math.random = () => 0.5;
+    const { p, state, env } = setup({ temperament: 'clingy' });
+    p.planParted('mira.png', clock);
+    assert.equal(state().parted.at, clock + 15 * MIN);
+    p.markProactiveUserActivity('mira.png', clock + MIN);
+    assert.equal(state().parted, null);
+    // Their proactive text says it too
+    p.planParted('mira.png', clock);
+    p.markProactiveCharacterActivity('mira.png', true, 'catch_up', clock + MIN);
+    assert.equal(state().parted, null);
+    // Noticed hours later: left unsent
+    p.planParted('mira.png', clock - 3 * HOUR);
+    assert.equal(state().parted, null);
+    // Their temperament lets it go
+    env.temperament = 'aloof';
+    p.planParted('mira.png', clock);
+    assert.equal(state().parted, null);
+    Math.random = realRandom;
+});
+
+test('the scheduler sends the text after parting once, right after another text if need be', async () => {
+    clock = T0;
+    const realRandom = Math.random;
+    const realInterval = globalThis.setInterval;
+    const realClear = globalThis.clearInterval;
+    const RealDate = globalThis.Date;
+    // The tick asks new Date(): on the fake clock too
+    globalThis.Date = class extends RealDate {
+        constructor(...args) { if (args.length) super(...args); else super(clock); }
+        static now() { return clock; }
+    };
+    let tick = null;
+    globalThis.setInterval = fn => { tick = fn; return 1; };
+    globalThis.clearInterval = () => {};
+    Math.random = () => 0.5;
+    const { p, settings, asked, chat, state, env, warnings } = setup({ temperament: 'clingy', answer: '到了' });
+    env.day = { phone: 'free', block: null, since: null, prevPhone: 'free', prevDoing: '', today: '2026-10-31', life: { errands: [], log: [], today: null } };
+    settings.proactiveCharacterConfig = {};
+    chat().push({ is_user: true, mes: 'hey', send_date: clock - 2 * HOUR }, { is_user: false, mes: 'news', send_date: clock - 5 * MIN, meta: { proactive: true, proactiveType: 'random_thought' } });
+    p.startProactiveScheduler();
+    p.planParted('mira.png', clock);
+    state().lastProactiveAt = clock - 5 * MIN;
+    clock += 2 * MIN;
+    await tick();
+    await new Promise(resolve => queueMicrotask(resolve));
+    assert.equal(asked.length, 0, 'not yet');
+    clock += 14 * MIN;
+    await tick();
+    await new Promise(resolve => setImmediate(resolve));
+    assert.deepEqual(warnings, []);
+    assert.equal(asked.length, 1);
+    assert.match(JSON.stringify(asked[0]), /have just parted/);
+    assert.equal(chat().at(-1).meta.proactiveType, 'parted');
+    assert.equal(state().parted, null);
+    clock += 2 * MIN;
+    await tick();
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(asked.length, 1, 'only once');
+    p.stopProactiveScheduler();
+    globalThis.setInterval = realInterval;
+    globalThis.clearInterval = realClear;
+    globalThis.Date = RealDate;
+    Math.random = realRandom;
 });

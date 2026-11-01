@@ -1851,14 +1851,26 @@
 
     /** @param {Array} [history] - the chat the reply follows (the stored one when left out), for the memories */
     async function buildSystemPrompt(targetCharOverride = null, history = null) {
+        const { stable, live } = await buildPromptParts(targetCharOverride, history);
+        return stable + live;
+    }
+
+    /**
+     * The system prompt in two parts: what stays the same from one reply to the next, and
+     * what doesn't (`live`). A provider's prompt cache only matches from the start of the
+     * request up to the first thing that differs, so with what changes up front the chat
+     * after it is never cached (see placeLiveContext).
+     * @returns {Promise<{ stable: string, live: string }>}
+     */
+    async function buildPromptParts(targetCharOverride = null, history = null) {
         if (isCombinedGroupMode()) {
             const groupId = groupManager ? groupManager.getCurrentGroupId() : null;
             const combinedHistory = groupId ? groupManager.getCombineHistory(groupId) : [];
-            return buildCombinedSystemPrompt(targetCharOverride || getCurrentCharacter(), combinedHistory);
+            return { stable: await buildCombinedSystemPrompt(targetCharOverride || getCurrentCharacter(), combinedHistory), live: '' };
         }
 
         const char = targetCharOverride || getCurrentCharacter();
-        if (!char) return 'You are a helpful assistant. Reply concisely like in a text message. You may use Markdown formatting like **bold**, *italic*, and `code`.';
+        if (!char) return { stable: 'You are a helpful assistant. Reply concisely like in a text message. You may use Markdown formatting like **bold**, *italic*, and `code`.', live: '' };
 
         const name = char.name || 'Character';
         const context = SillyTavern.getContext();
@@ -1880,19 +1892,24 @@
 
         // ── ORDERING RATIONALE ──────────────────────────────────────────────────
         // LLMs attend most strongly to content at the beginning (primacy) and end
-        // (recency) of the context window.
+        // (recency) of the context window. What stays the same comes first, so a
+        // prompt cache holds:
         //
         //  1. IDENTITY   — who the character IS (primacy anchor)
         //  2. CHARACTER  — description, personality, scenario, persona, world info,
         //                  plus the story opening and recent ST roleplay (narrative
         //                  background kept far from the end so its prose style
-        //                  doesn't leak into replies)
-        //  3. MEMORY     — pinned memories and the ones the recent messages bring up
-        //  4. LOCK       — fiction frame + persona-lock reminder (recency anchor for
-        //                  behaviour — last thing read before the model replies)
-        //  4b. PERSONALITY AND FEELINGS — NSFW permission, texting style, behavior block
-        //  5. VERBOSITY  — how many texts to send (moved a step by the behavior)
-        //  6. FORMAT     — texting-medium anchor + message format (must be last)
+        //                  doesn't leak into replies; it changes only as the story moves)
+        //  3. LOCK       — fiction frame + persona-lock reminder
+        //  4. PERSONALITY — NSFW permission, texting style
+        //  5. FORMAT     — texting-medium anchor, message format, the <life> rule
+        //
+        // Then what changes from reply to reply (`live`), closest to the reply:
+        //
+        //  6. MEMORY     — pinned memories and the ones the recent messages bring up
+        //  7. DAILY LIFE — where the character is in their week right now
+        //  8. FEELINGS   — the behavior block, and the reply length it moves a step
+        //  9. MOOD       — Auto mode's rule, with the feelings as they stand; the date
         // ───────────────────────────────────────────────────────────────────────
 
         // ── 1. IDENTITY ─────────────────────────────────────────────────────────
@@ -1975,18 +1992,8 @@
             } catch (e) { /* ignore */ }
         }
 
-
-        // ── 3. MEMORY ────────────────────────────────────────────────────────────
-        // Pinned memories and the ones the recent messages bring up (lib/memory-recall.js).
-        prompt += buildMemoryContext(history || getChatHistory());
-
-        // ── 3b. DAILY LIFE ───────────────────────────────────────────────────────
-        // Where the character is in their week right now (lib/daily-life.js).
-        prompt += buildDailyLifeContext(name);
-
-        // ── 4. BEHAVIOUR LOCK ────────────────────────────────────────────────────
-        // Fiction frame + persona-lock reminder land last so they act as the final
-        // instruction the model reads before generating — maximising adherence.
+        // ── 3. BEHAVIOUR LOCK ────────────────────────────────────────────────────
+        // Fiction frame + persona-lock reminder.
         if (settings.antiRefusal === true) {
             prompt += '\n\n' + getPrompt('promptAntiRefusalFrame');
             prompt += `\n\n${getPrompt('promptTetheredReminder')}`;
@@ -1994,40 +2001,69 @@
             prompt += `\n\n${getPrompt('promptTetheredNoFrame')}`;
         }
 
-        // ── 4b. PERSONALITY AND FEELINGS ─────────────────────────────────────────
-        // From the emotion popup, after the lock so they are among the last
-        // instructions read: the NSFW permission, the character's own texting style
-        // (Personality tab), and how the Big Five and current feelings make them text
-        // (lib/texting-behavior.js), which also moves the reply length a step.
+        // ── 4. PERSONALITY ───────────────────────────────────────────────────────
+        // From the emotion popup: the NSFW permission and the character's own texting
+        // style (Personality tab).
         const charKey = getCharacterKey();
         const behavior = buildBehaviorContext(char, getCharacterVerbosity(charKey));
         prompt += behavior.nsfw;
         prompt += buildTextingStyleContext(char);
-        prompt += behavior.text;
 
-        // ── 5. VERBOSITY ─────────────────────────────────────────────────────────
-        prompt += '\n\n' + getVerbosityPrompt(behavior.verbosity);
-
-        // ── 6. TEXTING FORMAT ────────────────────────────────────────────────────
-        // Final anchor: with narrative story context in the prompt, models drift into
-        // roleplay narration and move stage directions into brackets when asterisks
-        // are banned. Stating the medium last keeps every reply an actual text.
+        // ── 5. TEXTING FORMAT ────────────────────────────────────────────────────
+        // With narrative story context in the prompt, models drift into roleplay
+        // narration and move stage directions into brackets when asterisks are banned.
+        // Stating the medium keeps every reply an actual text.
         const textingFormat = getPrompt('promptTextingFormat');
         if (textingFormat) prompt += '\n\n' + textingFormat;
 
-        // ── 7. MESSAGE FORMAT ────────────────────────────────────────────────────
+        // ── 5b. MESSAGE FORMAT ───────────────────────────────────────────────────
         prompt += '\n\n' + buildMessageFormatPrompt(name, userName);
 
-        // ── 8. MOOD ──────────────────────────────────────────────────────────────
-        // Auto mode: the hidden <mood> line the model reports changed feelings in.
-        // After the format rules, the one line that isn't a text; readReply takes it out.
-        prompt += buildMoodRules(char);
-
-        // ── 9. LIFE ──────────────────────────────────────────────────────────────
+        // ── 5c. LIFE ─────────────────────────────────────────────────────────────
         // Daily Life: the hidden <life> line the model reports changes to the errands in.
         prompt += buildLifeRules(char);
 
-        return prompt;
+        // ── 6. MEMORY ────────────────────────────────────────────────────────────
+        // Pinned memories and the ones the recent messages bring up (lib/memory-recall.js).
+        let live = buildMemoryContext(history || getChatHistory());
+
+        // ── 7. DAILY LIFE ────────────────────────────────────────────────────────
+        // Where the character is in their week right now (lib/daily-life.js).
+        live += buildDailyLifeContext(name);
+
+        // ── 8. FEELINGS ──────────────────────────────────────────────────────────
+        // How the Big Five and current feelings make them text (lib/texting-behavior.js),
+        // which also moves the reply length a step.
+        live += behavior.text;
+        live += '\n\n' + getVerbosityPrompt(behavior.verbosity);
+
+        // ── 9. MOOD ──────────────────────────────────────────────────────────────
+        // Auto mode: the hidden <mood> line the model reports changed feelings in, with
+        // the feelings as they stand; readReply takes it out. Then the day it is.
+        live += buildMoodRules(char);
+        live += buildLifeDate();
+
+        return { stable: prompt, live };
+    }
+
+    /**
+     * Whether what changes goes after the chat. With a connection profile, yes: that's
+     * where a remote provider's prompt cache is. Not on the default connection, which takes
+     * no message list, or on Ollama and custom endpoints, whose local chat templates
+     * often refuse a system message after the first.
+     */
+    function splitsLiveContext() {
+        return settings.source === 'profile';
+    }
+
+    /**
+     * Puts what changes from reply to reply after the chat, before the texts you've just
+     * sent: next time the request is the same up to there.
+     */
+    function placeLiveContext(apiMessages, parts) {
+        let at = apiMessages.length;
+        while (at > 1 && apiMessages[at - 1].role === 'user') at--;
+        apiMessages.splice(at, 0, ...parts.filter(Boolean).map(content => ({ role: 'system', content: content.trim() })));
     }
 
     /**
@@ -2754,11 +2790,15 @@
     }
 
     async function buildApiMessagesFromHistory(history, extraSystemMessages = [], targetCharOverride = null) {
-        const systemPrompt = await buildSystemPrompt(targetCharOverride, history);
-        const apiMessages = [{ role: 'system', content: systemPrompt }];
+        const { stable, live } = await buildPromptParts(targetCharOverride, history);
+        const systemPrompt = stable + live;
+        const apart = splitsLiveContext();
+        const apiMessages = [{ role: 'system', content: apart ? stable : systemPrompt }];
 
-        for (const msg of extraSystemMessages) {
-            if (msg) apiMessages.push({ role: 'system', content: msg });
+        if (!apart) {
+            for (const msg of extraSystemMessages) {
+                if (msg) apiMessages.push({ role: 'system', content: msg });
+            }
         }
 
         // Summarized early messages go in the system prompt instead
@@ -2773,6 +2813,7 @@
             const reactionText = buildUserReactionText(msg);
             if (reactionText) apiMessages.push({ role: 'user', content: reactionText });
         });
+        if (apart) placeLiveContext(apiMessages, [live, ...extraSystemMessages]);
 
         // --- Layer 3: Pre-fill assistant turn (anti-refusal, chat-completion backends only) ---
         // Planting the assistant prefix forces the model to continue in-character rather than
@@ -2818,11 +2859,15 @@
         }
 
         // ── Solo / individual group-member mode ───────────────────────────────
-        const systemPrompt = await buildSystemPrompt(char, history);
-        const apiMessages = [{ role: 'system', content: systemPrompt }];
+        const { stable, live } = await buildPromptParts(char, history);
+        const systemPrompt = stable + live;
+        const apart = splitsLiveContext();
+        const apiMessages = [{ role: 'system', content: apart ? stable : systemPrompt }];
 
-        for (const msg of extraSystemMessages) {
-            if (msg) apiMessages.push({ role: 'system', content: msg });
+        if (!apart) {
+            for (const msg of extraSystemMessages) {
+                if (msg) apiMessages.push({ role: 'system', content: msg });
+            }
         }
 
         const sent = historyToSend(history);
@@ -2834,6 +2879,7 @@
             const reactionText = buildUserReactionText(msg);
             if (reactionText) apiMessages.push({ role: 'user', content: reactionText });
         });
+        if (apart) placeLiveContext(apiMessages, [live, ...extraSystemMessages]);
 
         const charName = (char && char.name) || getCharacterName();
         const userName = getUserName();
@@ -5994,7 +6040,12 @@
     /** The rule for the hidden <life> line while Daily Life applies (see buildSystemPrompt), else ''. */
     function buildLifeRules(char) {
         if (!dailyLifeActive()) return '';
-        return `\n\n${DailyLife.lifeRules({ charName: char.name || 'Character', userName: getUserName(), date: new Date(), madeUp: settings.dailyLifeMadeUp === true })}`;
+        return `\n\n${DailyLife.lifeRules({ charName: char.name || 'Character', userName: getUserName(), madeUp: settings.dailyLifeMadeUp === true })}`;
+    }
+
+    /** The day those rules count from, while Daily Life applies, else ''. */
+    function buildLifeDate() {
+        return dailyLifeActive() ? `\n\n${DailyLife.lifeDate(new Date())}` : '';
     }
 
     /** The block of the week the character is in now ({ day, index, block }), or null. */
@@ -6074,7 +6125,7 @@
     /**
      * Time together is over: it goes in the life's Recent list right away, and when the
      * main chat has anything from that time, the model's sentence about it takes its place.
-     * An accidental moment leaves nothing.
+     * A text may follow once they've parted. An accidental moment leaves nothing.
      */
     async function noteTogether(key, { from, until }) {
         const char = getCurrentCharacter();
@@ -6084,6 +6135,7 @@
         settings.lifeState[key] = DailyLife.noteInStart(settings.lifeState[key], entry);
         saveSettings();
         if (emotionSystem) emotionSystem.refresh();
+        if (proactiveMessaging) proactiveMessaging.planParted(key, until);
         const story = getSTStoryContext(char, { from, until, maxMessages: ST_STRETCH_MAX_MESSAGES, maxChars: ST_STRETCH_MAX_CHARS });
         if (!story) return;
         try {
