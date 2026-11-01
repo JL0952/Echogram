@@ -69,8 +69,10 @@ test('a looser answer', () => {
     ].join('\n'));
     assert.deepEqual(s.weekday.map(b => `${b.from}-${b.to} ${b.place}/${b.doing} ${b.phone}`), [
         '07:00-08:00 home/breakfast free',
-        '09:00-17:00 office/work busy',
+        // The meetings began later: work splits around them
+        '09:00-13:00 office/work busy',
         '13:00-15:00 office/meetings busy',
+        '15:00-17:00 office/work busy',
         '18:00-19:00 公园/跑步 busy',
         '22:30-06:30 home/sleeping asleep',
     ]);
@@ -91,7 +93,7 @@ test('two fields, and a time in the place', () => {
 
 test('am and pm', () => {
     const s = Life.parseSchedule('weekday 9-6pm | office | work\nweekday 12am-7am | home | asleep\nweekday 12pm-1pm | cafe | lunch');
-    assert.deepEqual(s.weekday.map(b => `${b.from}-${b.to}`), ['00:00-07:00', '09:00-18:00', '12:00-13:00']);
+    assert.deepEqual(s.weekday.map(b => `${b.from}-${b.to}`), ['00:00-07:00', '09:00-12:00', '12:00-13:00', '13:00-18:00']);
 });
 
 test('no schedule in it', () => {
@@ -148,9 +150,9 @@ test('editing a day: replace, add, delete', () => {
     const s = Life.parseSchedule(STANDARD);
     const edited = Life.withBlock(s, 'weekday', 1, { from: '10:00', to: '19:00', place: '医院', doing: '值班', phone: 'busy' });
     assert.deepEqual(edited.weekday.map(b => `${b.from} ${b.doing}`), ['07:00 起床洗漱', '10:00 值班', '23:30 睡觉']);
-    // Added blocks fall into time order
+    // Added blocks fall into time order (lunch inside work splits it)
     const added = Life.withBlock(s, 'weekday', -1, { from: '12:00', to: '13:00', doing: '午饭' });
-    assert.deepEqual(added.weekday.map(b => b.doing), ['起床洗漱', '上班', '午饭', '睡觉']);
+    assert.deepEqual(added.weekday.map(b => b.doing), ['起床洗漱', '上班', '午饭', '上班', '睡觉']);
     assert.equal(added.weekday[2].phone, 'free');
     // Not a block: nothing changes
     assert.deepEqual(Life.withBlock(s, 'weekday', 0, { from: '12:00', to: '12:00', doing: 'x' }), s);
@@ -403,4 +405,62 @@ test('the chance a busy or sleeping character notices, and when they look if not
     assert.equal(Life.unseenUntil({ schedule: s, date: at(27, 3), unread: 1, random: rolls(0.5, 1) }), at(27, 7, 15).getTime());
     // Free, or between blocks: always seen
     assert.equal(Life.unseenUntil({ schedule: s, date: at(26, 19), unread: 1, random: rolls(0.99) }), null);
+});
+
+const times = blocks => blocks.map(b => `${b.from}-${b.to} ${b.doing}`);
+
+test('a block edited by hand keeps its time: others are cut, split or dropped', () => {
+    const s = Life.normalizeSchedule({ weekday: [{ from: '09:00', to: '18:00', doing: '上班', phone: 'busy' }] });
+    // Partly over it: cut back
+    assert.deepEqual(times(Life.withBlock(s, 'weekday', -1, { from: '17:00', to: '19:00', doing: '健身' }).weekday), ['09:00-17:00 上班', '17:00-19:00 健身']);
+    assert.deepEqual(times(Life.withBlock(s, 'weekday', -1, { from: '08:00', to: '10:00', doing: '通勤' }).weekday), ['08:00-10:00 通勤', '10:00-18:00 上班']);
+    // All of it: gone
+    assert.deepEqual(times(Life.withBlock(s, 'weekday', -1, { from: '08:00', to: '19:00', doing: '出差' }).weekday), ['08:00-19:00 出差']);
+    // Inside it: split around, the pieces keep what they were
+    const split = Life.withBlock(s, 'weekday', -1, { from: '12:00', to: '13:00', doing: '午饭' }).weekday;
+    assert.deepEqual(times(split), ['09:00-12:00 上班', '12:00-13:00 午饭', '13:00-18:00 上班']);
+    assert.equal(split[2].phone, 'busy');
+    // Lengthening a block over a later one: the edited block wins even though it began first
+    const both = Life.normalizeSchedule({ weekday: [{ from: '09:00', to: '18:00', doing: '上班' }, { from: '19:30', to: '21:00', doing: '健身' }] });
+    assert.deepEqual(times(Life.withBlock(both, 'weekday', 0, { from: '09:00', to: '20:00', doing: '加班' }).weekday), ['09:00-20:00 加班', '20:00-21:00 健身']);
+    // What's left under 5 minutes goes too
+    assert.deepEqual(times(Life.withBlock(s, 'weekday', -1, { from: '09:03', to: '18:00', doing: '会' }).weekday), ['09:03-18:00 会']);
+});
+
+test('the night meets the next weekday morning; weekends nights run into another list', () => {
+    const s = Life.normalizeSchedule({ weekday: [{ from: '07:00', to: '08:30', doing: '早饭' }, { from: '23:30', to: '07:00', doing: '睡觉', phone: 'asleep' }] });
+    // Sleep lengthened into breakfast: breakfast starts later
+    assert.deepEqual(times(Life.withBlock(s, 'weekday', 1, { from: '23:30', to: '08:00', doing: '睡觉', phone: 'asleep' }).weekday),
+        ['08:00-08:30 早饭', '23:30-08:00 睡觉']);
+    // A run added at 06:00: the night ends there
+    assert.deepEqual(times(Life.withBlock(s, 'weekday', -1, { from: '06:00', to: '07:00', doing: '晨跑' }).weekday),
+        ['06:00-07:00 晨跑', '07:00-08:30 早饭', '23:30-06:00 睡觉']);
+    // Saturday: its early hours (Friday night's end) and its own night (into Sunday) don't meet
+    const sat = Life.normalizeSchedule({ saturday: [{ from: '01:00', to: '10:00', doing: '睡懒觉' }, { from: '23:30', to: '08:00', doing: '睡觉' }] });
+    assert.deepEqual(times(sat.saturday), ['01:00-10:00 睡懒觉', '23:30-08:00 睡觉']);
+});
+
+test('a schedule that overlaps (written so, or by the model): the later-begun keeps the time', () => {
+    const s = Life.normalizeSchedule({ weekday: [
+        { from: '22:00', to: '01:00', doing: '打游戏', phone: 'free' },
+        { from: '23:00', to: '07:00', doing: '睡觉', phone: 'asleep' },
+        { from: '06:00', to: '08:00', doing: '晨跑', phone: 'free' },
+        { from: '09:00', to: '18:00', doing: '上班', phone: 'busy' },
+        { from: '12:00', to: '13:00', doing: '午饭', phone: 'free' },
+        { from: '12:00', to: '13:00', doing: '午饭（重复）', phone: 'free' },
+    ] });
+    assert.deepEqual(times(s.weekday), ['06:00-08:00 晨跑', '09:00-12:00 上班', '12:00-13:00 午饭（重复）', '13:00-18:00 上班', '22:00-23:00 打游戏', '23:00-06:00 睡觉']);
+    // Looked up through the night: asleep from 23:00 until the run (it used to wake for the game at 00:30)
+    const doing = (h, m = 0) => Life.blockAt(s, at(27, h, m))?.block.doing;
+    assert.deepEqual([doing(22, 30), doing(23, 30), doing(0, 30), doing(3), doing(6, 30)], ['打游戏', '睡觉', '睡觉', '睡觉', '晨跑']);
+    assert.equal(Life.blockEndAt(s, at(27, 3)).getTime(), at(27, 6).getTime());
+});
+
+test('waking up ends where the next block begins, across lists too', () => {
+    // Friday night (weekdays) runs to 07:00, but Saturday starts at 06:00
+    const s = Life.normalizeSchedule({ weekday: [{ from: '23:30', to: '07:00', doing: '睡觉', phone: 'asleep' }],
+        saturday: [{ from: '06:00', to: '09:00', doing: '钓鱼', phone: 'free' }] });
+    assert.equal(Life.blockAt(s, at(31, 3)).block.doing, '睡觉');
+    assert.equal(Life.blockEndAt(s, at(31, 3)).getTime(), at(31, 6).getTime());
+    assert.equal(Life.blockAt(s, at(31, 6, 30)).block.doing, '钓鱼');
 });

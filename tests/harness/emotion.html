@@ -1041,6 +1041,24 @@
         field('place').val('家');
         click('[data-emo-action="save-block"]');
         res.added = week().weekday.map(b => b.doing).join(',') === '早饭,上网课' && $p('.et-sched-row').length === 2;
+        // Added inside another: that one splits around it; the rows show the pieces
+        click('[data-emo-action="add-block"]');
+        field('from').val('14:00');
+        field('to').val('15:00');
+        field('doing').val('开会');
+        click('[data-emo-action="save-block"]');
+        res.splitAround = week().weekday.map(b => `${b.from}-${b.to} ${b.doing}`).join(',') === '07:00-08:00 早饭,13:00-14:00 上网课,14:00-15:00 开会,15:00-16:00 上网课'
+            && $p('.et-sched-row').length === 4;
+        // Stretched over the next one: that one goes; then back to two blocks for what follows
+        click('[data-emo-block="2"]');
+        field('to').val('16:00');
+        click('[data-emo-action="save-block"]');
+        res.coveredGoes = week().weekday.map(b => b.doing).join(',') === '早饭,上网课,开会';
+        click('[data-emo-block="2"]');
+        click('[data-emo-action="delete-block"]');
+        click('[data-emo-block="1"]');
+        field('to').val('16:00');
+        click('[data-emo-action="save-block"]');
         click('[data-emo-block="1"]');
         click('[data-emo-action="delete-block"]');
         res.deleted = week().weekday.map(b => b.doing).join(',') === '早饭' && $p('.et-sched-row').length === 1;
