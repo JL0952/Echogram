@@ -49,6 +49,7 @@
     loadEchoTextModule('lib/daily-life.js', 'EchoTextDailyLife');
     loadEchoTextModule('lib/proactive-rounds.js', 'EchoTextProactiveRounds');
     loadEchoTextModule('lib/catch-up.js', 'EchoTextCatchUp');
+    loadEchoTextModule('lib/character-data.js', 'EchoTextCharacterData');
     loadEchoTextModule('lib/emotion-system.js', 'EchoTextEmotionSystem');
     loadEchoTextModule('lib/proactive-messaging.js', 'EchoTextProactiveMessaging');
     loadEchoTextModule('lib/settings-modal.js', 'EchoTextSettingsModal');
@@ -512,6 +513,7 @@
         jQuery('#et_auto_open_panel').prop('checked', settings.autoOpenOnReload);
         jQuery('#et_auto_load_last_char_panel').prop('checked', settings.autoLoadLastCharacter === true);
         jQuery('#et_auto_scroll_panel').prop('checked', settings.autoScroll);
+        renderRecoverRows();
         jQuery('#et_emotion_mode_panel').val(settings.emotionMode || 'manual');
         jQuery('#et_nsfw_enabled_panel').prop('checked', settings.nsfwEnabled === true);
         jQuery('#et_daily_life_panel').prop('checked', settings.dailyLifeEnabled === true);
@@ -1548,6 +1550,7 @@
         jQuery('#et-char-avatar-wrap').replaceWith(buildAvatarHtml(charName, '', 'et-char-avatar-wrap'));
         setInputPlaceholder(hasChar ? `Text ${charName}...` : 'Text a character...');
         jQuery('#et-input').prop('disabled', !hasChar);
+        renderRecoverRows();
         jQuery('#et-send-btn, #et-attach-btn, #et-voice-btn').prop('disabled', !hasChar);
         setComposeMode(null);
         updatePanelStatusRow();
@@ -5850,6 +5853,81 @@
     // DAILY LIFE (docs/platform-plan.md 12; the data is lib/daily-life.js)
     // ============================================================
 
+    // ============================================================
+    // A CHARACTER'S DATA ACROSS RENAMES (lib/character-data.js)
+    // ============================================================
+
+    const CharacterData = window.EchoTextCharacterData;
+
+    /**
+     * SillyTavern renamed a character, and with it their card's file: what Echogram keeps
+     * for them moves to the new key. Its own chat change then redraws the panel; one
+     * picked here (not SillyTavern's) is redrawn once the cards are listed again.
+     */
+    function onCharacterRenamed(oldAvatar, newAvatar) {
+        if (!oldAvatar || !newAvatar || oldAvatar === newAvatar) return;
+        CharacterData.moveCharacterData(settings, oldAvatar, newAvatar);
+        if (groupManager?.getActiveCharKey?.() === oldAvatar) groupManager.setActiveCharKey(newAvatar);
+        const picked = selectedCharacterKey === oldAvatar;
+        if (picked) selectedCharacterKey = newAvatar;
+        saveSettings();
+        if (picked) setTimeout(() => { if (panelOpen) applySelectedCharacterToPanel(); }, 1000);
+    }
+
+    /** The key of every card SillyTavern has. */
+    function liveCharacterKeys() {
+        return (SillyTavern.getContext().characters || []).map(char => char.avatar || char.name).filter(Boolean);
+    }
+
+    /**
+     * Settings → General, both copies: data no card has any more (renamed before Echogram
+     * moved it, or the card deleted), to move onto the open character or delete. Hidden
+     * when there's none, in a group, or before SillyTavern has listed its cards.
+     */
+    function renderRecoverRows() {
+        const rows = jQuery('[data-et-recover]');
+        if (!rows.length) return;
+        const live = liveCharacterKeys();
+        const orphans = live.length && getCharacterKey() && !inGroupSession() ? CharacterData.orphanedKeys(settings, live) : [];
+        rows.prop('hidden', !orphans.length);
+        const options = orphans.map(o =>
+            `<option value="${escapeHtml(o.key)}">${escapeHtml(`${o.name} · ${CharacterData.describeOrphan(o)}`)}</option>`).join('');
+        // The one picked stays picked while it's there
+        rows.find('[data-et-recover-pick]').each(function () {
+            const picked = this.value;
+            jQuery(this).html(options);
+            if (orphans.some(o => o.key === picked)) this.value = picked;
+        });
+        rows.find('[data-et-recover-move]').removeClass('et-recover-armed').text(`Move to ${getCharacterName()}`);
+        rows.find('[data-et-recover-delete]').removeClass('et-recover-armed').text('Delete');
+    }
+
+    // Moving data onto a character goes into theirs, deleting it is for good: a second click within a few seconds
+    function bindRecoverRows() {
+        let disarm = null;
+        jQuery(document).off('click.et-recover').on('click.et-recover', '[data-et-recover-move], [data-et-recover-delete]', function () {
+            const button = jQuery(this);
+            const from = button.closest('[data-et-recover]').find('[data-et-recover-pick]').val();
+            const to = getCharacterKey();
+            if (!from || !to) return;
+            clearTimeout(disarm);
+            if (!button.hasClass('et-recover-armed')) {
+                renderRecoverRows();
+                button.addClass('et-recover-armed').text('Confirm?');
+                disarm = setTimeout(renderRecoverRows, 3000);
+                return;
+            }
+            const name = getCharacterName();
+            const moving = button.is('[data-et-recover-move]');
+            if (moving) CharacterData.moveCharacterData(settings, from, to);
+            else CharacterData.deleteCharacterData(settings, from);
+            saveSettings();
+            if (moving && panelOpen) applySelectedCharacterToPanel();
+            renderRecoverRows();
+            toastr.success(moving ? `Moved to ${name}` : `Deleted ${CharacterData.nameOf(from)}`, 'Echogram');
+        });
+    }
+
     const DailyLife = window.EchoTextDailyLife;
     // How much slower a busy or sleeping character reads and answers
     const BUSY_SLOWDOWN = 2;
@@ -8319,6 +8397,7 @@
             setEmotionMode,
             setDailyLifeEnabled,
             refreshProactiveInsights,
+            renderRecoverRows,
             updateProactiveToggleButtons,
             startProactiveScheduler,
             triggerTestProactiveMessage,
@@ -8627,6 +8706,7 @@
 
         _onChatChanged = async () => {
             cancelScheduledReply();
+            renderRecoverRows();
             if (!settings.enabled) return;
 
             closeCharacterPicker();
@@ -8653,6 +8733,9 @@
             }
         };
         context.eventSource.on(context.event_types.CHAT_CHANGED, _onChatChanged);
+        // A rename changes the card's file, and so the key Echogram files them under
+        if (context.event_types.CHARACTER_RENAMED) context.eventSource.on(context.event_types.CHARACTER_RENAMED, onCharacterRenamed);
+        bindRecoverRows();
 
         // Also listen for GROUP_UPDATED to refresh the bar if membership changes
         if (context.event_types.GROUP_UPDATED) {

@@ -3575,6 +3575,35 @@ html.et-bg-light {
     margin-bottom: 20px;
 }
 
+/* Lost character data (Settings → General): which, and moving it onto the open character */
+.et-field[data-et-recover][hidden] {
+    display: none;
+}
+
+.et-recover-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.et-recover-row .et-select-wrapper {
+    flex: 1;
+    min-width: 0;
+}
+
+/* Delete: quiet until it's armed */
+.et-mem-add-btn.et-recover-delete {
+    border-color: var(--et-surface-line);
+    background: transparent;
+    color: var(--et-surface-muted);
+}
+
+.et-mem-add-btn.et-recover-armed {
+    border-color: rgba(248, 113, 113, 0.5);
+    background: rgba(248, 113, 113, 0.12);
+    color: #f87171;
+}
+
 .et-field-label {
     display: flex;
     align-items: center;

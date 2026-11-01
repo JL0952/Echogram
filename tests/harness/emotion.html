@@ -27,6 +27,7 @@
 <script src="../../lib/daily-life.js"></script>
 <script src="../../lib/proactive-rounds.js"></script>
 <script src="../../lib/catch-up.js"></script>
+<script src="../../lib/character-data.js"></script>
 <script src="build/bundle-reply.js"></script>
 <script src="../../lib/emotion-model.js"></script>
 <script src="../../lib/emotion-icons.js"></script>
@@ -1483,6 +1484,70 @@
         return res;
     };
 
+    // A character renamed in SillyTavern keeps their data (lib/character-data.js), and data no card has
+    // any more moves onto the open character from Settings → General, through index.js's real code
+    window.runRenameTest = async function () {
+        const res = {};
+        errors.length = 0;
+        const s = env.settings;
+        const realContext = window.SillyTavern.getContext;
+        window.SillyTavern.getContext = () => ({ characters: [{ avatar: 'mira.png', name: 'Mira' }] });
+        s.chatHistory['old.png'] = [{ is_user: true, mes: 'hi', send_date: 1 }, { is_user: false, mes: 'yo', send_date: 2 }];
+        s.characterSchedules = { 'old.png': { weekday: [{ from: '09:00', to: '18:00', place: '', doing: 'work', phone: 'busy' }], saturday: [], sunday: [] } };
+        s.proactiveTemperament = { 'old.png': 'clingy' };
+
+        // SillyTavern renames old.png to new.png: everything moves
+        r.onCharacterRenamed('old.png', 'new.png');
+        res.renameMoves = s.chatHistory['new.png']?.length === 2 && !s.chatHistory['old.png']
+            && s.characterSchedules['new.png']?.weekday.length === 1 && s.proactiveTemperament['new.png'] === 'clingy';
+
+        // new.png has no card (here): it shows in Settings → General, to move onto Mira
+        const mira = s.chatHistory['mira.png'];
+        s.chatHistory['mira.png'] = [{ is_user: true, mes: 'after', send_date: 3 }];
+        const { host } = await mountSettingsPanel();
+        r.bindRecoverRows();
+        r.renderRecoverRows();
+        const row = host.querySelector('[data-et-recover]');
+        const button = () => row.querySelector('[data-et-recover-move]');
+        res.rowShown = !row.hidden && row.offsetParent !== null
+            && row.querySelector('option')?.textContent === 'new · 2 messages, schedule' && button().textContent === 'Move to Mira';
+        // One click arms it; the second moves it, merged with Mira's own chat by time
+        button().click();
+        res.armed = button().textContent === 'Confirm?' && !!s.chatHistory['new.png'];
+        button().click();
+        res.moved = s.chatHistory['mira.png'].map(m => m.mes).join(',') === 'hi,yo,after' && !s.chatHistory['new.png']
+            && s.characterSchedules['mira.png']?.weekday.length === 1 && row.hidden;
+
+        // Nothing left over: hidden
+        r.renderRecoverRows();
+        res.noneHidden = row.hidden;
+
+        // Two left over, the second picked and deleted: only it goes, and the pick holds through the first click
+        s.chatHistory['a.png'] = [{ is_user: true, mes: 'a', send_date: 1 }, { is_user: false, mes: 'a2', send_date: 2 }];
+        s.chatHistory['b.png'] = [{ is_user: true, mes: 'b', send_date: 1 }];
+        s.characterMemories = { 'b.png': [{ id: 'bm', category: 'custom', content: 'b' }] };
+        r.renderRecoverRows();
+        const pick = row.querySelector('[data-et-recover-pick]');
+        const remove = () => row.querySelector('[data-et-recover-delete]');
+        pick.value = 'b.png';
+        remove().click();
+        res.deleteArmed = remove().textContent === 'Confirm?' && pick.value === 'b.png' && button().textContent === 'Move to Mira';
+        remove().click();
+        res.deleted = !s.chatHistory['b.png'] && !s.characterMemories['b.png'] && s.chatHistory['a.png']?.length === 2
+            && [...pick.options].map(o => o.value).join(',') === 'a.png' && !row.hidden;
+        delete s.chatHistory['a.png'];
+        delete s.characterMemories;
+
+        s.chatHistory['mira.png'] = mira;
+        delete s.characterSchedules;
+        delete s.proactiveTemperament;
+        host.remove();
+        window.SillyTavern.getContext = realContext;
+        res.errors = errors.slice();
+        res.ok = Object.values(res).filter(v => typeof v === 'boolean').every(Boolean) && !errors.length;
+        return res;
+    };
+
     // ?phone: every tab as tall as Emotions with its sliders, Emotions off included; a longer one scrolls inside
     window.runPhoneHeightTest = async function () {
         const res = {};
@@ -1799,7 +1864,8 @@
         const catchUp = await window.runCatchUpTest();
         const plan = await window.runPlanTest();
         const lifeMemory = await window.runLifeMemoryTest();
-        fetch('/__log', { method: 'POST', body: JSON.stringify({ runReplyLengthTest: replyLength, runLifeReportTest: lifeReport, runUnseenTest: unseen, runCatchUpTest: catchUp, runPlanTest: plan, runLifeMemoryTest: lifeMemory, runEmotionTest: result, runAutoTest: auto, runReplyTest: reply, runTapbackTest: tapback, runMemoryTest: memory, runSummaryTest: summary, runInstagramTest: instagram, runScheduleTest: schedule, runLifeTest: life }) }).catch(() => {});
+        const rename = await window.runRenameTest();
+        fetch('/__log', { method: 'POST', body: JSON.stringify({ runReplyLengthTest: replyLength, runLifeReportTest: lifeReport, runUnseenTest: unseen, runCatchUpTest: catchUp, runPlanTest: plan, runLifeMemoryTest: lifeMemory, runRenameTest: rename, runEmotionTest: result, runAutoTest: auto, runReplyTest: reply, runTapbackTest: tapback, runMemoryTest: memory, runSummaryTest: summary, runInstagramTest: instagram, runScheduleTest: schedule, runLifeTest: life }) }).catch(() => {});
     } else if (params.has('memory')) {
         // Two memories, one pinned, the other in the last prompt; Add Memory open on a bubble
         env.settings.characterMemories = { 'mira.png': [

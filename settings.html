@@ -80,6 +80,19 @@
                             <div class="et-hint">When SillyTavern reloads, automatically select the last character you were chatting with.</div>
                         </div>
 
+                        <div class="et-field" data-et-recover hidden>
+                            <label class="et-field-label"><i class="fa-solid fa-box-archive"></i> Lost Character Data</label>
+                            <div class="et-recover-row">
+                                <div class="et-select-wrapper">
+                                    <select class="et-select" data-et-recover-pick></select>
+                                    <i class="fa-solid fa-chevron-down et-select-arrow"></i>
+                                </div>
+                                <button type="button" class="et-mem-add-btn" data-et-recover-move>Move</button>
+                                <button type="button" class="et-mem-add-btn et-recover-delete" data-et-recover-delete>Delete</button>
+                            </div>
+                            <div class="et-hint">Left by a renamed or deleted card.</div>
+                        </div>
+
                         <div class="et-field">
                             <label class="et-toggle-row" for="et_auto_scroll_panel">
                                 <input type="checkbox" id="et_auto_scroll_panel" class="checkbox">
