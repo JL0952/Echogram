@@ -126,6 +126,8 @@
     r.renderMessages(history);
     const panel = document.getElementById('et-panel');
     panel.setAttribute('data-et-scheme', scheme);
+    // As the extension does on a light SillyTavern: menus and popups follow it (style.css --et-surface)
+    document.documentElement.classList.toggle('et-bg-light', scheme === 'light');
     statusRow().innerHTML = emo.buildStatusHtml();
 
     function open() {

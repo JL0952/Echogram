@@ -57,6 +57,20 @@
     --wx-map-water: #aed4f4;
 }
 
+/* Menus, popups and dialogs (style.css's --et-surface tokens) in WeChat's menu colours, wherever they
+   open: this stylesheet is only loaded while it's the platform; light with the panel's light look */
+:root {
+    --et-surface: #2c2c2c;
+    --et-surface-text: #f2f2f2;
+    --et-surface-muted: #999999;
+}
+
+:root.et-bg-light {
+    --et-surface: #ffffff;
+    --et-surface-text: #111111;
+    --et-surface-muted: #929292;
+}
+
 /* ── Panel surfaces ─────────────────────────────────────────── */
 
 [data-platform="wechat"] [data-et-role~="messages"] {

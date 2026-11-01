@@ -60,6 +60,8 @@
     };
     const out = document.getElementById('out');
     const schemes = (params.get('schemes') || 'light,dark').split(',');
+    // Menus follow the page's light look, as on a light SillyTavern (style.css --et-surface): only one scheme shows them right
+    if (schemes.length === 1) document.documentElement.classList.toggle('et-bg-light', schemes[0] === 'light');
     const only = params.get('only');
     for (const scheme of schemes) {
         for (const [name, apply] of Object.entries(states)) {
