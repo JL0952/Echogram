@@ -187,6 +187,14 @@ if (api) {
     const elsewhere = await (async () => { const char = env.char; env.char = { ...card, avatar: 'other.png', name: 'Other' }; const r = await send(thread); env.char = char; return r; })();
     assert.ok(!elsewhere.apiMessages.some(m => m.content.includes('story_events')));
 
+    // The Main Chat setting off: no story at all, on any connection
+    env.settings.ctxMainChat = false;
+    assert.ok(!(await send(thread)).apiMessages.some(m => /story_events|He takes the cola/.test(m.content)));
+    env.settings.source = 'default';
+    assert.ok(!(await send(thread)).systemPrompt.includes('He takes the cola'));
+    env.settings.source = 'profile';
+    env.settings.ctxMainChat = true;
+
     // The default connection takes the system prompt: all of it. So do the others, in one system message
     for (const source of ['default', 'ollama', 'openai']) {
         env.settings.source = source;

@@ -1404,6 +1404,79 @@
         return res;
     };
 
+    // Playing the main chat (13b), through index.js's real noteStoryActivity, postUserMessage and maybeCatchUp
+    window.runStoryPauseTest = async function () {
+        const res = {};
+        errors.length = 0;
+        const HOUR = 3600000;
+        const MIN = 60000;
+        const realNow = Date.now;
+        let shift = 0;
+        Date.now = () => realNow() + shift;
+        env.settings.storyPauseEnabled = true;
+        env.settings.catchUpEnabled = true;
+        env.settings.proactiveMessagingEnabled = true;
+        env.settings.dailyLifeEnabled = false;
+        const asked = [];
+        env.requestEchoTextCompletion = async req => { asked.push(req); return '<text at="2000-01-01 00:00">在吗</text>'; };
+        env.buildApiMessagesFromHistoryForChar = async () => ({ apiMessages: [{ role: 'system', content: 'S' }], rawPrompt: '', systemPrompt: 'S' });
+        env.catchUpInputs = () => ({ temperament: 'clingy', baseHours: 4, unanswered: 0, left: 15, roundActive: false });
+        env.panelOpen = true;
+        const twoDays = Date.now() - 2 * 24 * HOUR;
+        const fresh = () => {
+            env.settings.chatHistory['mira.png'] = [{ is_user: true, mes: '晚安', send_date: twoDays - MIN }, { is_user: false, mes: '晚安~', send_date: twoDays }];
+            env.settings.proactiveSeenAt = { 'mira.png': twoDays };
+            env.settings.lifeState = {};
+        };
+
+        // A chat opening with its greeting isn't you playing
+        r.noteStoryActivity(0, 'first_message');
+        res.greetingIgnored = r.storyPauseUntil() === 0;
+        // A message sent or received is, for 15 minutes
+        const started = Date.now();
+        r.noteStoryActivity(1);
+        res.paused = r.storyPauseUntil() >= started + 15 * MIN && r.storyPauseUntil() < started + 16 * MIN;
+        r.noteStoryActivity(2, 'normal');
+        shift += 14 * MIN;
+        res.stillPaused = r.storyPauseUntil() > 0;
+        shift += 2 * MIN;
+        res.quietEnds = r.storyPauseUntil() === 0;
+        // Off: never
+        r.noteStoryActivity(3);
+        env.settings.storyPauseEnabled = false;
+        res.offNeverPauses = r.storyPauseUntil() === 0;
+        env.settings.storyPauseEnabled = true;
+        // Your text brings them back at once; the panel opening doesn't come into it
+        res.onUntilText = r.storyPauseUntil() > 0;
+        env.settings.chatHistory['mira.png'] = [];
+        r.postUserMessage({ is_user: true, mes: '回来了', send_date: Date.now(), meta: {} });
+        res.textLifts = r.storyPauseUntil() === 0;
+
+        // A catch-up that's due waits for the main chat, with no request, then comes
+        fresh();
+        r.noteStoryActivity(4);
+        await r.maybeCatchUp();
+        res.catchUpHeld = asked.length === 0 && r.storyPauseUntil() > 0;
+        r.resumeHeldCatchUp();
+        await sleep(20);
+        res.notWhilePlaying = asked.length === 0;
+        shift += 16 * MIN;
+        r.resumeHeldCatchUp();
+        await sleep(50);
+        res.comesAfter = asked.length === 1;
+        await sleep(20);
+        // Nothing held: the check does nothing
+        asked.length = 0;
+        r.resumeHeldCatchUp();
+        await sleep(20);
+        res.nothingHeld = asked.length === 0;
+
+        Date.now = realNow;
+        res.errors = errors.slice();
+        res.ok = Object.values(res).filter(v => typeof v === 'boolean').every(Boolean) && !errors.length;
+        return res;
+    };
+
     // With you (13a), through index.js's real generateEchoText, onPhoneOverride and noteTogether, the model stubbed
     window.runTogetherTest = async function () {
         const res = {};
@@ -1513,8 +1586,13 @@
         const asked = summaries[0]?.apiMessages.at(-1).content || '';
         res.storySent = summaries.length === 1 && asked.includes('去看电影') && asked.includes('Mira: 好呀') && !asked.includes('走吧') && !asked.includes('<think>');
         const startBefore = env.settings.lifeState['mira.png'].startAt;
+        const bar = () => document.getElementById('et-together-bar');
+        res.barWhileSumming = bar()?.textContent.includes('Summing up') && !!bar().querySelector('[data-et-catchup="pause-together"]') && bar().closest('#et-messages') !== null;
+        r.renderMessages(chat());
+        res.barSurvivesRender = !!bar();
         release();
         await sleep(20);
+        res.barGoneAfter = !bar();
         res.sentence = log().length === 1 && log()[0].text === `${span} 和我去看了电影，在江边走了很久` && env.settings.lifeState['mira.png'].startAt === startBefore;
         click('[data-emo-tab="life"]');
         res.recentShows = $p('.et-life-entry').text().includes('在江边走了很久');
@@ -1535,12 +1613,26 @@
         await sleep(20);
         res.notedOnce = log().length === 1 && plan().phone === 'free';
 
+        // Paused: the request stops and the fixed line stays; no bar without a request
+        env.settings.lifeState = settings.lifeState = {};
+        story.push({ is_user: true, name: '我', mes: '走吧', send_date: Date.now() - 2 * HOUR });
+        let signalled = null;
+        sentence = req => new Promise((resolve, reject) => { signalled = req.signal; req.signal.addEventListener('abort', () => reject(new Error('stopped'))); });
+        const warned = errors.length;
+        const paused = r.noteTogether('mira.png', { from: Date.now() - 3 * HOUR, until: Date.now() - HOUR });
+        await sleep(10);
+        res.barWithPause = !!bar();
+        r.pauseTogetherNote();
+        await paused;
+        res.pausedKeepsFixed = signalled.aborted && !bar() && log().length === 1 && log()[0].text.endsWith(' With 我') && errors.length === warned;
+        story.length = 0;
+
         // The model fails, or the entry goes meanwhile: what's there stays
         env.settings.lifeState = settings.lifeState = {};
         story.push({ is_user: true, name: '我', mes: '走吧', send_date: Date.now() - 2 * HOUR });
         sentence = async () => { throw new Error('down'); };
         await r.noteTogether('mira.png', { from: Date.now() - 3 * HOUR, until: Date.now() - HOUR });
-        res.failedKeepsFixed = log().length === 1 && log()[0].text.endsWith(' With 我');
+        res.failedKeepsFixed = log().length === 1 && log()[0].text.endsWith(' With 我') && !bar();
         sentence = async () => 'I cannot help with that request.';
         env.settings.lifeState = settings.lifeState = {};
         await r.noteTogether('mira.png', { from: Date.now() - 3 * HOUR, until: Date.now() - HOUR });
@@ -2082,7 +2174,8 @@
         const lifeMemory = await window.runLifeMemoryTest();
         const rename = await window.runRenameTest();
         const together = await window.runTogetherTest();
-        fetch('/__log', { method: 'POST', body: JSON.stringify({ runTogetherTest: together, runReplyLengthTest: replyLength, runLifeReportTest: lifeReport, runUnseenTest: unseen, runCatchUpTest: catchUp, runPlanTest: plan, runLifeMemoryTest: lifeMemory, runRenameTest: rename, runEmotionTest: result, runAutoTest: auto, runReplyTest: reply, runTapbackTest: tapback, runMemoryTest: memory, runSummaryTest: summary, runInstagramTest: instagram, runScheduleTest: schedule, runLifeTest: life }) }).catch(() => {});
+        const storyPause = await window.runStoryPauseTest();
+        fetch('/__log', { method: 'POST', body: JSON.stringify({ runTogetherTest: together, runStoryPauseTest: storyPause, runReplyLengthTest: replyLength, runLifeReportTest: lifeReport, runUnseenTest: unseen, runCatchUpTest: catchUp, runPlanTest: plan, runLifeMemoryTest: lifeMemory, runRenameTest: rename, runEmotionTest: result, runAutoTest: auto, runReplyTest: reply, runTapbackTest: tapback, runMemoryTest: memory, runSummaryTest: summary, runInstagramTest: instagram, runScheduleTest: schedule, runLifeTest: life }) }).catch(() => {});
     } else if (params.has('memory')) {
         // Two memories, one pinned, the other in the last prompt; Add Memory open on a bubble
         env.settings.characterMemories = { 'mira.png': [

@@ -179,3 +179,26 @@ test('the insights say with you, when the text after parting comes, and list it 
     assert.ok(parted(insight(day())));
     assert.equal(parted(insight(null)), undefined);
 });
+
+test('while you play the main chat: no new topics, the text after parting waits, and the insights say so', () => {
+    const t = NOW.getTime();
+    const run = (until, parted = null) => {
+        const p = window.EchoTextProactiveMessaging.createProactiveMessaging({
+            getSettings: () => ({ proactiveMessagingEnabled: true }), getUserName: () => 'Qi', getActiveFeatures: () => [],
+            expandTimeDateMacros: x => x, replaceMacros: x => x, getEmotionState: () => null, getProactivePace: () => 1,
+            findLastUserMessageIndex: h => h.map(m => m.is_user).lastIndexOf(true), getTemperament: () => 'normal',
+            getDailyLife: () => day(), getStoryPauseUntil: () => until,
+            getCurrentCharacter: () => ({ name: 'Mira', avatar: 'mira.png' }), getCharacterKey: () => 'mira.png',
+        });
+        const userAt = t - 10 * HOUR;
+        const history = [{ is_user: false, mes: 'hi', send_date: userAt - HOUR }, { is_user: true, mes: 'ok', send_date: userAt }];
+        const state = { lastUserMessageAt: userAt, lastCharacterMessageAt: userAt, triggerHistory: {}, lastEmotionSnapshot: null, lastProactiveAt: 0, parted };
+        return { state, trigger: p.evaluateProactiveTrigger({ history, state, config: { ...p.getDefaultProactiveConfigForCharacter({}), temperament: 'normal' }, now: NOW }) };
+    };
+    assert.ok(run(0).trigger, 'something comes when you are not playing');
+    assert.equal(run(t + 60000).trigger, null);
+    const held = run(t + 60000, { at: t - 60000 });
+    assert.equal(held.trigger, null);
+    assert.ok(held.state.parted, 'still there');
+    assert.equal(run(t - 1, { at: t - 60000 }).trigger.type, 'parted');
+});

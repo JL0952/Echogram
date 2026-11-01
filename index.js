@@ -473,6 +473,7 @@
         jQuery('#et_daily_life').prop('checked', settings.dailyLifeEnabled === true);
         jQuery('#et_daily_life_made_up').prop('checked', settings.dailyLifeMadeUp === true);
         jQuery('#et_catch_up').prop('checked', settings.catchUpEnabled !== false);
+        jQuery('#et_story_pause').prop('checked', settings.storyPauseEnabled !== false);
         jQuery('#et_swiped_messages').prop('checked', settings.swipedMessages === true);
         jQuery('#et_fab_size').val(settings.fabSize);
         jQuery('#et_fab_size_val').text(settings.fabSize + 'px');
@@ -488,6 +489,7 @@
         jQuery('#et_ctx_authors_note').prop('checked', settings.ctxAuthorsNote === true);
         jQuery('#et_ctx_world_info').prop('checked', settings.ctxWorldInfo === true);
         jQuery('#et_ctx_st_messages').prop('checked', settings.ctxSTMessages === true);
+        jQuery('#et_ctx_main_chat').prop('checked', settings.ctxMainChat !== false);
         updateProactiveToggleButtons();
 
         jQuery('.et-icon-option').removeClass('selected');
@@ -522,6 +524,7 @@
         jQuery('#et_daily_life_panel').prop('checked', settings.dailyLifeEnabled === true);
         jQuery('#et_daily_life_made_up_panel').prop('checked', settings.dailyLifeMadeUp === true);
         jQuery('#et_catch_up_panel').prop('checked', settings.catchUpEnabled !== false);
+        jQuery('#et_story_pause_panel').prop('checked', settings.storyPauseEnabled !== false);
         jQuery('#et_swiped_messages_panel').prop('checked', settings.swipedMessages === true);
         jQuery('#et_verbosity_default_panel').val(settings.verbosityDefault || 'medium');
 
@@ -563,6 +566,7 @@
             toggleWIPanelRows(_wiMode);
         }
         jQuery('#et_ctx_st_messages_panel').prop('checked', settings.ctxSTMessages === true);
+        jQuery('#et_ctx_main_chat_panel').prop('checked', settings.ctxMainChat !== false);
         updateProactiveToggleButtons();
 
         // Appearance
@@ -851,6 +855,13 @@
             jQuery('#et_catch_up').prop('checked', settings.catchUpEnabled);
         });
 
+        jQuery('#et_story_pause_panel').off('change.panel').on('change.panel', function () {
+            settings.storyPauseEnabled = jQuery(this).is(':checked');
+            saveSettings();
+            jQuery('#et_story_pause').prop('checked', settings.storyPauseEnabled);
+            refreshProactiveInsights();
+        });
+
         // Swiped messages toggle (panel)
         jQuery('#et_swiped_messages_panel').off('change.panel').on('change.panel', function () {
             settings.swipedMessages = jQuery(this).is(':checked');
@@ -1025,6 +1036,12 @@
             const raw = jQuery(this).val().trim();
             settings.ctxWorldInfoTargetedOrders = !raw ? [] : raw.split(',').map(function (v) { return parseInt(v.trim(), 10); }).filter(function (n) { return !isNaN(n); });
             saveSettings();
+        });
+
+        jQuery('#et_ctx_main_chat_panel').off('change.panel').on('change.panel', function () {
+            settings.ctxMainChat = jQuery(this).is(':checked');
+            saveSettings();
+            jQuery('#et_ctx_main_chat').prop('checked', settings.ctxMainChat);
         });
 
         jQuery('#et_ctx_st_messages_panel').off('change.panel').on('change.panel', function () {
@@ -1968,7 +1985,7 @@
             const openingUse = `This is how the roleplay between ${name} and ${userName} began. Treat its setting and relationships as established facts.`;
             prompt += `\n\n${openingUse} ${name}'s spoken lines in it show how ${name} talks — vocabulary, tone, attitude toward ${userName}, and speech quirks. It is reference material written as narrative prose: never continue it or copy its narration.\n<story_opening>\n${openingText}\n</story_opening>`;
         }
-        const storyText = splitsLiveContext() ? '' : getSTStoryContext(char);
+        const storyText = splitsLiveContext() || settings.ctxMainChat === false ? '' : getSTStoryContext(char);
         if (splitsLiveContext() && getSTStoryMessages(char).length) {
             prompt += `\n\nThe roleplay's recent events are in the chat below, in <story_events>, where they happened between the texts: what comes after one happened after it. ${name} remembers all of this, and the text messages must stay consistent with it.`;
         }
@@ -2303,9 +2320,10 @@
     /**
      * The live ST roleplay to send between the texts (lib/story-texts.js), oldest first:
      * { speaker, text, time }. Skips what getSTStoryContext does. Empty when the open ST
-     * chat doesn't involve the character.
+     * chat doesn't involve the character, or with the Main Chat setting off.
      */
     function getSTStoryMessages(char) {
+        if (settings.ctxMainChat === false) return [];
         try {
             const chat = SillyTavern.getContext().chat;
             if (!Array.isArray(chat) || !chat.length || !isCharInCurrentSTChat(char)) return [];
@@ -5370,6 +5388,8 @@
         saveChatHistory(newHistory);
         setFabUnreadIndicator(false);
         markProactiveUserActivity(getCharacterKey(), Date.now());
+        // You're back
+        storyActiveAt = 0;
         // What the replies before it finished is settled now
         keepLifeMemories();
         renderMessages(newHistory);
@@ -6160,6 +6180,9 @@
         refreshProactiveInsights();
     }
 
+    // The time together being summed up: its request's controller
+    let summingUp = null;
+
     /** With you ran out while nobody was changing it: what you two did is noted once. */
     function noteTogetherEnded() {
         const key = getCharacterKey();
@@ -6175,8 +6198,9 @@
     /**
      * Time together is over: it goes in the life's Recent list right away, under the day
      * it began, with its hours, and when the main chat has anything from that time, the
-     * model's sentence about it takes its place and in Auto mode moves the feelings. A
-     * text may follow once they've parted. An accidental moment leaves nothing.
+     * model's sentence about it takes its place and in Auto mode moves the feelings, with a
+     * bar up meanwhile; paused, what's there stays. A text may follow once they've parted.
+     * An accidental moment leaves nothing.
      */
     async function noteTogether(key, { from, until }) {
         const char = getCurrentCharacter();
@@ -6189,13 +6213,17 @@
         if (proactiveMessaging) proactiveMessaging.planParted(key, until);
         const story = getSTStoryContext(char, { from, until, maxMessages: ST_STRETCH_MAX_MESSAGES, maxChars: ST_STRETCH_MAX_CHARS });
         if (!story) return;
+        const controller = new AbortController();
+        summingUp = controller;
+        setStatusBar('et-together-bar', 'Summing up…', 'pause-together');
         try {
             const request = DailyLife.buildTogetherRequest({ charName: char.name || 'Character', userName, story, moodRule: buildMoodRules(char) });
             const systemPrompt = withRefusalFrame(request.systemPrompt);
             const raw = await sendCompletionRequest({
                 apiMessages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: request.prompt }],
-                rawPrompt: request.prompt, systemPrompt, signal: new AbortController().signal,
+                rawPrompt: request.prompt, systemPrompt, signal: controller.signal,
             });
+            if (controller.signal.aborted) return;
             const reply = readReply(stripThinkingTags(String(raw ?? '')));
             const text = DailyLife.cleanTogetherEntry(reply.mes);
             if (!text || ChatSummaries.looksLikeRefusal(text)) return;
@@ -6208,8 +6236,18 @@
                 emotionSystem.applyMood(reply.mood, key);
             }
         } catch (err) {
-            warn('Noting the time together failed:', err);
+            if (!controller.signal.aborted) warn('Noting the time together failed:', err);
+        } finally {
+            if (summingUp === controller) {
+                summingUp = null;
+                setStatusBar('et-together-bar', '');
+            }
         }
+    }
+
+    /** Pausing that: the request stops, and what's noted stays as it is. */
+    function pauseTogetherNote() {
+        if (summingUp) summingUp.abort();
     }
 
     // Life memories kept per character: at most this many marks of what's been kept
@@ -6394,6 +6432,37 @@
 
 
     // ============================================================
+    // PLAYING THE MAIN CHAT (docs/platform-plan.md 13b)
+    // ============================================================
+    // While you're at it, the character doesn't text first: follow-ups, new topics and
+    // catch-ups wait until the main chat has been quiet a while, or you text them. Only
+    // whether you're playing counts, not what happens in the story.
+
+    const STORY_PAUSE_MS = 15 * 60000;
+    let storyActiveAt = 0;
+    // A catch-up put off by that
+    let catchUpHeld = false;
+
+    /** A message sent or received in the main chat; the greeting of a chat just opened is no sign of you. */
+    function noteStoryActivity(_messageId, type) {
+        if (type === 'first_message') return;
+        storyActiveAt = Date.now();
+        refreshProactiveInsights();
+    }
+
+    /** When the character may text first again (ms), while you're playing the main chat; 0 otherwise. */
+    function storyPauseUntil() {
+        if (settings.storyPauseEnabled === false || !storyActiveAt) return 0;
+        const until = storyActiveAt + STORY_PAUSE_MS;
+        return until > Date.now() ? until : 0;
+    }
+
+    /** The minute's check: a catch-up put off comes once you've stopped. */
+    function resumeHeldCatchUp() {
+        if (catchUpHeld && !storyPauseUntil()) maybeCatchUp();
+    }
+
+    // ============================================================
     // CATCH-UP (docs/platform-plan.md 12c, 12d-3; the logic is lib/catch-up.js)
     // ============================================================
     // Proactive texts only ever run for the open character while the page runs. When you
@@ -6423,12 +6492,16 @@
         if (force || now - seenSavedAt > 10 * 60000) { seenSavedAt = now; saveSettings(); }
     }
 
-    /** The bar over the messages while catching up, with its pause button; gone otherwise. */
+    /** A bar over the messages while something runs in the background, with its pause button; gone without `text`. */
+    function setStatusBar(id, text, pause = 'pause') {
+        jQuery(`#${id}`).remove();
+        if (!text) return;
+        jQuery('#et-messages').prepend(`<div id="${id}" class="et-catchup-bar"><i class="fa-solid fa-clock-rotate-left"></i>`
+            + `<span>${text}</span><button type="button" class="et-catchup-pause" data-et-catchup="${pause}" title="Pause"><i class="fa-solid fa-pause"></i></button></div>`);
+    }
+
     function setCatchUpBar(on) {
-        jQuery('#et-catchup-bar').remove();
-        if (!on) return;
-        jQuery('#et-messages').prepend('<div id="et-catchup-bar" class="et-catchup-bar"><i class="fa-solid fa-clock-rotate-left"></i>'
-            + '<span>Catching up…</span><button type="button" class="et-catchup-pause" data-et-catchup="pause" title="Pause"><i class="fa-solid fa-pause"></i></button></div>');
+        setStatusBar('et-catchup-bar', on ? 'Catching up…' : '');
     }
 
     /**
@@ -6438,6 +6511,9 @@
      */
     async function maybeCatchUp() {
         if (catchingUp || isGenerating || !panelOpen || inGroupSession() || !CatchUp) return;
+        // Playing the main chat: once it's been quiet a while (the minute's check picks it up)
+        catchUpHeld = storyPauseUntil() > 0;
+        if (catchUpHeld) return;
         const char = getCurrentCharacter();
         const key = getCharacterKey();
         if (!char || !key) return;
@@ -8769,6 +8845,8 @@
                     life: activeLife(), today: DailyLife.dateKey(date),
                 };
             },
+            // While you're playing the main chat: when they may text first again (13b)
+            getStoryPauseUntil: storyPauseUntil,
             // Daily Life: the open character's phone now and when that changes ({ phone, endsAt }), or null
             getScheduleNow: () => {
                 const now = phoneNow();
@@ -8838,6 +8916,7 @@
         // also when the app comes back to the front (a phone suspends the timer meanwhile)
         setInterval(resumePendingReply, 60000);
         setInterval(noteTogetherEnded, 60000);
+        setInterval(resumeHeldCatchUp, 60000);
         // The proactive insights keep up on their own while they're on screen ("in 6m", what's due)
         setInterval(refreshVisibleInsights, 30000);
         document.addEventListener('visibilitychange', () => { if (!document.hidden) { resumePendingReply(); noteTogetherEnded(); maybeCatchUp(); } });
@@ -8850,6 +8929,7 @@
         setInterval(() => markSeen(), 60000);
         setTimeout(() => maybeCatchUp(), 3000);
         jQuery(document).on('click', '[data-et-catchup="pause"]', () => pauseCatchUp());
+        jQuery(document).on('click', '[data-et-catchup="pause-together"]', () => pauseTogetherNote());
 
         jQuery('body').append(buildFabHtml());
         positionFab();
@@ -8936,6 +9016,8 @@
             }
         };
         context.eventSource.on(context.event_types.CHAT_CHANGED, _onChatChanged);
+        context.eventSource.on(context.event_types.MESSAGE_SENT, noteStoryActivity);
+        context.eventSource.on(context.event_types.MESSAGE_RECEIVED, noteStoryActivity);
         // A rename changes the card's file, and so the key Echogram files them under
         if (context.event_types.CHARACTER_RENAMED) context.eventSource.on(context.event_types.CHARACTER_RENAMED, onCharacterRenamed);
         bindRecoverRows();
@@ -8978,6 +9060,8 @@
                 context.eventSource.removeListener(context.event_types.CHAT_CHANGED, _onChatChanged);
                 _onChatChanged = null;
             }
+            context.eventSource.removeListener(context.event_types.MESSAGE_SENT, noteStoryActivity);
+            context.eventSource.removeListener(context.event_types.MESSAGE_RECEIVED, noteStoryActivity);
             if (_onGroupUpdated && context.event_types.GROUP_UPDATED) {
                 context.eventSource.removeListener(context.event_types.GROUP_UPDATED, _onGroupUpdated);
                 _onGroupUpdated = null;

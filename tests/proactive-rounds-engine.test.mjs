@@ -31,7 +31,7 @@ function setup({ temperament = 'clingy', answer = '?\n---\n人呢\n---\n你去�
         getSettings: () => settings, saveSettings: () => {}, warn: (...a) => warnings.push(a.join(' ')),
         getCurrentCharacter: () => ({ name: 'Mira', avatar: 'mira.png' }), getCharacterKey: () => 'mira.png',
         getChatHistory: () => settings.chatHistory['mira.png'], getUserName: () => 'Qi',
-        getTemperament: () => env.temperament, getScheduleNow: () => env.schedule, getDailyLife: () => env.day || null,
+        getTemperament: () => env.temperament, getScheduleNow: () => env.schedule, getDailyLife: () => env.day || null, getStoryPauseUntil: () => env.storyUntil || 0,
         expandTimeDateMacros: t => t, replaceMacros: t => t, getActiveFeatures: () => [], getProactivePace: () => 1,
         isGroupSession: () => env.group, isPanelOpen: () => true, getIsGenerating: () => false, getEmotionState: () => null,
         buildApiMessagesFromHistoryForChar: async (history, extraSystem) => ({ apiMessages: [{ role: 'system', content: extraSystem.join('\n') }], rawPrompt: '', systemPrompt: '' }),
@@ -265,4 +265,24 @@ test('the scheduler sends the text after parting once, right after another text 
     globalThis.clearInterval = realClear;
     globalThis.Date = RealDate;
     Math.random = realRandom;
+});
+
+test('a follow-up waits while you play the main chat, the rest moved along with it', async () => {
+    clock = T0;
+    const { p, env, asked, chat, state, talk } = setup({ temperament: 'clingy' });
+    talk();
+    const before = state().round.times.slice();
+    const pausedUntil = before[0] + 10 * MIN;
+    env.storyUntil = pausedUntil;
+    clock = before[0];
+    assert.equal(await p.runDueRound(), true);
+    assert.equal(asked.length, 0);
+    assert.equal(state().round.times[0], pausedUntil);
+    assert.equal(state().round.times[1] - state().round.times[0], before[1] - before[0]);
+    // Once it's been quiet: the round goes on
+    env.storyUntil = 0;
+    clock = pausedUntil;
+    await p.runDueRound();
+    assert.equal(asked.length, 1);
+    assert.equal(chat().at(-1).mes, '?');
 });
