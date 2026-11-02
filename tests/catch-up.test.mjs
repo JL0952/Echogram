@@ -101,14 +101,12 @@ test('reading the answer: the changes and the texts at their times', () => {
 test('settling the changes into the life', () => {
     const state = { startAt: at(28, 9), start: { errands: [{ id: 'e1', text: '周六搬家', progress: '打包了一半', due: '2026-10-31' }], log: [], today: null } };
     const changes = Life.parseLifeTag('<life>happened 加班到十点 (2026-10-29); update 搬家: 搬完了</life>', new Date(NOW)).life;
-    const settled = Life.settleLife(state, [], changes, new Date(NOW));
-    assert.equal(settled.settledAt, NOW);
+    const settled = Life.rewriteLife(state, [], new Date(NOW), { changes });
     assert.equal(settled.startAt, NOW + 1);
     assert.equal(settled.start.errands[0].progress, '搬完了');
     assert.deepEqual(settled.start.log.map(e => [e.date, e.text]), [['2026-10-29', '加班到十点']]);
     // Not replayed again on top of itself
     assert.deepEqual(Life.currentLife(settled, new Date(NOW), [{ is_user: false, send_date: NOW, life: changes }]).log.length, 1);
-    assert.equal(Life.normalizeLife(settled).settledAt, NOW);
 });
 
 test('a change of plan by hand moves where a text can go', () => {
@@ -137,6 +135,6 @@ test('time together: no texts in it, and the model is told', () => {
 test('what a catch-up reports says when it happened, never the time you came back', () => {
     const { life } = C.readAnswer('<life>happened 加班到十点 (2026-10-30 21:00); happened 睡了一天</life>', { from: at(29, 8), now: NOW, planned: [] });
     assert.deepEqual(life.map(c => c.time), ['21:00', undefined]);
-    const settled = Life.settleLife({ startAt: 0, start: { errands: [], log: [], today: null } }, [], life, new Date(NOW));
+    const settled = Life.rewriteLife({ startAt: 0, start: { errands: [], log: [], today: null } }, [], new Date(NOW), { changes: life });
     assert.deepEqual(settled.start.log.map(e => e.text).sort(), ['21:00 加班到十点', '睡了一天']);
 });

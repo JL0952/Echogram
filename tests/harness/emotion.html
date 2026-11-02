@@ -86,7 +86,7 @@
         generateSchedule: options => r.generateSchedule(options),
         onPhoneOverride: before => r.onPhoneOverride(before),
         isWithYou: () => r.isWithYou(),
-        keepLifeMemories: () => r.keepLifeMemories({ settledBefore: Infinity }),
+        writeLife: (...a) => r.writeLife(...a),
         get scheduleTimeoutMs() { return window.__scheduleTimeoutMs; },
         onEmotionStateUpdated: () => { statusRow().innerHTML = emo.buildStatusHtml(); },
     });
@@ -96,7 +96,7 @@
     const env = { settings: { ...sc.settings, defaultPlatform: platform, chatHistory: { 'mira.png': history } }, groupManager: null, FA_REACTIONS: window.EchoTextScenarioReactions,
         showTypingIndicator: false, BASE_URL: '', VERSION_QUERY: '', panelOpen: true, isGenerating: false,
         emotionSystem: emo, imageGeneration: null, memorySystem: null, gallery: null, abortController: null,
-        getCurrentCharacter: () => ({ name: 'Mira', avatar: 'mira.png' }), getCharacterName: () => 'Mira', isTetheredMode: () => true,
+        getCurrentCharacter: () => ({ name: 'Mira', avatar: 'mira.png' }), getCharacterByKey: () => ({ name: 'Mira', avatar: 'mira.png' }), getCharacterName: () => 'Mira', isTetheredMode: () => true,
         getUserName: () => '我', getCharacterKey: () => 'mira.png', getCharAvatarUrl: () => null, _pickerAvatarBg: () => '#7c6f9c',
         isMobileDevice: () => false, getUserAvatarUrl: () => null, isCombinedGroupMode: () => false,
         // A reply: no delays, the model stubbed (runAutoTest sets what it answers)
@@ -1583,18 +1583,23 @@
         plan().from = Date.now() - 2 * HOUR;
         story.push({ is_user: true, name: '我', mes: '走吧', send_date: Date.now() - 3 * HOUR }, { is_user: true, name: '我', mes: '去看电影', send_date: Date.now() - HOUR },
             { is_user: false, name: 'Mira', mes: '<think>x</think>好呀', send_date: new Date(Date.now() - HOUR + 60000).toISOString() });
+        // A reply's change of plan for this
+        const lifeNow = () => window.EchoTextDailyLife.currentLife(env.settings.lifeState['mira.png'], new Date(), chat());
+        chat().push({ is_user: false, mes: '今晚陪你', send_date: Date.now() - 60000, life: [{ op: 'today', date: window.EchoTextDailyLife.dateKey(new Date()), text: '今晚陪你' }] });
+        res.changeOfPlan = lifeNow().today?.text === '今晚陪你';
         let release;
         sentence = () => new Promise(resolve => { release = () => resolve('"和我去看了电影，在江边走了很久"'); });
         emo.toggleTogether();
         await sleep(20);
         const fromClock = clock(Date.now() - 2 * HOUR);
         res.toggledOff = !plan() && !r.isWithYou();
+        res.changeOfPlanGone = lifeNow().today === null;
+        chat().pop();
         res.partedPlanned = env.partedPlans.length === 1 && env.partedPlans[0][0] === 'mira.png' && Math.abs(env.partedPlans[0][1] - Date.now()) < 60000;
         const span = `${fromClock}–${clock(Date.now())}`;
         res.fixedFirst = log().length === 1 && log()[0].text === `${span} With 我`;
         const asked = summaries[0]?.apiMessages.at(-1).content || '';
         res.storySent = summaries.length === 1 && asked.includes('去看电影') && asked.includes('Mira: 好呀') && !asked.includes('走吧') && !asked.includes('<think>');
-        const startBefore = env.settings.lifeState['mira.png'].startAt;
         const bar = () => document.getElementById('et-together-bar');
         res.barWhileSumming = bar()?.textContent.includes('Summing up') && !!bar().querySelector('[data-et-catchup="pause-together"]') && bar().closest('#et-messages') !== null;
         r.renderMessages(chat());
@@ -1602,7 +1607,7 @@
         release();
         await sleep(20);
         res.barGoneAfter = !bar();
-        res.sentence = log().length === 1 && log()[0].text === `${span} 和我去看了电影，在江边走了很久` && env.settings.lifeState['mira.png'].startAt === startBefore;
+        res.sentence = log().length === 1 && log()[0].text === `${span} 和我去看了电影，在江边走了很久`;
         click('[data-emo-tab="life"]');
         res.recentShows = $p('.et-life-entry').text().includes('在江边走了很久');
 
@@ -1812,6 +1817,16 @@
         res.keptBeforeEdit = life().some(m => m.label === '体检') && env.settings.lifeState['mira.png'].start.today?.text === '在家收拾';
         document.getElementById('et-emotion-popup')?.remove();
 
+        // Another character's chat (With you's sentence back after you've moved on): theirs, not the open one's
+        env.settings.lifeState['bo.png'] = { startAt: 1, start: { errands: [{ id: 'b1', text: '面试', due: day(1), from: 'you' }], log: [], today: null } };
+        env.settings.chatHistory['bo.png'] = [{ is_user: false, mes: '过了', send_date: Date.now(), life: [{ op: 'done', name: '面试' }] }];
+        const miraMemories = life().length;
+        r.writeLife('bo.png');
+        res.anotherChat = env.settings.chatMemories['bo.png']?.items[0]?.label === '面试' && life().length === miraMemories
+            && !env.settings.lifeState['bo.png'].start.errands.length;
+        delete env.settings.lifeState['bo.png'];
+        delete env.settings.chatHistory['bo.png'];
+
         // They're the chat's: none of them among the character's own, and yours are left alone
         res.inTheChat = life().length > 0 && !(env.settings.characterMemories['mira.png'] || []).length;
 
@@ -1826,7 +1841,7 @@
 
         // A full permanent list isn't pushed out by a move; yours stay
         env.settings.chatHistory['mira.png'] = [{ is_user: true, mes: 'x', send_date: Date.now() }];
-        const added = r.addLifeMemory({ label: 'new', content: 'new' });
+        const added = r.addLifeMemory('mira.png', { label: 'new', content: 'new' });
         env.settings.characterMemories['mira.png'] = Array.from({ length: 50 }, (_, i) => ({ id: `u${i}`, category: 'custom', label: `mine ${i}`, content: 'x', keys: [], createdAt: 0, pinned: false }));
         res.fullStays = env.memorySystem.moveToPermanent(added.id) === false && life().length === 1 && env.settings.characterMemories['mira.png'].length === 50;
 
@@ -2144,6 +2159,13 @@
         res.dailyLifeOff = /<text at=/.test(textsOnly) && !/<life>/.test(textsOnly) && chat().some(m => m.meta?.proactiveType === 'catch_up')
             && !env.settings.lifeState['mira.png'].settledAt;
         env.settings.dailyLifeEnabled = true;
+        // Written to just now: that isn't settling, the gap still counts
+        fresh();
+        env.settings.lifeState['mira.png'].startAt = Date.now() - 1000;
+        const askedBefore = asked.length;
+        answer = async () => '<life>happened 看电影 (' + Life.dateKey(new Date()) + ')</life>';
+        await r.maybeCatchUp();
+        res.writingIsntSettling = asked.length === askedBefore + 1 && env.settings.lifeState['mira.png'].settledAt > twoDays;
         // Catch up off: neither, no request, just seen
         fresh();
         env.settings.catchUpEnabled = false;
@@ -2211,7 +2233,8 @@
         const dayFromToday = n => Life.dateKey(new Date(Date.now() + n * 86400000));
         settings.dailyLifeEnabled = true;
         settings.characterSchedules = {};
-        settings.lifeState = { 'mira.png': { startAt: 1, start: {
+        // index.js's settings and the popup's are one object in the extension, two here
+        env.settings.lifeState = settings.lifeState = { 'mira.png': { startAt: 1, start: {
             errands: [{ id: 'e1', text: '周六搬家', progress: '打包了一半', due: dayFromToday(2), feeling: '嫌麻烦', from: 'chat' }],
             log: [{ id: 'old', date: dayFromToday(-10), text: '太久以前' }, { id: 'l1', date: dayFromToday(-1), text: '和小雨和好了' }],
             today: { date: dayFromToday(-1), text: '昨天的变动' },

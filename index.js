@@ -6233,8 +6233,7 @@
         if (!char || until - from < DailyLife.TOGETHER_MIN_MINUTES * 60000) return;
         const userName = getUserName();
         const entry = { id: `with${from.toString(36)}`, date: DailyLife.dateKey(new Date(from)), text: DailyLife.togetherEntry({ userName, from, until }) };
-        settings.lifeState[key] = DailyLife.clearToday(DailyLife.noteInStart(settings.lifeState[key], entry), until);
-        saveSettings();
+        writeLife(key, { edit: parts => ({ ...DailyLife.withEntry(parts, -1, entry), today: null }) });
         if (emotionSystem) emotionSystem.refresh();
         if (proactiveMessaging) proactiveMessaging.planParted(key, until);
         const story = getSTStoryContext(char, { from, until, maxMessages: ST_STRETCH_MAX_MESSAGES, maxChars: ST_STRETCH_MAX_CHARS });
@@ -6261,8 +6260,8 @@
             if (!text || ChatSummaries.looksLikeRefusal(text)) return;
             // Deleted meanwhile, or the chat cleared: left that way
             if (!DailyLife.normalizeLife(settings.lifeState[key]).start.log.some(e => e.id === entry.id)) return;
-            settings.lifeState[key] = DailyLife.noteInStart(settings.lifeState[key], { ...entry, text: DailyLife.togetherEntry({ userName, from, until, text }) });
-            saveSettings();
+            const sentence = { ...entry, text: DailyLife.togetherEntry({ userName, from, until, text }) };
+            writeLife(key, { edit: parts => DailyLife.withEntry(parts, parts.log.findIndex(e => e.id === entry.id), sentence) });
             if (emotionSystem) {
                 emotionSystem.refresh();
                 emotionSystem.applyMood(reply.mood, key);
@@ -6286,16 +6285,15 @@
     const LIFE_KEPT_MAX = 300;
 
     /**
-     * Keeps what the open chat's life has let go of as Life memories (12e): an errand a
+     * Keeps what a chat's life has let go of as Life memories (12e): an errand a
      * reply marked done, once you've texted after it (a swipe can take it back till then;
      * `settledBefore` moves that), and what happened once it's older than the week the life
      * keeps, a memory a week, added to as more of that week goes. Each only once
      * (marked with the chat's memories), even when you delete the memory. A catch-up's
      * `changes` are kept as it settles them.
      */
-    function keepLifeMemories({ settledBefore = null, changes = null } = {}) {
+    function keepLifeMemories({ key = getCharacterKey(), settledBefore = null, changes = null } = {}) {
         if (!dailyLifeActive() || !memorySystem) return;
-        const key = getCharacterKey();
         const history = getEmotionHistory(key);
         const lastUser = [...history].reverse().find(m => m?.is_user);
         const before = settledBefore ?? (lastUser ? Number(lastUser.send_date) || Date.parse(lastUser.send_date) || 0 : 0);
@@ -6303,13 +6301,13 @@
         if (!done.length && !expired.length) return;
         const store = memorySystem.getChatStore(key);
         const { kept } = store;
-        const name = getCurrentCharacter()?.name || 'Character';
+        const name = getCharacterByKey(key)?.name || 'Character';
         let changed = false;
         for (const errand of done) {
             if (kept[`errand:${errand.id}`]) continue;
             kept[`errand:${errand.id}`] = 1;
             changed = true;
-            addLifeMemory(DailyLife.errandMemory(errand, name));
+            addLifeMemory(key, DailyLife.errandMemory(errand, name));
         }
         const weeks = new Map();
         for (const entry of expired) {
@@ -6322,7 +6320,7 @@
         for (const [monday, entries] of weeks) {
             const week = kept[`week:${monday}`];
             if (!week) {
-                const memory = addLifeMemory(DailyLife.weekMemory(monday, entries, name));
+                const memory = addLifeMemory(key, DailyLife.weekMemory(monday, entries, name));
                 if (memory) kept[`week:${monday}`] = { memory: memory.id, entries };
             } else if (store.items.some(m => m.id === week.memory)) {
                 // Still there (you may have deleted it): the week's memory grows
@@ -6335,9 +6333,20 @@
         if (changed) saveSettings();
     }
 
-    /** Adds a Life memory to the open chat's memories. */
-    function addLifeMemory({ label, content }) {
-        return memorySystem.addMemory({ category: 'life', label, content, scope: 'chat' });
+    /** Adds a Life memory to a chat's memories. */
+    function addLifeMemory(key, { label, content }) {
+        return memorySystem.addMemory({ category: 'life', label, content, scope: 'chat', charKey: key });
+    }
+
+    /**
+     * Writes a chat's life, the one way to besides a reply's report (lib/daily-life.js
+     * rewriteLife). The reports so far can't be taken back after this, so what they ended
+     * is kept as memories first.
+     */
+    function writeLife(key, { changes = null, edit = null } = {}) {
+        keepLifeMemories({ key, settledBefore: Infinity, changes });
+        settings.lifeState[key] = DailyLife.rewriteLife(settings.lifeState[key], getEmotionHistory(key), new Date(), { changes, edit });
+        saveSettings();
     }
 
     /** Where the character is in their life, for the system prompt; '' without Daily Life, or with nothing to say. */
@@ -6546,8 +6555,7 @@
         if (!seen || !last || settings.catchUpEnabled === false) { markSeen(true); return; }
         const now = Date.now();
         const lastAt = Number(last.send_date) || Date.parse(last.send_date) || 0;
-        const state = settings.lifeState?.[key];
-        const settleFrom = Math.max(lastAt, state?.settledAt || 0, state?.startAt || 0);
+        const settleFrom = Math.max(lastAt, settings.lifeState?.[key]?.settledAt || 0);
         const settle = dailyLifeActive() && now - settleFrom >= CatchUp.GAP_MS;
         // Texts: not while she owes you a reply or a follow-up round is under way
         const textFrom = Math.max(seen, lastAt);
@@ -6569,7 +6577,6 @@
         // Holds the proactive timers and your next reply until it's done (onGenerationSettled)
         isGenerating = true;
         setCatchUpBar(true);
-        let settled = false;
         try {
             const history = getChatHistory();
             const userName = getUserName();
@@ -6585,12 +6592,7 @@
             // Paused, or another character now: left as it is
             if (controller.signal.aborted || getCharacterKey() !== key) return;
             const answer = CatchUp.readAnswer(stripThinkingTags(String(raw ?? '')), { from, now, planned: texts });
-            if (settle) {
-                // Settling bakes in every report so far: what ended is kept first
-                keepLifeMemories({ settledBefore: Infinity, changes: answer.life });
-                settings.lifeState[key] = DailyLife.settleLife(settings.lifeState[key], getEmotionHistory(key), answer.life, new Date(now));
-                settled = true;
-            }
+            if (settle) writeLife(key, { changes: answer.life });
             if (answer.texts.length) {
                 const chat = getChatHistory();
                 for (const text of answer.texts) {
@@ -6610,10 +6612,7 @@
             }
         } finally {
             // Done, paused or failed: the gap isn't tried again
-            if (settle && !settled) {
-                const state = settings.lifeState[key];
-                settings.lifeState[key] = state ? { ...state, settledAt: now } : { start: { errands: [], log: [], today: null }, startAt: 0, settledAt: now };
-            }
+            if (settle) settings.lifeState[key] = { ...DailyLife.normalizeLife(settings.lifeState[key]), settledAt: now };
             if (getCharacterKey() === key) markSeen(true);
             else settings.proactiveSeenAt[key] = Date.now();
             catchingUp = null;
@@ -8677,7 +8676,7 @@
             onPhoneOverride,
             isWithYou,
             // An edit by hand bakes in every report so far: what ended is kept first
-            keepLifeMemories: () => keepLifeMemories({ settledBefore: Infinity }),
+            writeLife,
             isPanelOpen,
             isMobileDevice,
             onEmotionStateUpdated: ({ dominant, dominantChanged }) => {

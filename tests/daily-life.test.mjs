@@ -653,19 +653,24 @@ test('the prompt has them together, not in the block, and what comes after it', 
     assert.match(free, /Until 12:00, a change of plan: Mira is up and free/);
 });
 
-test('a note in the life start leaves the reports and their replay as they were', () => {
+test('rewriting a life writes the reports so far into its start and leaves how far it\'s settled', () => {
     const state = { start: { errands: [], log: [], today: null }, startAt: 500, settledAt: 400 };
-    const entry = { id: 'with1', date: '2026-10-26', text: 'With Qi (19:30–22:30)' };
-    const noted = Life.noteInStart(state, entry);
-    assert.equal(noted.startAt, 500);
-    assert.equal(noted.settledAt, 400);
     const history = [{ is_user: false, send_date: 1000, life: [{ op: 'happened', text: '下雨了', date: '2026-10-26' }] }];
-    assert.deepEqual(Life.currentLife(noted, at(26, 23), history).log.map(e => e.text), ['With Qi (19:30–22:30)', '下雨了']);
-    // Under the same id it takes the place of what's there
-    const better = Life.noteInStart(noted, { ...entry, text: '和 Qi 去看了电影' });
-    assert.deepEqual(better.start.log.map(e => e.text), ['和 Qi 去看了电影']);
-    // With no life yet
-    assert.deepEqual(Life.noteInStart(undefined, entry).start.log.map(e => e.id), ['with1']);
+    const entry = { id: 'with1', date: '2026-10-26', text: 'With Qi (19:30–22:30)' };
+    const date = new Date(2000);
+    const noted = Life.rewriteLife(state, history, date, { edit: parts => Life.withEntry(parts, -1, entry) });
+    assert.equal(noted.startAt, 2001);
+    assert.equal(noted.settledAt, 400);
+    assert.deepEqual(noted.start.log.map(e => e.text).sort(), ['With Qi (19:30–22:30)', '下雨了'].sort());
+    // Written in, so not replayed on top of itself, and gone with the reply no more
+    assert.equal(Life.currentLife(noted, at(26, 23), history).log.length, 2);
+    assert.equal(Life.currentLife(noted, at(26, 23), []).log.length, 2);
+    // A report after it still replays
+    const later = [...history, { is_user: false, send_date: 3000, life: [{ op: 'happened', text: '晴了', date: '2026-10-26' }] }];
+    assert.equal(Life.currentLife(noted, at(26, 23), later).log.length, 3);
+    // With no life yet, and with nothing to change
+    assert.deepEqual(Life.rewriteLife(undefined, [], date, { edit: parts => Life.withEntry(parts, -1, entry) }).start.log.map(e => e.id), ['with1']);
+    assert.deepEqual(Life.rewriteLife(undefined, null, date).start, { errands: [], log: [], today: null });
 });
 
 test('time together in a sentence', () => {
@@ -735,19 +740,10 @@ test('today\'s change can go when what it was for is over, reports of it too', (
     const date = at(31, 20);
     const report = (time, text) => ({ is_user: false, send_date: time, life: [{ op: 'today', date: '2026-10-31', text }] });
     const state = { startAt: 0, start: { errands: [], log: [], today: { date: '2026-10-31', text: '手写的' } } };
-    const ended = at(31, 18).getTime();
     const history = [report(at(31, 16).getTime(), '模型写的')];
     assert.equal(Life.currentLife(state, date, history).today.text, '模型写的');
-    const cleared = Life.clearToday(state, ended);
-    assert.equal(cleared.startAt, 0);
+    const cleared = Life.rewriteLife(state, history, at(31, 18), { edit: parts => ({ ...parts, today: null }) });
     assert.equal(Life.currentLife(cleared, date, history).today, null);
-    // One written after stands; so does what you edited after it ended
+    // One written after stands
     assert.equal(Life.currentLife(cleared, date, [...history, report(at(31, 19).getTime(), '后来的')]).today.text, '后来的');
-    const edited = { ...state, startAt: at(31, 19).getTime() };
-    assert.equal(Life.clearToday(edited, ended).start.today.text, '手写的');
-    // A note after it keeps that
-    const noted = Life.noteInStart(cleared, { id: 'w', date: '2026-10-31', text: 'x' });
-    assert.equal(Life.currentLife(noted, date, history).today, null);
-    // Nothing to clear
-    assert.equal(Life.currentLife(Life.clearToday(undefined, ended), date, null).today, null);
 });
