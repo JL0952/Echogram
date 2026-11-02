@@ -104,10 +104,11 @@
         sleepWithAbort: async () => {}, error: (...a) => errors.push(a.join(' ')), stripThinkingTags: t => t,
         // The proactive engine, as far as the catch-up asks it (runCatchUpTest sets what it answers)
         proactiveMessaging: {
-            catchUpInputs: (...a) => env.catchUpInputs(...a), noteCatchUpRequest: (...a) => env.noteCatchUpRequest?.(...a),
+            simulateAway: (...a) => env.simulateAway(...a), adoptSimulation: (...a) => env.adoptSimulation?.(...a), noteCatchUpRequest: (...a) => env.noteCatchUpRequest?.(...a),
             syncProactiveStateWithHistory() {}, armRoundTimer() {}, dropRound: key => env.droppedRounds?.push(key), planParted: (...a) => env.partedPlans?.push(a), markProactiveUserActivity() {}, markProactiveCharacterActivity() {}, refreshProactiveInsights() {},
         },
-        catchUpInputs: () => ({ temperament: 'normal', baseHours: 8, unanswered: 0, left: 8, roundActive: false }) };
+        // What the engine works out over a catch-up's gap (lib/proactive-messaging.js simulateAway): nothing, unless a test says
+        simulateAway: () => ({ events: [], state: {} }) };
     env.memorySystem = window.EchoTextMemorySystem.createMemorySystem({ getSettings: () => env.settings, saveSettings: () => {}, getCharacterKey: () => 'mira.png' });
     if (params.has('art')) {
         window.__songArt = { cache: {}, requests: [] };
@@ -1433,9 +1434,14 @@
         env.settings.proactiveMessagingEnabled = true;
         env.settings.dailyLifeEnabled = false;
         const asked = [];
-        env.requestEchoTextCompletion = async req => { asked.push(req); return '<text at="2000-01-01 00:00">在吗</text>'; };
+        env.requestEchoTextCompletion = async req => { asked.push(req); return '<text n="1">在吗</text>'; };
         env.buildApiMessagesFromHistoryForChar = async () => ({ apiMessages: [{ role: 'system', content: 'S' }], rawPrompt: '', systemPrompt: 'S' });
-        env.catchUpInputs = () => ({ temperament: 'clingy', baseHours: 4, unanswered: 0, left: 15, roundActive: false });
+        // One text over the gap, whatever it is (lib/proactive-messaging.js simulateAway, tested on its own)
+        const simulated = [];
+        env.simulateAway = (key, char, range) => {
+            simulated.push(range);
+            return { events: [{ at: range.from + HOUR, kind: 'topic', type: 'random_thought', note: 'A random thought.' }], state: {} };
+        };
         env.panelOpen = true;
         const twoDays = Date.now() - 2 * 24 * HOUR;
         const fresh = () => {
@@ -1487,52 +1493,44 @@
         res.nothingHeld = asked.length === 0;
 
         // Her last text at 10:00 and the catch-up held from 14:00 while you play; with you 14:10–17:00, running out by
-        // itself meanwhile; then the main chat goes quiet. How far texts have run stays at 10:00: a text due before it
-        // still comes, one due in it goes after it (the clock set to today's times)
+        // itself meanwhile; then the main chat goes quiet. How far texts have run stays at 10:00, so the engine goes over
+        // the whole gap, and it's told when you were together (the clock set to today's times)
         const Life = window.EchoTextDailyLife;
         const today = new Date(realNow());
         const clockAt = (h, m = 0) => new Date(today.getFullYear(), today.getMonth(), today.getDate(), h, m).getTime();
-        const day = Life.dateKey(today);
         const setClock = ms => { shift = ms - realNow(); };
-        const moments = req => [...(req?.apiMessages.at(-1).content || '').matchAll(/^- (\d{4}-\d\d-\d\d \d\d:\d\d)/gm)].map(m => m[1]);
         env.settings.dailyLifeEnabled = true;
         env.settings.characterSchedules = { 'mira.png': Life.parseSchedule('every day 01:00-08:00 | 家 | 睡觉 | asleep') };
-        const heldThenTogether = async (temperament, baseHours) => {
-            env.catchUpInputs = () => ({ temperament, baseHours, unanswered: 0, left: 15, roundActive: false });
-            setClock(clockAt(14));
-            env.settings.chatHistory['mira.png'] = [{ is_user: true, mes: '晚安', send_date: clockAt(9, 59) }, { is_user: false, mes: '晚安~', send_date: clockAt(10) }];
-            env.settings.proactiveSeenAt = { 'mira.png': clockAt(10) };
-            env.settings.lifeState = {};
-            env.settings.phoneOverrides = {};
-            asked.length = 0;
-            r.noteStoryActivity(6);
-            await r.maybeCatchUp();
-            setClock(clockAt(14, 10));
-            env.settings.phoneOverrides['mira.png'] = { phone: 'together', from: clockAt(14, 10), until: clockAt(17) };
-            r.noteStoryActivity(7);
-            setClock(clockAt(16, 55));
-            r.noteStoryActivity(8);
-            // The minute's check after it ran out
-            setClock(clockAt(17, 1));
-            r.noteTogetherEnded();
-            await sleep(20);
-            const span = Life.normalizeLife(env.settings.lifeState['mira.png']).start.log.find(e => e.until);
-            const ended = asked.length === 0 && !env.settings.phoneOverrides['mira.png'] && span?.from === clockAt(14, 10) && span.until === clockAt(17)
-                && env.settings.proactiveSeenAt['mira.png'] === clockAt(10);
-            // Quiet since 16:55
-            setClock(clockAt(17, 15));
-            r.resumeHeldCatchUp();
-            await sleep(50);
-            return { ended, moments: asked.length === 1 ? moments(asked[0]) : null };
-        };
-        const before = await heldThenTogether('clingy', 4);
-        res.withYouEndsWhileHeld = before.ended;
-        res.dueBeforeComes = JSON.stringify(before.moments) === JSON.stringify([`${day} 14:00`]);
-        const during = await heldThenTogether('normal', 5);
-        res.dueDuringAfter = during.ended && JSON.stringify(during.moments) === JSON.stringify([`${day} 17:05`]);
+        setClock(clockAt(14));
+        env.settings.chatHistory['mira.png'] = [{ is_user: true, mes: '晚安', send_date: clockAt(9, 59) }, { is_user: false, mes: '晚安~', send_date: clockAt(10) }];
+        env.settings.proactiveSeenAt = { 'mira.png': clockAt(10) };
+        env.settings.lifeState = {};
+        env.settings.phoneOverrides = {};
+        asked.length = 0;
+        r.noteStoryActivity(6);
+        await r.maybeCatchUp();
+        setClock(clockAt(14, 10));
+        env.settings.phoneOverrides['mira.png'] = { phone: 'together', from: clockAt(14, 10), until: clockAt(17) };
+        r.noteStoryActivity(7);
+        setClock(clockAt(16, 55));
+        r.noteStoryActivity(8);
+        // The minute's check after it ran out
+        setClock(clockAt(17, 1));
+        r.noteTogetherEnded();
+        await sleep(20);
+        const span = Life.normalizeLife(env.settings.lifeState['mira.png']).start.log.find(e => e.until);
+        res.withYouEndsWhileHeld = asked.length === 0 && !env.settings.phoneOverrides['mira.png'] && span?.from === clockAt(14, 10) && span.until === clockAt(17)
+            && env.settings.proactiveSeenAt['mira.png'] === clockAt(10);
+        // Quiet since 16:55
+        setClock(clockAt(17, 15));
+        simulated.length = 0;
+        r.resumeHeldCatchUp();
+        await sleep(50);
+        res.wholeGapSimulated = asked.length === 1 && simulated.length === 1 && simulated[0].from === clockAt(10) && simulated[0].to >= clockAt(17, 15);
+        res.withYouKnown = JSON.stringify([clockAt(14, 9), clockAt(14, 10), clockAt(16, 59), clockAt(17)].map(at => r.withYouAt(at))) === '[false,true,true,false]';
         env.settings.dailyLifeEnabled = false;
         env.settings.phoneOverrides = {};
-        env.catchUpInputs = () => ({ temperament: 'clingy', baseHours: 4, unanswered: 0, left: 15, roundActive: false });
+        env.simulateAway = () => ({ events: [], state: {} });
 
         // Leaves no pause behind for what runs next
         r.noteStoryActivity(5);
@@ -2161,8 +2159,19 @@
         env.requestEchoTextCompletion = async req => { asked.push(req); return answer(req); };
         env.buildApiMessagesFromHistoryForChar = async () => ({ apiMessages: [{ role: 'system', content: 'S' }], rawPrompt: '', systemPrompt: 'S' });
         env.stripThinkingTags = t => t.replace(/<think>[\s\S]*?<\/think>/g, '');
-        env.catchUpInputs = () => ({ temperament: 'clingy', baseHours: 4, unanswered: 0, left: 15, roundActive: false });
         env.noteCatchUpRequest = () => { counted++; };
+        // What the engine works out over the gap (lib/proactive-messaging.js simulateAway, tested on its own): two texts at its own times
+        const simCalls = [];
+        const adopted = [];
+        const simState = { round: null, lastProactiveAt: 1 };
+        env.simulateAway = (key, char, range) => {
+            simCalls.push({ key, ...range });
+            return { state: simState, events: [
+                { at: range.from + 5 * HOUR, kind: 'topic', type: 'random_thought', note: 'A random thought.' },
+                { at: range.from + 10 * HOUR, kind: 'follow_up', round: 2, index: 0, text: null, note: 'follow-up 1 of round 2: still no answer' },
+            ] };
+        };
+        env.adoptSimulation = (key, state) => adopted.push([key, state]);
         env.panelOpen = true;
         // The pause button, bound as index.js binds it at startup
         jQuery(document).off('click.catchup').on('click.catchup', '[data-et-catchup="pause"]', () => r.pauseCatchUp());
@@ -2183,7 +2192,7 @@
         // Two days away: one request, with the bar up meanwhile; the life settles, her texts go in at their times
         fresh();
         let release;
-        answer = () => new Promise(resolve => { release = () => resolve('<think>x</think><life>happened 加班到十点 (' + Life.dateKey(new Date(Date.now() - 24 * HOUR)) + '); update 搬家: 搬完了</life>\n<text>想你了</text>\n<text>人呢</text>'); });
+        answer = () => new Promise(resolve => { release = () => resolve('<think>x</think><life>happened 加班到十点 (' + Life.dateKey(new Date(Date.now() - 24 * HOUR)) + '); update 搬家: 搬完了</life>\n<text n="2" at="2000-01-01 00:00">人呢</text>\n<text n="1">想你了</text>'); });
         const running = r.maybeCatchUp();
         await sleep(0);
         res.barUp = !!document.querySelector('#et-messages #et-catchup-bar [data-et-catchup="pause"]');
@@ -2191,12 +2200,18 @@
         await running;
         const turn = asked[0]?.apiMessages.at(-1).content || '';
         res.oneRequest = asked.length === 1 && counted === 1 && /^\[Instruction for this turn/.test(turn) && /CATCH-UP: 我 hasn't been around since/.test(turn)
-            && /Mira's days lately, from the schedule:/.test(turn) && /- 周六搬家 \(打包了一半\); due /.test(turn) && /<text at="YYYY-MM-DD HH:MM">/.test(turn);
+            && /Mira's days lately, from the schedule:/.test(turn) && /- 周六搬家 \(打包了一半\); due /.test(turn)
+            && /- n=1 · \d{4}-\d\d-\d\d \d\d:\d\d.* · A random thought\.\n- n=2 · .* · follow-up 1 of round 2: still no answer/.test(turn) && /<text n="…">/.test(turn);
+        // Asked for from where the texts had run to now, three days and thirty texts at most
+        res.engineAsked = simCalls.length === 1 && simCalls[0].key === 'mira.png' && simCalls[0].from === twoDays && Math.abs(simCalls[0].to - Date.now()) < 5000
+            && simCalls[0].days === 3 && simCalls[0].max === 30;
         const state = env.settings.lifeState['mira.png'];
         res.settled = state.settledAt > twoDays && state.start.errands[0].progress === '搬完了' && state.start.log.some(e => e.text === '加班到十点');
-        const added = chat().filter(m => m.meta?.proactiveType === 'catch_up');
-        res.texts = added.map(m => m.mes).join('|') === '想你了|人呢' && added.every(m => m.send_date > twoDays && m.send_date < Date.now())
-            && added[0].send_date < added[1].send_date;
+        // In by number at the engine's times and kinds, whatever time the model wrote; its state adopted
+        const added = chat().filter(m => m.meta?.proactive);
+        res.texts = added.map(m => m.mes).join('|') === '想你了|人呢' && added[0].send_date === twoDays + 5 * HOUR && added[1].send_date === twoDays + 10 * HOUR
+            && added[0].meta.proactiveType === 'random_thought' && added[1].meta.proactiveType === 'follow_up' && added[1].meta.round === 2;
+        res.adopted = adopted.length === 1 && adopted[0][1] === simState;
         res.barGone = !document.getElementById('et-catchup-bar');
         res.seen = env.settings.proactiveSeenAt['mira.png'] > Date.now() - 5000;
         // Right after: nothing more to do
@@ -2210,29 +2225,34 @@
         await sleep(0);
         document.querySelector('[data-et-catchup="pause"]').click();
         await paused;
-        res.paused = asked.length === 2 && chat().length === 2 && env.settings.lifeState['mira.png'].settledAt > twoDays
+        // What the engine worked out holds all the same, so the gap isn't caught up on twice
+        res.paused = asked.length === 2 && chat().length === 2 && adopted.length === 2 && env.settings.lifeState['mira.png'].settledAt > twoDays
             && env.settings.lifeState['mira.png'].start.errands[0].progress === '打包了一半' && !errors.length && !document.getElementById('et-catchup-bar');
         await r.maybeCatchUp();
         res.pausedStays = asked.length === 2;
 
-        // She owes you a reply, or Proactive is off: only the life
+        // She owes you a reply, or Proactive is off: only the life, the engine not asked
         for (const [label, proactive, lastIsUser] of [['proactiveOff', false, false], ['owesReply', true, true]]) {
             fresh(lastIsUser);
             env.settings.proactiveMessagingEnabled = proactive;
-            answer = async () => '<life>happened 看电影 (' + Life.dateKey(new Date()) + ')</life>\n<text>x</text>';
+            const calls = simCalls.length;
+            answer = async () => '<life>happened 看电影 (' + Life.dateKey(new Date()) + ')</life>\n<text n="1">x</text>';
             await r.maybeCatchUp();
             const t = asked.at(-1).apiMessages.at(-1).content;
-            res[label] = !/<text at=/.test(t) && !chat().some(m => m.meta?.proactiveType === 'catch_up')
+            res[label] = !/<text n=/.test(t) && !chat().some(m => m.meta?.proactive) && simCalls.length === calls
                 && env.settings.lifeState['mira.png'].start.log.some(e => e.text === '看电影');
             env.settings.proactiveMessagingEnabled = true;
         }
         // Daily Life off: only the texts
         fresh();
         env.settings.dailyLifeEnabled = false;
-        answer = async () => '<text>想你了</text>';
+        // The model leaves one out: it stays out, the engine's state adopted all the same
+        const adoptedBefore = adopted.length;
+        answer = async () => '<text n="1">想你了</text>';
         await r.maybeCatchUp();
         const textsOnly = asked.at(-1).apiMessages.at(-1).content;
-        res.dailyLifeOff = /<text at=/.test(textsOnly) && !/<life>/.test(textsOnly) && chat().some(m => m.meta?.proactiveType === 'catch_up')
+        res.missingStaysOut = chat().filter(m => m.meta?.proactive).map(m => m.mes).join('|') === '想你了' && adopted.length === adoptedBefore + 1;
+        res.dailyLifeOff = /<text n=/.test(textsOnly) && !/<life>/.test(textsOnly) && chat().some(m => m.meta?.proactive)
             && !env.settings.lifeState['mira.png'].settledAt;
         env.settings.dailyLifeEnabled = true;
         // Written to just now: that isn't settling, the gap still counts
@@ -2264,36 +2284,32 @@
         await r.maybeCatchUp();
         res.newChat = asked.length === before && env.settings.proactiveSeenAt['mira.png'] > Date.now() - 5000;
 
-        // Closed while with you (texts had run till 14:00; with you 13:40–17:00), back at 20:00 after it ran out: it's
-        // noted first, and the text due at 15:30 goes after it. Daily Life off by the next time: still kept out of it
+        // Closed while with you, back after it ran out: it's noted first, and the engine is told when you were together
+        // (index.js withYouAt), Daily Life on now or not
         const realNow = Date.now;
         const today = new Date();
         const clockAt = (h, m = 0) => new Date(today.getFullYear(), today.getMonth(), today.getDate(), h, m).getTime();
-        const afterIt = JSON.stringify([`${Life.dateKey(today)} 17:05`]);
-        const moments = req => JSON.stringify([...(req?.apiMessages.at(-1).content || '').matchAll(/^- (\d{4}-\d\d-\d\d \d\d:\d\d)/gm)].map(m => m[1]));
-        const closed = () => {
-            env.settings.chatHistory['mira.png'] = [{ is_user: true, mes: '晚安', send_date: clockAt(9, 59) }, { is_user: false, mes: '晚安~', send_date: clockAt(10) }];
-            env.settings.proactiveSeenAt = { 'mira.png': clockAt(14) };
-        };
         Date.now = () => clockAt(20);
-        env.catchUpInputs = () => ({ temperament: 'obsessed', baseHours: 1.5, unanswered: 0, left: 30, roundActive: false });
-        closed();
+        env.settings.chatHistory['mira.png'] = [{ is_user: true, mes: '晚安', send_date: clockAt(9, 59) }, { is_user: false, mes: '晚安~', send_date: clockAt(10) }];
+        env.settings.proactiveSeenAt = { 'mira.png': clockAt(14) };
         env.settings.lifeState = {};
         env.settings.phoneOverrides = { 'mira.png': { phone: 'together', from: clockAt(13, 40), until: clockAt(17) } };
+        let together = null;
+        env.simulateAway = (key, char, range) => {
+            together = [clockAt(13, 39), clockAt(13, 40), clockAt(16, 59), clockAt(17)].map(at => r.withYouAt(at));
+            simCalls.push({ key, ...range });
+            return { events: [], state: simState };
+        };
         answer = async () => '';
-        let asks = asked.length;
         await r.maybeCatchUp();
-        const span = Life.normalizeLife(env.settings.lifeState['mira.png']).start.log.find(e => e.until);
-        res.closedWhileTogether = asked.length === asks + 1 && !env.settings.phoneOverrides['mira.png'] && span?.from === clockAt(13, 40)
-            && span.until === clockAt(17) && moments(asked.at(-1)) === afterIt;
-        closed();
+        res.closedWhileTogether = simCalls.at(-1).from === clockAt(14) && JSON.stringify(together) === '[false,true,true,false]'
+            && !env.settings.phoneOverrides['mira.png'];
         env.settings.dailyLifeEnabled = false;
-        asks = asked.length;
-        await r.maybeCatchUp();
-        res.keptOutWithoutDailyLife = asked.length === asks + 1 && moments(asked.at(-1)) === afterIt;
+        res.togetherWithoutDailyLife = r.withYouAt(clockAt(15)) && !r.withYouAt(clockAt(18));
         Date.now = realNow;
         env.settings.phoneOverrides = {};
-        env.catchUpInputs = () => ({ temperament: 'clingy', baseHours: 4, unanswered: 0, left: 15, roundActive: false });
+        env.simulateAway = () => ({ events: [], state: {} });
+        env.adoptSimulation = null;
 
         env.settings.dailyLifeEnabled = false;
         res.errors = errors.slice();
@@ -2312,7 +2328,7 @@
         const saved = { getCharacterKey: env.getCharacterKey, getCurrentCharacter: env.getCurrentCharacter, getCharacterByKey: env.getCharacterByKey,
             requestEchoTextCompletion: env.requestEchoTextCompletion, buildApiMessagesFromHistory: env.buildApiMessagesFromHistory,
             buildApiMessagesFromHistoryForChar: env.buildApiMessagesFromHistoryForChar, sendCompletionRequest: env.sendCompletionRequest,
-            catchUpInputs: env.catchUpInputs, context: window.SillyTavern.getContext, info: window.toastr.info };
+            simulateAway: env.simulateAway, context: window.SillyTavern.getContext, info: window.toastr.info };
         // Which chat is open: switched by the stubbed model, as you would meanwhile
         let open = 'mira.png';
         const chars = { 'mira.png': { name: 'Mira', avatar: 'mira.png' }, 'other.png': { name: 'Other', avatar: 'other.png' } };
@@ -2418,7 +2434,7 @@
         env.settings.dailyLifeEnabled = true;
         env.settings.proactiveMessagingEnabled = true;
         env.settings.catchUpEnabled = true;
-        env.catchUpInputs = () => ({ temperament: 'clingy', baseHours: 4, unanswered: 0, left: 15, roundActive: false });
+        env.simulateAway = (key, char, range) => ({ events: [{ at: range.from + HOUR, kind: 'topic', type: 'random_thought', note: 'A random thought.' }], state: {} });
         let gapStart = 0;
         const gap = () => {
             open = 'mira.png';
@@ -2430,7 +2446,7 @@
         // Other opened while it's on its way: her texts and her life, settled
         gap();
         asks = 0;
-        env.requestEchoTextCompletion = async () => { asks++; openOther(); return '<life>update 搬家: 搬完了</life><text>想你了</text>'; };
+        env.requestEchoTextCompletion = async () => { asks++; openOther(); return '<life>update 搬家: 搬完了</life><text n="1">想你了</text>'; };
         await r.maybeCatchUp();
         const life = () => env.settings.lifeState['mira.png'];
         res.catchUpToItsChat = asks === 1 && mes('mira.png').endsWith('|想你了') && life().start.errands[0].progress === '搬完了' && life().settledAt > gapStart
@@ -2439,7 +2455,7 @@
         gap();
         asks = 0;
         env.buildApiMessagesFromHistoryForChar = async () => { open = 'other.png'; return built; };
-        env.requestEchoTextCompletion = async () => { asks++; return '<text>想你了</text>'; };
+        env.requestEchoTextCompletion = async () => { asks++; return '<text n="1">想你了</text>'; };
         await r.maybeCatchUp();
         res.catchUpWaits = asks === 0 && env.settings.proactiveSeenAt['mira.png'] === gapStart && !life().settledAt && mes('mira.png') === '晚安|晚安~';
         env.buildApiMessagesFromHistoryForChar = async () => built;
@@ -2448,7 +2464,7 @@
         res.catchUpWhenBack = asks === 1 && mes('mira.png').endsWith('|想你了');
         // The chat cleared while it's on its way: nothing lands in the new one
         gap();
-        env.requestEchoTextCompletion = async () => { env.settings.chatHistory['mira.png'] = []; return '<text>想你了</text>'; };
+        env.requestEchoTextCompletion = async () => { env.settings.chatHistory['mira.png'] = []; return '<text n="1">想你了</text>'; };
         await r.maybeCatchUp();
         res.catchUpNotIntoCleared = mes('mira.png') === '';
 
@@ -2477,7 +2493,7 @@
 
         Object.assign(env, { getCharacterKey: saved.getCharacterKey, getCurrentCharacter: saved.getCurrentCharacter, getCharacterByKey: saved.getCharacterByKey,
             requestEchoTextCompletion: saved.requestEchoTextCompletion, buildApiMessagesFromHistory: saved.buildApiMessagesFromHistory,
-            buildApiMessagesFromHistoryForChar: saved.buildApiMessagesFromHistoryForChar, sendCompletionRequest: saved.sendCompletionRequest, catchUpInputs: saved.catchUpInputs });
+            buildApiMessagesFromHistoryForChar: saved.buildApiMessagesFromHistoryForChar, sendCompletionRequest: saved.sendCompletionRequest, simulateAway: saved.simulateAway });
         window.SillyTavern.getContext = saved.context;
         env.settings.dailyLifeEnabled = false;
         env.settings.pendingReplies = {};

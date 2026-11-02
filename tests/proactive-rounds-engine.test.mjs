@@ -33,7 +33,12 @@ function setup({ temperament = 'clingy', answer = '?\n---\n人呢\n---\n你去�
         getCurrentCharacter: () => ({ name: env.open === 'mira.png' ? 'Mira' : 'Other', avatar: env.open }), getCharacterKey: () => env.open,
         chatTarget: () => ({ group: null, combine: false, key: env.open }), isViewing: t => !!t && t.key === env.open,
         getChatHistory: () => settings.chatHistory['mira.png'], getUserName: () => 'Qi',
-        getTemperament: () => env.temperament, getScheduleNow: () => env.schedule, getDailyLife: () => env.day || null, getStoryPauseUntil: () => env.storyUntil || 0,
+        getTemperament: () => env.temperament, getStoryPauseUntil: () => env.storyUntil || 0,
+        // Now, or at a time (ms) when a catch-up looks back: a test may give either as a function of the time
+        getScheduleNow: at => (typeof env.schedule === 'function' ? env.schedule(at ?? Date.now()) : env.schedule),
+        getDailyLife: at => (typeof env.day === 'function' ? env.day(at ?? Date.now()) : env.day || null),
+        withYouAt: at => (env.together || []).some(span => span.from <= at && at < span.until),
+        catchUpPending: () => !!env.pending,
         expandTimeDateMacros: t => t, replaceMacros: t => t, getActiveFeatures: () => [], getProactivePace: () => 1,
         isGroupSession: () => env.group, isPanelOpen: () => true, getIsGenerating: () => !!env.generating, getEmotionState: () => null,
         // The bar over the messages while texts gone by are written (index.js setRoundBar)
@@ -380,3 +385,134 @@ test('a round put off by another generation goes as soon as that\'s over and its
     assert.equal(asked.length, 1);
     assert.equal(chat().at(-1).mes, '?');
 });
+
+// ── Catching up: what would have been sent while the page wasn't running, by the same rules (simulateAway) ──
+const R = window.EchoTextProactiveRounds;
+const morning = new Date(2026, 9, 31, 8, 0).getTime();
+const dayKey = ms => { const d = new Date(ms); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+const fixedRandom = fn => async () => { const real = Math.random; Math.random = () => 0.5; try { await fn(); } finally { Math.random = real; } };
+const follows = events => events.filter(e => e.kind === 'follow_up');
+
+test('away during a round: the rest of it, then an obsessed character\'s next rounds, at the rules\' own times, one request a round', fixedRandom(async () => {
+    clock = morning;
+    const { p, state, talk } = setup({ temperament: 'obsessed' });
+    talk();
+    const first = state().round;
+    const r1 = first.times.slice();
+    const from = clock, to = clock + 10 * HOUR;
+    const sim = p.simulateAway('mira.png', { name: 'Mira' }, { from, to });
+    // The next round as the live engine plans it (runDueRound → nextRound → planRound)
+    const r2 = R.planRound({ temperament: 'obsessed', startAt: r1.at(-1), firstHours: [2, 4], random: () => 0.5 });
+    const r3 = R.planRound({ temperament: 'obsessed', startAt: r2.at(-1), firstHours: [2, 4], random: () => 0.5 });
+    assert.deepEqual(sim.events.map(e => e.at), [...r1, ...r2].filter(t => t <= to));
+    assert.ok(sim.events.every(e => e.kind === 'follow_up' && e.note.includes('as Mira would: more anxious and insistent')));
+    assert.deepEqual([...new Set(sim.events.map(e => e.round))], [1, 2]);
+    assert.equal(sim.events[0].note.startsWith('follow-up 1:'), true);
+    assert.equal(sim.events[10].note.startsWith('follow-up 1 of round 2:'), true);
+    // Where it stands by then: the third round ahead, two requests counted today
+    assert.equal(sim.state.round.number, 3);
+    assert.deepEqual(sim.state.round.times, r3);
+    assert.deepEqual(sim.state.requests, { day: dayKey(morning), count: 2 });
+    // Worked out on copies: nothing changed yet
+    assert.equal(state().round, first);
+    assert.equal(first.sent, 0);
+    // Adopted: the round goes on from there
+    p.adoptSimulation('mira.png', sim.state);
+    assert.equal(state().round.number, 3);
+    assert.equal(state().requests.count, 2);
+}));
+
+test('catching up, asleep: a round\'s text waits till they\'re up, the rest moved along with it', fixedRandom(async () => {
+    clock = morning;
+    const { p, env, state, talk } = setup({ temperament: 'clingy' });
+    talk();
+    const times = state().round.times.slice();
+    // Asleep from just after the first text until three hours on
+    const sleep = [times[0] + MIN, clock + 3 * HOUR];
+    env.schedule = at => (at >= sleep[0] && at < sleep[1] ? { phone: 'asleep', endsAt: sleep[1] } : { phone: 'free', endsAt: sleep[0] > at ? sleep[0] : 0 });
+    const sim = p.simulateAway('mira.png', { name: 'Mira' }, { from: clock, to: clock + 8 * HOUR });
+    const shift = sleep[1] - times[1];
+    assert.deepEqual(follows(sim.events).map(e => e.at), [times[0], ...times.slice(1).map(t => t + shift)]);
+}));
+
+test('catching up, with you: the round stops when that began, and nothing new comes while you\'re together', fixedRandom(async () => {
+    clock = morning;
+    const { p, env, state, talk } = setup({ temperament: 'obsessed' });
+    talk();
+    const times = state().round.times.slice();
+    env.together = [{ from: times[3] - 1000, until: clock + 6 * HOUR }];
+    const sim = p.simulateAway('mira.png', { name: 'Mira' }, { from: clock, to: clock + 8 * HOUR });
+    assert.deepEqual(follows(sim.events).map(e => e.at), times.slice(0, 3));
+    assert.ok(sim.events.every(e => e.at < env.together[0].from || e.at >= env.together[0].until));
+    assert.equal(sim.state.round, null);
+}));
+
+test('catching up: the day\'s requests run out and the next round doesn\'t come', fixedRandom(async () => {
+    clock = morning;
+    const { p, state, talk } = setup({ temperament: 'obsessed' });
+    talk();
+    state().requests = { day: dayKey(morning), count: 29 };
+    const r1 = state().round.times.slice();
+    const sim = p.simulateAway('mira.png', { name: 'Mira' }, { from: clock, to: clock + 10 * HOUR });
+    assert.deepEqual(follows(sim.events).map(e => e.at), r1);
+    assert.equal(sim.state.round, null);
+    assert.equal(sim.state.capped.reason, 'daily');
+}));
+
+test('catching up: only the last three days are written, at most thirty texts, the latest kept', fixedRandom(async () => {
+    clock = morning;
+    const { p, talk } = setup({ temperament: 'obsessed' });
+    talk();
+    const from = clock, to = clock + 5 * 24 * HOUR;
+    const all = p.simulateAway('mira.png', { name: 'Mira' }, { from, to, days: 99, max: Infinity });
+    const kept = p.simulateAway('mira.png', { name: 'Mira' }, { from, to });
+    assert.ok(all.events.length > 30);
+    assert.equal(kept.events.length, 30);
+    assert.deepEqual(kept.events, all.events.filter(e => e.at > to - 3 * 24 * HOUR).slice(-30));
+    assert.deepEqual(kept.state.round, all.state.round);
+}));
+
+test('catching up, no round: new topics on the scheduler\'s ticks by the same triggers, each waiting longer with none answered, up to the temperament', fixedRandom(async () => {
+    clock = morning;
+    const { p, settings, state } = setup({ temperament: 'normal' });
+    // A day ago you two talked; no round left
+    settings.chatHistory['mira.png'].push({ is_user: true, mes: 'hey', send_date: clock - 24 * HOUR }, { is_user: false, mes: 'hi', send_date: clock - 24 * HOUR + MIN });
+    p.syncProactiveStateWithHistory('mira.png', settings.chatHistory['mira.png']);
+    assert.equal(state().round, undefined);
+    const sim = p.simulateAway('mira.png', { name: 'Mira' }, { from: clock, to: clock + 3 * 24 * HOUR });
+    const topics = sim.events.filter(e => e.kind === 'topic');
+    // Normal: two in a row with no answer at most, the second after three times the wait (6–10 hours)
+    assert.ok(topics.length >= 1 && topics.length <= 2, String(topics.length));
+    assert.ok(topics.every(e => e.type && e.note && (e.at - clock) % (2 * MIN) === 0));
+    if (topics.length === 2) assert.ok(topics[1].at - topics[0].at >= 18 * HOUR);
+    // Each counted toward its own day's requests
+    const lastDay = dayKey(topics.at(-1).at);
+    assert.deepEqual(sim.state.requests, { day: lastDay, count: topics.filter(e => dayKey(e.at) === lastDay).length });
+}));
+
+test('catching up: a round written before you left comes back as it was written, with no request counted for it', fixedRandom(async () => {
+    clock = morning;
+    const { p, state, talk } = setup({ temperament: 'clingy' });
+    talk();
+    const round = state().round;
+    round.texts = ['?', '人呢', '你去哪了', '算了'].map(mes => ({ mes, mood: null, life: null }));
+    round.sent = 1;
+    const sim = p.simulateAway('mira.png', { name: 'Mira' }, { from: clock, to: clock + 4 * HOUR });
+    assert.deepEqual(follows(sim.events).map(e => e.text?.mes), ['人呢', '你去哪了', '算了']);
+    assert.equal(sim.state.requests, undefined);
+}));
+
+test('a catch-up due holds the live round and new topics back; you texted while it ran: no round is left to adopt', fixedRandom(async () => {
+    clock = morning;
+    const { p, env, asked, state, talk } = setup({ temperament: 'obsessed' });
+    talk();
+    env.pending = true;
+    clock = state().round.times[0];
+    assert.equal(await p.runDueRound(), true);
+    assert.equal(asked.length, 0);
+    env.pending = false;
+    const sim = p.simulateAway('mira.png', { name: 'Mira' }, { from: clock - 10 * MIN, to: clock + 10 * HOUR });
+    p.markProactiveUserActivity('mira.png', clock + 10 * HOUR + MIN);
+    p.adoptSimulation('mira.png', sim.state);
+    assert.equal(state().round, null);
+}));

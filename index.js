@@ -5262,9 +5262,9 @@
     // ============================================================
 
     // Emotion and reaction logic moved to lib/emotion-system.js
-    /** A character's current values (the open one's without `key`), or null while emotions are off. */
-    function getEmotionState(key) {
-        return emotionSystem ? emotionSystem.getEmotionState(key ?? undefined) : null;
+    /** A character's values (the open one's without `key`) now, or at `at` (ms), or null while emotions are off. */
+    function getEmotionState(key, at) {
+        return emotionSystem ? emotionSystem.getEmotionState(key ?? undefined, at) : null;
     }
 
     function clearEmotionState() {
@@ -5493,6 +5493,23 @@
         const schedule = activeSchedule();
         if (!schedule) return null;
         return DailyLife.phoneAt({ schedule, override: phoneOverride(), date: new Date(), repliedAt: DailyLife.lastReplyAt(getChatHistory()) });
+    }
+
+    /** The open character's phone at a time (ms), as phoneNow tells it for now; null without a schedule. */
+    function phoneAtTime(at) {
+        const schedule = activeSchedule();
+        if (!schedule) return null;
+        return DailyLife.phoneAt({ schedule, override: phoneOverride(), date: new Date(at), repliedAt: DailyLife.lastReplyAt(getChatHistory()) });
+    }
+
+    /** Time you two spent together in a character's chat, as Recent keeps it: its entries with { from, until }. */
+    function togetherSpans(key) {
+        return DailyLife.normalizeLife(settings.lifeState?.[key]).start.log.filter(entry => entry.until);
+    }
+
+    /** Whether the open character was with you at a time (ms), Daily Life on now or not: a catch-up looking back. */
+    function withYouAt(at) {
+        return togetherSpans(getCharacterKey()).some(span => span.from <= at && at < span.until);
     }
 
     /** When the open character's phone state now gives way (ms), for what waits on them; 0 if not ahead. */
@@ -5881,8 +5898,9 @@
 
     /**
      * The open character's catch-up, with Catch up on, when their chat is on screen and a
-     * gap is due: Daily Life settles their life over it, Proactive writes the texts they'd
-     * have sent (lib/catch-up.js planTexts). Nothing to do: they're simply marked seen.
+     * gap is due: Daily Life settles their life over it; the texts they'd have sent are
+     * worked out by the proactive engine's own rules (lib/proactive-messaging.js
+     * simulateAway) and the model only writes them. Nothing to do: they're simply marked seen.
      */
     async function maybeCatchUp() {
         noteTogetherEnded();
@@ -5901,23 +5919,46 @@
         const lastAt = Number(last.send_date) || Date.parse(last.send_date) || 0;
         const settleFrom = Math.max(lastAt, settings.lifeState?.[key]?.settledAt || 0);
         const settle = dailyLifeActive() && now - settleFrom >= CatchUp.GAP_MS;
-        // Texts: not while she owes you a reply or a follow-up round is under way
+        // Texts: not while she owes you a reply
         const textFrom = Math.max(seen, lastAt);
-        let texts = [];
-        if (settings.proactiveMessagingEnabled === true && proactiveMessaging && !last.is_user && now - textFrom >= CatchUp.GAP_MS) {
-            const inputs = proactiveMessaging.catchUpInputs(key, char);
-            if (!inputs.roundActive) {
-                // None while you were together: Recent keeps when that was, Daily Life on now or not
-                const together = DailyLife.normalizeLife(settings.lifeState?.[key]).start.log.filter(entry => entry.until);
-                texts = CatchUp.planTexts({ from: textFrom, to: now, temperament: inputs.temperament, unanswered: inputs.unanswered,
-                    baseHours: inputs.baseHours, schedule: activeSchedule(), override: phoneOverride(), left: inputs.left, together });
+        const sim = settings.proactiveMessagingEnabled === true && proactiveMessaging && !last.is_user && now - textFrom >= CatchUp.GAP_MS
+            ? proactiveMessaging.simulateAway(key, char, { from: textFrom, to: now, days: CatchUp.DAYS, max: CatchUp.MAX_TEXTS }) : null;
+        const events = sim ? sim.events : [];
+        if (!settle && !events.some(e => !e.text)) {
+            // Nothing for the model to write: a round's texts written before go in, and the engine moves on
+            if (events.length) {
+                const chat = getChatHistory();
+                if (insertCatchUpTexts(chat, soloTarget(key), events)) { saveChatHistory(chat); renderMessages(chat); }
             }
+            if (sim) proactiveMessaging.adoptSimulation(key, sim.state);
+            markSeen(true);
+            return;
         }
-        if (!settle && !texts.length) { markSeen(true); return; }
-        await runCatchUp({ char, key, settle, texts, from: Math.min(settle ? settleFrom : Infinity, texts.length ? textFrom : Infinity), now });
+        await runCatchUp({ char, key, settle, events, sim, from: Math.min(settle ? settleFrom : Infinity, events.length ? textFrom : Infinity), now });
     }
 
-    async function runCatchUp({ char, key, settle, texts, from, now }) {
+    /**
+     * A catch-up's texts into a chat at the engine's times, in its order: the model's by
+     * number (`written`: { n, mes }, n counting from 1 over `events`), or what a round had
+     * written already. One the model left out stays out. How many went in.
+     */
+    function insertCatchUpTexts(chat, target, events, written = []) {
+        let added = 0;
+        events.forEach((e, i) => {
+            const mes = written.find(w => w.n === i + 1)?.mes;
+            const reply = e.text || (mes ? readReply(mes, target) : null);
+            if (!reply?.mes) return;
+            chat.push({
+                is_user: false, mes: reply.mes, send_date: e.at,
+                meta: { proactive: true, proactiveType: e.kind === 'follow_up' ? 'follow_up' : e.type, ...(e.kind === 'follow_up' ? { round: e.round } : {}) },
+                ...(reply.mood ? { mood: reply.mood } : {}),
+            });
+            added++;
+        });
+        return added;
+    }
+
+    async function runCatchUp({ char, key, settle, events, sim, from, now }) {
         const controller = new AbortController();
         catchingUp = { key, controller };
         // Holds the proactive timers and your next reply until it's done (onGenerationSettled)
@@ -5925,7 +5966,10 @@
         setCatchUpBar(true);
         // Its chat, whatever's open when it answers; written while its last message is still there
         const target = soloTarget(key);
+        // The texts the model writes: those no round had written already, numbered over all of them
+        const asked = events.map((e, i) => ({ n: i + 1, at: e.at, note: e.note, text: e.text })).filter(e => !e.text);
         let notSent = false;
+        let inserted = false;
         try {
             const history = getChatHistory(target);
             const anchor = history[history.length - 1] || null;
@@ -5935,25 +5979,19 @@
             if (!isViewing(target)) { notSent = true; return; }
             const instruction = CatchUp.buildInstruction({
                 charName: char.name || 'Character', userName, from, now, settle, schedule: activeSchedule(),
-                errands: activeLife()?.errands || [], madeUp: settings.dailyLifeMadeUp === true, texts,
+                errands: activeLife()?.errands || [], madeUp: settings.dailyLifeMadeUp === true, texts: asked,
             });
             apiMessages.push({ role: 'user', content: `[Instruction for this turn — not a message from ${userName}; never quote or answer it: ${instruction}]` });
-            if (texts.length) proactiveMessaging.noteCatchUpRequest(key);
+            if (asked.length) proactiveMessaging.noteCatchUpRequest(key);
             const raw = await requestEchoTextCompletion({ apiMessages, rawPrompt, systemPrompt, signal: controller.signal });
             // Paused: left as it is. The chat cleared or replaced meanwhile: the gap was another chat's
             if (controller.signal.aborted) return;
             const chat = getChatHistory(target);
-            if (anchor && !chat.includes(anchor)) return;
-            const answer = CatchUp.readAnswer(stripThinkingTags(String(raw ?? '')), { from, now, planned: texts });
+            if (anchor && !chat.includes(anchor)) { inserted = true; return; }
+            const answer = CatchUp.readAnswer(stripThinkingTags(String(raw ?? '')), { now, asked: asked.map(e => e.n) });
             if (settle) writeLife(key, { changes: answer.life });
-            if (answer.texts.length) {
-                for (const text of answer.texts) {
-                    const reply = readReply(text.mes, target);
-                    if (!reply.mes) continue;
-                    chat.push({ is_user: false, mes: reply.mes, send_date: text.at, meta: { proactive: true, proactiveType: 'catch_up' },
-                        ...(reply.mood ? { mood: reply.mood } : {}) });
-                    markProactiveCharacterActivity(key, true, 'catch_up', text.at);
-                }
+            inserted = true;
+            if (insertCatchUpTexts(chat, target, events, answer.texts)) {
                 saveChatHistory(chat, target);
                 if (isViewing(target)) renderMessages(chat);
             }
@@ -5963,8 +6001,18 @@
                 toastr.error(`Could not catch up: ${err.message}`, 'Echogram');
             }
         } finally {
-            // Done, paused or failed: the gap isn't tried again (not sent for another chat: it is)
+            // Done, paused or failed: the gap isn't tried again (not sent for another chat: it is).
+            // What the engine worked out holds either way: texts a round had written still go in,
+            // the rest are missing, and its state moves on so nothing comes twice.
             if (!notSent) {
+                if (!inserted && events.some(e => e.text)) {
+                    const chat = getChatHistory(target);
+                    if (insertCatchUpTexts(chat, target, events)) {
+                        saveChatHistory(chat, target);
+                        if (isViewing(target)) renderMessages(chat);
+                    }
+                }
+                if (sim) proactiveMessaging.adoptSimulation(key, sim.state);
                 if (settle) settings.lifeState[key] = { ...DailyLife.normalizeLife(settings.lifeState[key]), settledAt: now };
                 if (getCharacterKey() === key) markSeen(true);
                 else settings.proactiveSeenAt[key] = Date.now();
@@ -5977,6 +6025,14 @@
             refreshProactiveInsights();
             onGenerationSettled();
         }
+    }
+
+    /** Whether a catch-up is due for the open character: their live texts wait for it (lib/proactive-messaging.js). */
+    function catchUpPending(key) {
+        if (!CatchUp || settings.catchUpEnabled === false || inGroupSession() || !key || key !== getCharacterKey()) return false;
+        if (catchingUp?.key === key) return true;
+        const seen = settings.proactiveSeenAt?.[key];
+        return !!seen && Date.now() - seen > CatchUp.GAP_MS;
     }
 
     /** Pausing a catch-up: its request stops, and the gap is left as it is. */
@@ -8230,32 +8286,44 @@
             setTypingIndicatorVisible,
             setFabUnreadIndicator,
             getEmotionState,
-            getProactivePace: () => (emotionSystem ? emotionSystem.getProactivePace() : 1),
+            getProactivePace: (key, at) => (emotionSystem ? emotionSystem.getProactivePace(key ?? undefined, at) : 1),
             // How the character follows up when ignored (Personality tab; lib/proactive-rounds.js)
             getTemperament: key => (emotionSystem ? emotionSystem.getTemperament(key) : 'normal'),
             // Daily Life, the open character with a schedule: where they are in their day and
-            // their errands and news, for new topics (lib/proactive-rounds.js lifeTopics); else null
-            getDailyLife: () => {
+            // their errands and news, for new topics (lib/proactive-rounds.js lifeTopics); else null.
+            // At `at` (ms) when a catch-up looks back
+            getDailyLife: (at = undefined) => {
                 const schedule = activeSchedule();
                 if (!schedule) return null;
-                const date = new Date();
+                const date = at === undefined ? new Date() : new Date(at);
                 const { block, since, prev } = DailyLife.currentStretch(schedule, date);
                 // A change of plan or still texting: their phone, and never just got free
-                const now = phoneNow();
+                const now = at === undefined ? phoneNow() : phoneAtTime(at);
                 const own = now.by === 'schedule';
+                const key = getCharacterKey();
                 return {
                     phone: now.phone, block, since: since ? since.getTime() : null,
                     prevPhone: own ? (prev ? prev.phone : 'free') : now.phone, prevDoing: prev ? prev.doing : '',
-                    life: activeLife(), today: DailyLife.dateKey(date),
+                    life: at === undefined ? activeLife() : DailyLife.currentLife(settings.lifeState[key], date, getEmotionHistory(key)),
+                    today: DailyLife.dateKey(date),
                 };
             },
             // While you're playing the main chat: when they may text first again (13b)
             getStoryPauseUntil: storyPauseUntil,
-            // Daily Life: the open character's phone now and when that changes ({ phone, endsAt }), or null
-            getScheduleNow: () => {
-                const now = phoneNow();
-                return now ? { phone: now.phone, endsAt: phoneEndsNow() } : null;
+            // Daily Life: the open character's phone now (or at `at`, ms) and when that changes ({ phone, endsAt }), or null
+            getScheduleNow: (at = undefined) => {
+                if (at === undefined) {
+                    const now = phoneNow();
+                    return now ? { phone: now.phone, endsAt: phoneEndsNow() } : null;
+                }
+                const then = phoneAtTime(at);
+                if (!then) return null;
+                return { phone: then.phone, endsAt: then.by === 'texting' ? then.endsAt
+                    : (DailyLife.phoneEndsAt({ schedule: activeSchedule(), override: phoneOverride(), date: new Date(at) }) || 0) };
             },
+            withYouAt,
+            // A catch-up due for them: their live texts wait for it
+            catchUpPending,
             readReply,
             chatTarget,
             isViewing,
