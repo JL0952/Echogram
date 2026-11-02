@@ -640,6 +640,7 @@
 
         syncButton('#et_proactive_toggle_panel');
         syncButton('#et_proactive_toggle');
+        window.EchoTextSettingsModal?.syncDependentControls(settings);
     }
 
     // Initialize a custom dropdown in the panel
@@ -6199,7 +6200,7 @@
         }
         if (phone === 'together' && proactiveMessaging) proactiveMessaging.dropRound(key);
         if (before?.phone === 'together' && !before.noted && phone !== 'together') {
-            noteTogether(key, { from: before.from, until: Math.min(before.until, Date.now()) });
+            noteTogether(key, { from: before.from, until: Math.min(before.until, Date.now()) }, { explain: true });
         }
         updatePanelStatusRow();
         refreshProactiveInsights();
@@ -6226,9 +6227,9 @@
      * model's sentence about it takes its place and in Auto mode moves the feelings, with a
      * bar up meanwhile; paused, what's there stays. Today's change goes with it: it was most
      * likely written for this. A text may follow once they've parted. An accidental moment
-     * leaves nothing.
+     * leaves nothing. With `explain` (you ended it), says so when no sentence is to come.
      */
-    async function noteTogether(key, { from, until }) {
+    async function noteTogether(key, { from, until }, { explain = false } = {}) {
         const char = getCurrentCharacter();
         if (!char || until - from < DailyLife.TOGETHER_MIN_MINUTES * 60000) return;
         const userName = getUserName();
@@ -6238,7 +6239,10 @@
         if (emotionSystem) emotionSystem.refresh();
         if (proactiveMessaging) proactiveMessaging.planParted(key, until);
         const story = getSTStoryContext(char, { from, until, maxMessages: ST_STRETCH_MAX_MESSAGES, maxChars: ST_STRETCH_MAX_CHARS });
-        if (!story) return;
+        if (!story) {
+            if (explain) toastr.info(isCharInCurrentSTChat(char) ? 'No main chat messages from this time: no summary' : `Main chat isn't on ${char.name}: no summary`, 'Echogram');
+            return;
+        }
         const controller = new AbortController();
         summingUp = controller;
         setStatusBar('et-together-bar', 'Summing up…', 'pause-together');
@@ -8974,6 +8978,15 @@
         setTimeout(() => maybeCatchUp(), 3000);
         jQuery(document).on('click', '[data-et-catchup="pause"]', () => pauseCatchUp());
         jQuery(document).on('click', '[data-et-catchup="pause-together"]', () => pauseTogetherNote());
+        // Settings that depend on another, in both settings views
+        const Controls = window.EchoTextSettingsModal;
+        jQuery(document).on('change.et-controls', '#et_daily_life, #et_daily_life_panel, #et_memory_enabled, #et_memory_enabled_panel, '
+            + '#et_image_generation_enabled, #et_image_generation_enabled_panel, #et_ctx_st_messages, #et_ctx_st_messages_panel',
+        () => setTimeout(() => Controls.syncDependentControls(settings), 0));
+        jQuery(document).on('click.et-controls', '.et-field-off', function (e) {
+            e.preventDefault();
+            toastr.info(`Needs ${Controls.controlNeeded(this)}`, 'Echogram');
+        });
 
         jQuery('body').append(buildFabHtml());
         positionFab();

@@ -4484,6 +4484,19 @@ html.et-bg-light {
     color: var(--et-theme-color);
 }
 
+/* A setting that needs another one on, while that's off */
+.et-field-off {
+    opacity: 0.45;
+}
+
+.et-field-off .et-toggle-row {
+    cursor: not-allowed;
+}
+
+.et-field-off input {
+    pointer-events: none;
+}
+
 /* The ⋯ menu's With you, while it's on */
 .et-overflow-item-on,
 .et-overflow-item-on i {

@@ -205,6 +205,7 @@
                                 <span class="et-label-text"><i class="fa-solid fa-comments"></i> Echogram Messages</span>
                             </label>
                             <div class="et-hint et-hint-indent">The other way round: your Echogram texts with the chat's character go into SillyTavern's own roleplay prompt, each exchange placed where it happened in the story. Texts from before the chat began are left out. Not in group chats.</div>
+                            <div class="et-hint et-hint-indent" data-et-reveal="story-day" style="display:none;">Also sends the character's day.</div>
                         </div>
 
                         <div class="et-field">
@@ -355,7 +356,7 @@
                             <button class="et-te-open-btn" id="et-te-open-btn-panel" title="Create and manage custom colour themes">
                                 <i class="fa-solid fa-wand-magic-sparkles"></i> Edit Custom Themes
                             </button>
-                            <div class="et-hint">Colors Echogram's own look and its menus and settings. Platform looks (WeChat) keep their own colors.</div>
+                            <div class="et-hint">Colors Echogram's own look and its menus and settings. Platform looks keep their own colors.</div>
                         </div>
 
                         <div class="et-field">
@@ -364,7 +365,7 @@
                                 <select id="et_platform_default_panel" class="et-select"></select>
                                 <i class="fa-solid fa-chevron-down et-select-arrow"></i>
                             </div>
-                            <div class="et-hint">How chats look and which extras they support (photos, transfers, reactions). Extras a platform lacks are hidden and left out of what the model sees; the chat history itself never changes.</div>
+                            <div class="et-hint">How chats look and which extra functions they support.</div>
                         </div>
 
                         <div class="et-field">
@@ -384,7 +385,7 @@
                                     step="1" value="15">
                                 <span id="et_font_size_val_panel" class="et-slider-val">15px</span>
                             </div>
-                            <div class="et-hint">Applies to every look. WeChat keeps its proportions: 17px text at the default 15.</div>
+                            <div class="et-hint">Applies to every look.</div>
                         </div>
 
                         <div class="et-field">
@@ -392,7 +393,7 @@
                             <div id="et_font_family_panel_container">
                                 <!-- Font dropdown will be populated by JavaScript -->
                             </div>
-                            <div class="et-hint">Applies to every look; WeChat falls back to its own fonts for characters this font lacks.</div>
+                            <div class="et-hint">Applies to every look.</div>
                         </div>
 
                         <div class="et-field">
@@ -405,7 +406,7 @@
                                 <span id="et_glass_blur_val_panel" class="et-slider-val">20px</span>
                             </div>
                             <div class="et-hint">Controls the background blur intensity behind the panel for the frosted
-                                glass effect. Echogram's own look only: platform looks (WeChat) keep their own.</div>
+                                glass effect. Echogram's look only.</div>
                         </div>
 
                         <div class="et-field">
@@ -417,7 +418,7 @@
                                     max="100" step="5" value="85">
                                 <span id="et_glass_opacity_val_panel" class="et-slider-val">85%</span>
                             </div>
-                            <div class="et-hint">Adjusts how transparent the panel background appears. Echogram's own look only: platform looks (WeChat) keep their own.</div>
+                            <div class="et-hint">Adjusts how transparent the panel background appears. Echogram's look only.</div>
                         </div>
 
                         <div class="et-field">
@@ -429,7 +430,7 @@
                                     max="2.0" step="0.05" value="1.3">
                                 <span id="et_line_spacing_val_panel" class="et-slider-val">1.30</span>
                             </div>
-                            <div class="et-hint">Line height of text within each message bubble. Echogram's own look only: platform looks (WeChat) keep their own.</div>
+                            <div class="et-hint">Line height of text within each message bubble. Echogram's look only.</div>
                         </div>
 
                         <div class="et-field">
@@ -441,7 +442,7 @@
                                     max="24" step="2" value="12">
                                 <span id="et_paragraph_spacing_val_panel" class="et-slider-val">12px</span>
                             </div>
-                            <div class="et-hint">Vertical gap between chat bubbles. Echogram's own look only: platform looks (WeChat) keep their own.</div>
+                            <div class="et-hint">Vertical gap between chat bubbles. Echogram's look only.</div>
                         </div>
 
                     </div>
@@ -550,25 +551,28 @@
                             <div class="et-hint">Adds Schedule under the character's name.</div>
                         </div>
 
-                        <div class="et-field">
+                        <div class="et-field" data-et-needs="daily-life">
                             <label class="et-toggle-row" for="et_daily_life_made_up_panel">
                                 <input type="checkbox" id="et_daily_life_made_up_panel" class="checkbox">
                                 <span class="et-label-text"><i class="fa-solid fa-wand-magic-sparkles"></i> Made-up errands</span>
                             </label>
+                            <div class="et-hint">The character adds errands of their own.</div>
                         </div>
 
-                        <div class="et-field">
+                        <div class="et-field" data-et-needs="proactive">
                             <label class="et-toggle-row" for="et_catch_up_panel">
                                 <input type="checkbox" id="et_catch_up_panel" class="checkbox">
                                 <span class="et-label-text"><i class="fa-solid fa-clock-rotate-left"></i> Catch up</span>
                             </label>
+                            <div class="et-hint">Sends the texts they'd have sent while you were away.</div>
                         </div>
 
-                        <div class="et-field">
+                        <div class="et-field" data-et-needs="proactive">
                             <label class="et-toggle-row" for="et_story_pause_panel">
                                 <input type="checkbox" id="et_story_pause_panel" class="checkbox">
                                 <span class="et-label-text"><i class="fa-solid fa-book-open-reader"></i> Pause during story</span>
                             </label>
+                            <div class="et-hint">Holds their texts while you're playing the main chat.</div>
                         </div>
 
                         <div class="et-proactive-insights-grid" id="et_proactive_insights_panel">
@@ -627,7 +631,7 @@
                             <div class="et-hint">Inject relevant shared memories into the system prompt during generation.</div>
                         </div>
 
-                        <div class="et-field">
+                        <div class="et-field" data-et-needs="memory">
                             <label class="et-toggle-row" for="et_memory_summaries_panel">
                                 <input type="checkbox" id="et_memory_summaries_panel" class="checkbox">
                                 <span class="et-label-text"><i class="fa-solid fa-scroll"></i> Summarize Older Messages</span>
@@ -742,7 +746,7 @@
                             </ol>
                         </div>
 
-                        <div class="et-field">
+                        <div class="et-field" data-et-needs="image">
                             <label class="et-toggle-row" for="et_image_generation_include_text_reply_panel">
                                 <input type="checkbox" id="et_image_generation_include_text_reply_panel"
                                     class="checkbox">

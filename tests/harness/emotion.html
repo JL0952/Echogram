@@ -1622,6 +1622,24 @@
         await sleep(20);
         res.notedOnce = log().length === 1 && plan().phone === 'free';
 
+        // You end it and there's no story to sum up: you're told why; running out by itself says nothing
+        const told = [];
+        const info = window.toastr.info;
+        window.toastr.info = m => told.push(m);
+        const storySoFar = story.splice(0);
+        env.settings.lifeState = settings.lifeState = {};
+        await r.noteTogether('mira.png', { from: Date.now() - 3 * HOUR, until: Date.now() - HOUR }, { explain: true });
+        res.toldNoStory = told.length === 1 && told[0].includes('No main chat messages');
+        await r.noteTogether('mira.png', { from: Date.now() - 3 * HOUR, until: Date.now() - HOUR });
+        res.silentByItself = told.length === 1;
+        const ownContext = window.SillyTavern.getContext;
+        window.SillyTavern.getContext = () => ({ name1: '我', chat: story, characters: [{ name: 'Other', avatar: 'other.png' }], characterId: 0 });
+        await r.noteTogether('mira.png', { from: Date.now() - 3 * HOUR, until: Date.now() - HOUR }, { explain: true });
+        res.toldOtherChat = told[1] === "Main chat isn't on Mira: no summary";
+        window.SillyTavern.getContext = ownContext;
+        window.toastr.info = info;
+        story.push(...storySoFar);
+
         // Paused: the request stops and the fixed line stays; no bar without a request
         env.settings.lifeState = settings.lifeState = {};
         story.push({ is_user: true, name: '我', mes: '走吧', send_date: Date.now() - 2 * HOUR });
@@ -1819,6 +1837,53 @@
         return res;
     };
 
+    // Settings that depend on another: greyed out and fixed while it's off, saying what's needed
+    window.runControlsTest = async function () {
+        const res = {};
+        errors.length = 0;
+        const Controls = window.EchoTextSettingsModal;
+        const { host } = await mountSettingsPanel();
+        const s = env.settings;
+        const field = id => host.querySelector(`#${id}`).closest('.et-field');
+        const off = id => field(id).classList.contains('et-field-off') && host.querySelector(`#${id}`).disabled;
+        const on = id => !field(id).classList.contains('et-field-off') && !host.querySelector(`#${id}`).disabled;
+        Object.assign(s, { proactiveMessagingEnabled: true, dynamicSystemsEnabled: true, dailyLifeEnabled: true, memoryEnabled: true, imageGenerationEnabled: true, ctxSTMessages: false });
+        const children = ['et_catch_up_panel', 'et_story_pause_panel', 'et_daily_life_made_up_panel', 'et_memory_summaries_panel', 'et_image_generation_include_text_reply_panel'];
+        Controls.syncDependentControls(s);
+        res.allOn = children.every(on);
+        s.proactiveMessagingEnabled = false;
+        Controls.syncDependentControls(s);
+        res.proactiveOff = off('et_catch_up_panel') && off('et_story_pause_panel') && on('et_daily_life_made_up_panel');
+        s.proactiveMessagingEnabled = true;
+        s.dailyLifeEnabled = false;
+        s.memoryEnabled = false;
+        s.imageGenerationEnabled = false;
+        host.querySelector('#et_memory_summaries_panel').checked = true;
+        Controls.syncDependentControls(s);
+        res.othersOff = off('et_daily_life_made_up_panel') && off('et_memory_summaries_panel') && off('et_image_generation_include_text_reply_panel') && on('et_catch_up_panel');
+        res.keepsItsValue = host.querySelector('#et_memory_summaries_panel').checked;
+        res.subFieldOff = host.querySelector('#et_memory_keep_panel').disabled;
+        res.saysWhat = Controls.controlNeeded(field('et_memory_summaries_panel')) === 'Memory System';
+        // Back on, they're back
+        Object.assign(s, { dailyLifeEnabled: true, memoryEnabled: true, imageGenerationEnabled: true });
+        Controls.syncDependentControls(s);
+        res.backOn = children.every(on) && !host.querySelector('#et_memory_keep_panel').disabled;
+        // The line only with both on
+        const line = () => host.querySelector('[data-et-reveal="story-day"]');
+        res.lineHidden = line().style.display === 'none';
+        s.ctxSTMessages = true;
+        Controls.syncDependentControls(s);
+        res.lineShown = line().style.display !== 'none';
+        s.dailyLifeEnabled = false;
+        Controls.syncDependentControls(s);
+        res.lineNeedsBoth = line().style.display === 'none';
+        Object.assign(s, { ctxSTMessages: false, dailyLifeEnabled: false });
+        host.remove();
+        res.errors = errors.slice();
+        res.ok = Object.values(res).filter(v => typeof v === 'boolean').every(Boolean) && !errors.length;
+        return res;
+    };
+
     // A chat's memories in the settings list: This chat beside Permanent, moving one over, copying a summary
     window.runChatMemoryTest = async function () {
         const res = {};
@@ -1827,6 +1892,7 @@
         env.settings.memoryScope = 'per-character';
         env.settings.chatMemories = {};
         env.settings.characterMemories = {};
+        env.settings.lifeState = settings.lifeState = {};
         env.settings.dailyLifeEnabled = true;
         env.settings.chatHistory['mira.png'] = Array.from({ length: 40 }, (_, i) => ({ is_user: i % 2 === 0, mes: `line ${i}`, send_date: Date.now() - (40 - i) * 1000 }));
         env.settings.chatHistory['mira.png'][29].memo = { id: 'mm1', text: '他们约好周末看电影', count: 30, at: Date.now() };
@@ -2266,9 +2332,10 @@
         const lifeMemory = await window.runLifeMemoryTest();
         const rename = await window.runRenameTest();
         const chatMemory = await window.runChatMemoryTest();
+        const controls = await window.runControlsTest();
         const together = await window.runTogetherTest();
         const storyPause = await window.runStoryPauseTest();
-        fetch('/__log', { method: 'POST', body: JSON.stringify({ runChatMemoryTest: chatMemory, runTogetherTest: together, runStoryPauseTest: storyPause, runReplyLengthTest: replyLength, runLifeReportTest: lifeReport, runUnseenTest: unseen, runCatchUpTest: catchUp, runPlanTest: plan, runLifeMemoryTest: lifeMemory, runRenameTest: rename, runEmotionTest: result, runAutoTest: auto, runReplyTest: reply, runTapbackTest: tapback, runMemoryTest: memory, runSummaryTest: summary, runInstagramTest: instagram, runScheduleTest: schedule, runLifeTest: life }) }).catch(() => {});
+        fetch('/__log', { method: 'POST', body: JSON.stringify({ runChatMemoryTest: chatMemory, runControlsTest: controls, runTogetherTest: together, runStoryPauseTest: storyPause, runReplyLengthTest: replyLength, runLifeReportTest: lifeReport, runUnseenTest: unseen, runCatchUpTest: catchUp, runPlanTest: plan, runLifeMemoryTest: lifeMemory, runRenameTest: rename, runEmotionTest: result, runAutoTest: auto, runReplyTest: reply, runTapbackTest: tapback, runMemoryTest: memory, runSummaryTest: summary, runInstagramTest: instagram, runScheduleTest: schedule, runLifeTest: life }) }).catch(() => {});
     } else if (params.has('memory')) {
         // Two memories, one pinned, the other in the last prompt; Add Memory open on a bubble
         env.settings.characterMemories = { 'mira.png': [
