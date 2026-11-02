@@ -26,7 +26,7 @@ function setup({ temperament = 'clingy', answer = '?\n---\n人呢\n---\n你去�
     const settings = { enabled: true, proactiveMessagingEnabled: true, chatHistory: { 'mira.png': [] }, proactiveState: {} };
     const asked = [];
     const warnings = [];
-    const env = { temperament, answer, schedule, group, open: 'mira.png' };
+    const env = { temperament, answer, schedule, group, open: 'mira.png', bars: [] };
     const p = window.EchoTextProactiveMessaging.createProactiveMessaging({
         getSettings: () => settings, saveSettings: () => {}, warn: (...a) => warnings.push(a.join(' ')),
         // The chat open now (index.js chatTarget): another one when a test sets env.open
@@ -35,7 +35,9 @@ function setup({ temperament = 'clingy', answer = '?\n---\n人呢\n---\n你去�
         getChatHistory: () => settings.chatHistory['mira.png'], getUserName: () => 'Qi',
         getTemperament: () => env.temperament, getScheduleNow: () => env.schedule, getDailyLife: () => env.day || null, getStoryPauseUntil: () => env.storyUntil || 0,
         expandTimeDateMacros: t => t, replaceMacros: t => t, getActiveFeatures: () => [], getProactivePace: () => 1,
-        isGroupSession: () => env.group, isPanelOpen: () => true, getIsGenerating: () => false, getEmotionState: () => null,
+        isGroupSession: () => env.group, isPanelOpen: () => true, getIsGenerating: () => !!env.generating, getEmotionState: () => null,
+        // The bar over the messages while texts gone by are written (index.js setRoundBar)
+        setRoundBar: on => env.bars.push(on),
         buildApiMessagesFromHistoryForChar: async (history, extraSystem) => {
             env.onBuild?.();
             return { apiMessages: [{ role: 'system', content: extraSystem.join('\n') }], rawPrompt: '', systemPrompt: '' };
@@ -326,4 +328,55 @@ test('the chat a round followed cleared: the round ends and nothing lands in the
     assert.equal(await p.runDueRound(), false);
     assert.equal(state().round, null);
     assert.deepEqual(chat(), []);
+});
+
+test('a round whose texts have all gone by (the page wasn\'t running) is told them by the clock, with a bar up while it\'s written', async () => {
+    clock = T0;
+    const { p, env, asked, chat, state, talk } = setup({ temperament: 'clingy' });
+    talk();
+    const round = state().round;
+    const hm = ms => new Date(ms).toTimeString().slice(0, 5);
+    // Back an hour after the last of them, the same evening
+    clock = round.times[3] + HOUR;
+    await p.runDueRound();
+    const turn = asked[0].at(-1).content;
+    assert.match(turn, new RegExp(`They were sent one after another while Qi was away: the first at ${hm(round.times[0])}, text 2 at ${hm(round.times[1])}, .*the last at ${hm(round.times[3])}; it is now ${hm(clock)}\\.`));
+    assert.doesNotMatch(turn, /after Mira's last one/);
+    assert.deepEqual(env.bars, [true, false]);
+    assert.deepEqual(chat().slice(-4).map(m => m.send_date), round.times);
+});
+
+test('a round only partly gone by keeps its waits (the first going in quietly, with the bar); one due now has no bar', async () => {
+    clock = T0;
+    const late = setup({ temperament: 'clingy' });
+    late.talk();
+    clock = late.state().round.times[0] + 2 * MIN;
+    await late.p.runDueRound();
+    assert.match(late.asked[0].at(-1).content, /They come one after another: the first \d+ minutes after Mira's last one/);
+    assert.deepEqual(late.env.bars, [true, false]);
+    clock = T0;
+    const due = setup({ temperament: 'clingy' });
+    due.talk();
+    clock = due.state().round.times[0];
+    await due.p.runDueRound();
+    assert.equal(due.asked.length, 1);
+    assert.deepEqual(due.env.bars, []);
+});
+
+test('a round put off by another generation goes as soon as that\'s over and its timer is set again', async () => {
+    clock = T0;
+    const { p, env, asked, chat, state, talk } = setup({ temperament: 'clingy' });
+    talk();
+    const round = state().round;
+    clock = round.times[0];
+    // A catch-up, say, is running: it waits (its own retry is half a minute off)
+    env.generating = true;
+    assert.equal(await p.runDueRound(), true);
+    assert.equal(asked.length, 0);
+    // Over: setting the timer again (index.js onGenerationSettled) lets it go a second later
+    env.generating = false;
+    p.armRoundTimer();
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(asked.length, 1);
+    assert.equal(chat().at(-1).mes, '?');
 });

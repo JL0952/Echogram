@@ -166,6 +166,16 @@ test('texts moved out of time together keep their waits and their number', () =>
         ['2026-10-31 20:05']);
 });
 
+test('the last line asks only for what is wanted: settling alone, no texts', () => {
+    const settleOnly = C.buildInstruction({ charName: 'Mira', userName: 'Qi', from: at(31, 8), now: NOW, settle: true, schedule: WEEK });
+    assert.match(settleOnly, /Write only the <life> line, in the language of the conversation: no texts this time, and nothing else\.$/);
+    assert.doesNotMatch(settleOnly, /the texts/);
+    const both = C.buildInstruction({ charName: 'Mira', userName: 'Qi', from: at(31, 8), now: NOW, settle: true, schedule: WEEK, texts: [at(31, 12)] });
+    assert.match(both, /Write the changes and the texts in the language of the conversation, and nothing else\.$/);
+    const textsOnly = C.buildInstruction({ charName: 'Mira', userName: 'Qi', from: at(31, 8), now: NOW, texts: [at(31, 12)] });
+    assert.match(textsOnly, /Write the texts in the language of the conversation, and nothing else\.$/);
+});
+
 test('settling is told not to repeat what\'s recorded, and may still build on it', () => {
     const told = C.buildInstruction({ charName: 'Mira', userName: 'Qi', from: at(31, 8), now: NOW, settle: true, schedule: WEEK });
     assert.match(told, /Do not create duplicate entries for events already recorded in What happened lately\./);

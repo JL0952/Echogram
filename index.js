@@ -4813,6 +4813,8 @@
             replyQueued = false;
             scheduleCharacterReply(600);
         }
+        // A follow-up round that was waiting on this (a catch-up, say) goes now, not at its next retry
+        if (proactiveMessaging) proactiveMessaging.armRoundTimer();
         // Once things are quiet, the background summary of older messages
         setTimeout(() => { summarizeOldMessages(); }, 2000);
     }
@@ -5858,16 +5860,23 @@
         if (force || now - seenSavedAt > 10 * 60000) { seenSavedAt = now; saveSettings(); }
     }
 
-    /** A bar over the messages while something runs in the background, with its pause button; gone without `text`. */
+    /** A bar over the messages while something runs in the background, with its pause button (none with `pause` null); gone without `text`. */
     function setStatusBar(id, text, pause = 'pause') {
         jQuery(`#${id}`).remove();
         if (!text) return;
         jQuery('#et-messages').prepend(`<div id="${id}" class="et-catchup-bar"><i class="fa-solid fa-clock-rotate-left"></i>`
-            + `<span>${text}</span><button type="button" class="et-catchup-pause" data-et-catchup="${pause}" title="Pause"><i class="fa-solid fa-pause"></i></button></div>`);
+            + `<span>${text}</span>`
+            + (pause ? `<button type="button" class="et-catchup-pause" data-et-catchup="${pause}" title="Pause"><i class="fa-solid fa-pause"></i></button>` : '')
+            + `</div>`);
     }
 
     function setCatchUpBar(on) {
         setStatusBar('et-catchup-bar', on ? 'Catching up…' : '');
+    }
+
+    /** The same while a follow-up round writes texts gone by (lib/proactive-messaging.js); its request can't be stopped. */
+    function setRoundBar(on) {
+        setStatusBar('et-round-bar', on ? 'Catching up…' : '', null);
     }
 
     /**
@@ -8250,6 +8259,7 @@
             readReply,
             chatTarget,
             isViewing,
+            setRoundBar,
             noteMoodReport,
             findLastUserMessageIndex,
             requestEchoTextCompletion,

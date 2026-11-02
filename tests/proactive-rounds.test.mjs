@@ -68,6 +68,18 @@ test('what the model is told for a round', () => {
     assert.doesNotMatch(text + one, /[一-鿿]/);
 });
 
+test('a round whose texts all went by while the page wasn\'t running: by the clock, beside the time now', () => {
+    const t = (d, h, m = 0) => new Date(2026, 9, d, h, m).getTime();
+    const waits = [3.5, 3.8, 4.6, 5.9].map(h => h * 60 * MIN);
+    const sentAt = [t(31, 18), t(31, 18, 15), t(31, 19, 2), t(31, 20, 19)];
+    const text = R.roundInstruction({ charName: 'Mira', userName: 'Qi', temperament: 'clingy', waits, sentAt, now: t(31, 21, 46) });
+    assert.match(text, /They were sent one after another while Qi was away: the first at 18:00, text 2 at 18:15, text 3 at 19:02, the last at 20:19; it is now 21:46\./);
+    assert.doesNotMatch(text, /hours after/);
+    // Past midnight: the day before is said
+    const late = R.roundInstruction({ charName: 'Mira', userName: 'Qi', temperament: 'aloof', waits: [waits[0]], sentAt: [t(31, 23)], now: t(32, 1, 5) });
+    assert.match(late, /It was sent while Qi was away, at 2026-10-31 23:00; it is now 01:05\./);
+});
+
 test('the model\'s answer split into the round\'s texts', () => {
     assert.deepEqual(R.splitRound('?\n---\n人呢\n你去哪了\n---\n算了', 3), ['?', '人呢\n你去哪了', '算了']);
     assert.deepEqual(R.splitRound('a\n***\nb\n———\nc\n---\nd', 3), ['a', 'b', 'c']);
