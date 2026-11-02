@@ -130,7 +130,7 @@ test('the temperament sets the wait between proactive texts, the feelings stretc
     assert.equal(triggers({}, { lastProactiveHours: 23.9, temperament: 'aloof' }), null);
 });
 
-test('the insights panel names the new conditions, the cold shoulder and the stretched wait', () => {
+test('the insights panel: the six kinds with what each needs, the cold shoulder and the stretched wait', () => {
     const now = Date.now();
     const insights = (values, pace = 1) => {
         const settings = { proactiveMessagingEnabled: true };
@@ -142,13 +142,15 @@ test('the insights panel names the new conditions, the cold shoulder and the str
             getEmotionState: () => ({ ...Model.zeroValues(), ...values }), getProactivePace: () => pace,
         }).getProactiveInsightsSnapshot();
     };
-    const req = (snapshot, id) => snapshot.triggerDiagnostics.find(t => t.id === id)?.req;
+    const row = (snapshot, id) => snapshot.triggerDiagnostics.find(t => t.id === id);
     const calm = insights({});
-    assert.equal(req(calm, 'repair_attempt'), 'High Anger or Sadness + Rapport 20+');
-    assert.equal(req(calm, 'longing_ping'), 'High Romance');
-    assert.equal(req(calm, 'jealousy_nudge'), 'Some Anger + Romance 40+');
-    assert.equal(req(calm, 'anxiety_reassurance'), 'High Anxiety');
-    assert.doesNotMatch(JSON.stringify(calm.triggerDiagnostics), /Trust|Fear/);
+    assert.deepEqual(calm.triggerDiagnostics.map(t => t.label), ['Life', 'Thinking of you', 'Sharing', 'Picking up', 'Feelings', "It's been a while"]);
+    assert.equal(row(calm, 'mood').reason, 'No feeling strong enough');
+    assert.equal(row(calm, 'you').reason, 'Rapport 0, needs 20');
+    const warm = insights({ rapport: 30, anxiety: 60 });
+    assert.equal(row(warm, 'mood').reason, 'Can pick');
+    assert.equal(row(warm, 'you').reason, 'Can pick');
+    assert.equal(row(warm, 'callback').reason, 'Your last text 1h ago');
     assert.match(insights({ anger: 90 }).next, /^Ghosting .* Anger\)$/);
     // The last proactive text went 2 hours ago: Normal waits 6–10 hours, longer at 1.4 × the pace
     const hours = next => { const m = next.match(/Cooling down \((?:(\d+)h)? ?(?:(\d+)m)?/); return Number(m[1] || 0) + Number(m[2] || 0) / 60; };

@@ -24,7 +24,7 @@ const turn = (features, type, prompt = templates[type]) => proactive(features).b
 
 const TRIGGERS = ['checkin', 'dormancy_break', 'late_night', 'morning_wave', 'lunch_nudge', 'evening_winddown',
     'weekend_ping', 'affection_reciprocation', 'repair_attempt', 'curiosity_ping', 'anxiety_reassurance', 'celebration_nudge',
-    'sharing_impulse', 'mood_follow_up', 'memory_nudge', 'time_window', 'afternoon_slump', 'pre_dawn', 'commute_ping', 'post_work',
+    'sharing_impulse', 'mood_follow_up', 'memory_nudge', 'afternoon_slump', 'pre_dawn', 'commute_ping', 'post_work',
     'sunday_evening', 'post_midnight_impulse', 'monday_reboot', 'friday_feeling', 'sunday_scaries', 'midweek_check',
     'nostalgia_wave', 'longing_ping', 'playful_tease', 'jealousy_nudge', 'boredom_break', 'overwhelm_check', 'gratitude_burst',
     'pride_share', 'suppressed_thought', 'thinking_of_you', 'random_thought', 'dream_mention', 'song_stuck', 'overthinking_spiral',
@@ -78,4 +78,11 @@ test('triggers without a media idea still allow any media', () => {
     const text = turn(WECHAT, 'checkin');
     assert.doesNotMatch(text, /If it feels natural/);
     assert.match(text, /plus a photo, a voice message, a location, a file, a link or a song when one fits/);
+});
+
+test('every text has its kind, and every kind\'s text a template (their own day\'s three are worded apart)', () => {
+    const kinds = window.EchoTextProactiveRounds.KIND_OF;
+    const ownDay = ['block_change', 'errand', 'life_event'];
+    assert.deepEqual(Object.keys(kinds).filter(t => !ownDay.includes(t)).sort(), Object.keys(templates).sort());
+    assert.ok(!('time_window' in templates));
 });

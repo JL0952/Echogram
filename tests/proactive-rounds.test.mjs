@@ -161,3 +161,85 @@ test('after time together: when they text, by temperament, and what the model is
     assert.doesNotMatch(told, /since Qi last texted/);
     assert.ok(R.LIFE_TRIGGERS.includes('parted'));
 });
+
+// ── New topics: the six kinds (docs/platform-plan.md 12f) ───────────────────
+
+const AFTERNOON = new Date(2026, 10, 3, 15, 0); // a Tuesday
+const kindsAt = (over = {}) => R.topicKinds({ feelings: {}, hoursSinceUser: 5, now: AFTERNOON, ...over });
+const kind = (kinds, id) => kinds.find(k => k.id === id);
+const typesOf = (kinds, id) => kind(kinds, id).topics.map(t => t.type);
+
+test('each kind and when it can be picked', () => {
+    const calm = kindsAt();
+    assert.deepEqual(calm.map(k => k.id), ['life', 'you', 'share', 'callback', 'mood', 'gap']);
+    // Thinking of you: Rapport 20 and up
+    assert.equal(kind(calm, 'you').why, 'Rapport 0, needs 20');
+    assert.deepEqual(typesOf(kindsAt({ feelings: { rapport: 20 } }), 'you'), ['thinking_of_you', 'memory_nudge', 'inside_joke_callback']);
+    // Sharing: always; dreams only in the morning, boredom when little is going on, pride with anticipation and joy
+    assert.ok(kind(calm, 'share').ok);
+    assert.ok(!typesOf(calm, 'share').includes('dream_mention'));
+    assert.ok(typesOf(kindsAt({ now: new Date(2026, 10, 3, 8, 0) }), 'share').includes('dream_mention'));
+    assert.ok(typesOf(calm, 'share').includes('boredom_break'));
+    assert.ok(!typesOf(kindsAt({ feelings: { joy: 90, anticipation: 70 } }), 'share').includes('boredom_break'));
+    assert.ok(typesOf(kindsAt({ feelings: { joy: 40, anticipation: 70 } }), 'share').includes('pride_share'));
+    // Picking up: your last text 2–48 hours ago
+    assert.ok(kind(calm, 'callback').ok);
+    assert.equal(kind(kindsAt({ hoursSinceUser: 1 }), 'callback').why, 'Your last text 1h ago');
+    assert.ok(!kind(kindsAt({ hoursSinceUser: 49 }), 'callback').ok);
+    // Feelings: each its own condition, the dark ones too
+    assert.equal(kind(calm, 'mood').why, 'No feeling strong enough');
+    assert.deepEqual(typesOf(kindsAt({ feelings: { anger: 40, romance: 50 } }), 'mood'), ['jealousy_nudge']);
+    assert.deepEqual(typesOf(kindsAt({ feelings: { disgust: 40 } }), 'mood'), ['suppressed_thought']);
+    assert.ok(typesOf(kindsAt({ feelings: { anxiety: 60, sadness: 45 } }), 'mood').includes('overwhelm_check'));
+    // Overthinking only late at night
+    assert.ok(!typesOf(kindsAt({ feelings: { anxiety: 45 } }), 'mood').includes('overthinking_spiral'));
+    assert.ok(typesOf(kindsAt({ feelings: { anxiety: 45 }, now: new Date(2026, 10, 3, 23, 30) }), 'mood').includes('overthinking_spiral'));
+    // It's been a while: 24 hours, a week
+    assert.equal(kind(calm, 'gap').why, 'Your last text 5h ago');
+    assert.deepEqual(typesOf(kindsAt({ hoursSinceUser: 30 }), 'gap'), ['checkin']);
+    assert.deepEqual(typesOf(kindsAt({ hoursSinceUser: 200 }), 'gap'), ['dormancy_break']);
+});
+
+test('Life: her own day with a schedule; without one the clock text that fits, fixed by the day\'s pick', () => {
+    const own = kindsAt({ life: [{ type: 'errand', weight: 65, detail: '交论文, due tomorrow' }] });
+    assert.deepEqual(kind(own, 'life').topics, [{ type: 'errand', detail: '交论文, due tomorrow' }]);
+    assert.equal(kind(kindsAt({ life: [] }), 'life').why, 'Nothing new in their day');
+    // Tuesday 15:00: the afternoon slump
+    assert.deepEqual(typesOf(kindsAt(), 'life'), ['afternoon_slump']);
+    // Friday 17:45: the Friday feeling, the commute and the end of work fit; the pick says which
+    const friday = new Date(2026, 10, 6, 17, 45);
+    assert.deepEqual(R.clockTopics(friday), ['commute_ping', 'post_work', 'friday_feeling']);
+    assert.deepEqual(typesOf(kindsAt({ now: friday, clockPick: 0 }), 'life'), ['commute_ping']);
+    assert.deepEqual(typesOf(kindsAt({ now: friday, clockPick: 0.99 }), 'life'), ['friday_feeling']);
+    // A window past midnight; one for weekends only
+    assert.deepEqual(R.clockTopics(new Date(2026, 10, 3, 1, 0)), ['late_night', 'post_midnight_impulse']);
+    assert.ok(R.clockTopics(new Date(2026, 10, 7, 15, 0)).includes('weekend_ping'));
+    assert.equal(kind(kindsAt({ now: new Date(2026, 10, 3, 3, 0) }), 'life').why, 'No time-of-day text for now');
+});
+
+test('the pick: a kind first, the last one\'s less likely; in it the feelings by weight, the rest past their last three', () => {
+    const kinds = kindsAt({ feelings: { rapport: 30 } });
+    // With the last topic a share, its kind is less likely
+    const pick = random => R.pickTopic({ kinds: kinds.filter(k => ['you', 'share'].includes(k.id)), history: { random_thought: 5 }, random });
+    // you 1, share 0.3: the first 1/1.3 of the roll is you
+    assert.equal(pick(fixed(0.7)).kind, 'you');
+    assert.equal(pick(fixed(0.8)).kind, 'share');
+    // Nothing that can be picked: null
+    assert.equal(R.pickTopic({ kinds: kinds.map(k => ({ ...k, ok: false })) }), null);
+    // In a kind, past the last three of it
+    const shareOnly = kinds.filter(k => k.id === 'share');
+    const used = { random_thought: 4, sharing_impulse: 3, song_stuck: 2 };
+    for (const roll of [0, 0.5, 0.99]) {
+        assert.ok(!['random_thought', 'sharing_impulse', 'song_stuck'].includes(R.pickTopic({ kinds: shareOnly, history: used, random: fixed(roll) }).type));
+    }
+    // Feelings by their weights: reassurance (65 + 0.3 × anxiety) outweighs jealousy
+    const mood = kindsAt({ feelings: { anxiety: 90, anger: 40, romance: 50 } }).filter(k => k.id === 'mood');
+    assert.equal(R.pickTopic({ kinds: mood, random: fixed(0) }).type, 'anxiety_reassurance');
+    assert.equal(R.pickTopic({ kinds: mood, random: fixed(0.99) }).type, 'jealousy_nudge');
+    // With a schedule Life is half as likely again; a strong feeling makes Feelings so
+    const two = kindsAt({ feelings: { anxiety: 80 }, life: [{ type: 'errand', detail: 'x' }] }).filter(k => ['life', 'mood'].includes(k.id));
+    assert.equal(R.pickTopic({ kinds: two, withSchedule: true, random: fixed(0.55) }).kind, 'life');
+    assert.equal(R.pickTopic({ kinds: two, withSchedule: false, random: fixed(0.55) }).kind, 'mood');
+    assert.equal(R.pickTopic({ kinds: two, strongest: 0, random: fixed(0.45) }).kind, 'life');
+    assert.equal(R.pickTopic({ kinds: two, strongest: 80, random: fixed(0.45) }).kind, 'mood');
+});
