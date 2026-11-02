@@ -40,7 +40,8 @@ function setup({ temperament = 'clingy', answer = '?\n---\n人呢\n---\n你去�
         withYouAt: at => (env.together || []).some(span => span.from <= at && at < span.until),
         catchUpPending: () => !!env.pending,
         expandTimeDateMacros: t => t, replaceMacros: t => t, getActiveFeatures: () => [], getProactivePace: () => 1,
-        isGroupSession: () => env.group, isPanelOpen: () => true, getIsGenerating: () => !!env.generating, getEmotionState: () => null,
+        isGroupSession: () => env.group, isPanelOpen: () => true, getIsGenerating: () => !!env.generating, getEmotionState: () => env.feelings || null,
+        getMemories: () => env.memories || [],
         // The bar over the messages while texts gone by are written (index.js setRoundBar)
         setRoundBar: on => env.bars.push(on),
         buildApiMessagesFromHistoryForChar: async (history, extraSystem) => {
@@ -516,3 +517,29 @@ test('a catch-up due holds the live round and new topics back; you texted while 
     p.adoptSimulation('mira.png', sim.state);
     assert.equal(state().round, null);
 }));
+
+test('catching up: a shared moment from the memories goes in once, then not again for a week', async () => {
+    const real = Math.random;
+    // The rolls: the second kind of four (Thinking of you), its one text, its one memory
+    Math.random = () => 0.3;
+    try {
+        clock = morning;
+        const { p, env, chat, state } = setup({ temperament: 'normal' });
+        env.feelings = { rapport: 40 };
+        env.memories = [{ id: 'm1', category: 'shared_moment', content: '第一次一起看烟花' }, { id: 'x', category: 'shared_moment', content: '  ' }];
+        chat().push({ is_user: true, mes: 'hey', send_date: clock - 3 * HOUR }, { is_user: false, mes: 'hi', send_date: clock - 3 * HOUR + MIN });
+        const sim = p.simulateAway('mira.png', { name: 'Mira' }, { from: clock, to: clock + 24 * HOUR });
+        const topics = sim.events.filter(e => e.kind === 'topic');
+        assert.ok(topics.length >= 2, String(topics.length));
+        assert.equal(topics[0].type, 'memory_nudge');
+        assert.match(topics[0].note, /Something reminded Mira of this: "第一次一起看烟花"$/);
+        // Kept with when it went; the next ones don't bring it up (and an empty memory never does)
+        assert.deepEqual(sim.state.recalled, { m1: topics[0].at });
+        assert.ok(topics.slice(1).every(e => !e.note.includes('Something reminded')));
+        // Adopted with the rest
+        p.adoptSimulation('mira.png', sim.state);
+        assert.deepEqual(state().recalled, { m1: topics[0].at });
+    } finally {
+        Math.random = real;
+    }
+});

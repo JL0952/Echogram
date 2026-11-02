@@ -159,7 +159,7 @@ test('the insights panel: why nothing comes, and the six kinds, Life by her own 
     // Emotions off: Rapport 0, nothing strong; you last texted 20 hours ago
     assert.equal(rows(null).find(t => t.id === 'you').reason, 'Rapport 0, needs 20');
     assert.equal(rows(null).find(t => t.id === 'mood').reason, 'No feeling strong enough');
-    assert.equal(rows(null).find(t => t.id === 'share').reason, 'Can pick');
+    assert.equal(rows(null).find(t => t.id === 'share').reason, 'Can pick · no memories');
     assert.equal(rows(null).find(t => t.id === 'callback').reason, 'Can pick');
     assert.equal(rows(null).find(t => t.id === 'gap').reason, 'Your last text 20h ago');
     // When one went last: the newest of its texts

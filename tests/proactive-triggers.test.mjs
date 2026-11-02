@@ -149,7 +149,7 @@ test('the insights panel: the six kinds with what each needs, the cold shoulder 
     assert.equal(row(calm, 'you').reason, 'Rapport 0, needs 20');
     const warm = insights({ rapport: 30, anxiety: 60 });
     assert.equal(row(warm, 'mood').reason, 'Can pick');
-    assert.equal(row(warm, 'you').reason, 'Can pick');
+    assert.equal(row(warm, 'you').reason, 'Can pick · no memories');
     assert.equal(row(warm, 'callback').reason, 'Your last text 1h ago');
     assert.match(insights({ anger: 90 }).next, /^Ghosting .* Anger\)$/);
     // The last proactive text went 2 hours ago: Normal waits 6–10 hours, longer at 1.4 × the pace

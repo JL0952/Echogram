@@ -8336,6 +8336,8 @@
             },
             // While you're playing the main chat: when they may text first again (13b)
             getStoryPauseUntil: storyPauseUntil,
+            // The open character's memories (their chat's, theirs and the shared ones), Memory on; for new topics
+            getMemories: () => (memorySystem && settings.memoryEnabled !== false ? memorySystem.getAllMemoriesForInjection() : []),
             // Daily Life: the open character's phone now (or at `at`, ms) and when that changes ({ phone, endsAt }), or null
             getScheduleNow: (at = undefined) => {
                 if (at === undefined) {
