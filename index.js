@@ -382,6 +382,8 @@
         for (const [key, oldDefaults] of Object.entries(legacyPrompts)) {
             if (oldDefaults.includes(s[key])) s[key] = defaultSettings[key];
         }
+        // A second switch for proactive texts, always set with the first: one that was off stays off
+        if (s.dynamicSystemsEnabled === false) s.proactiveMessagingEnabled = false;
         // Settings of removed features
         for (const key of window.EchoTextConfig.REMOVED_SETTINGS || []) delete s[key];
         if (s.savedChats) delete s.savedChats.untethered;
@@ -627,8 +629,7 @@
     }
 
     function updateProactiveToggleButtons() {
-        // Check both proactiveMessagingEnabled and dynamicSystemsEnabled for the toggle state
-        const enabled = settings.proactiveMessagingEnabled !== false && settings.dynamicSystemsEnabled !== false;
+        const enabled = settings.proactiveMessagingEnabled !== false;
 
         const syncButton = (selector) => {
             const btn = jQuery(selector);
@@ -1228,10 +1229,7 @@
 
 
         jQuery('#et_proactive_toggle_panel').off('click.panel').on('click.panel', function () {
-            // Toggle both proactiveMessagingEnabled and dynamicSystemsEnabled
-            const newState = settings.proactiveMessagingEnabled === false ? true : false;
-            settings.proactiveMessagingEnabled = newState;
-            settings.dynamicSystemsEnabled = newState;
+            settings.proactiveMessagingEnabled = settings.proactiveMessagingEnabled === false;
             saveSettings();
             updateProactiveToggleButtons();
             startProactiveScheduler();
@@ -1987,7 +1985,7 @@
             const openingUse = `This is how the roleplay between ${name} and ${userName} began. Treat its setting and relationships as established facts.`;
             prompt += `\n\n${openingUse} ${name}'s spoken lines in it show how ${name} talks — vocabulary, tone, attitude toward ${userName}, and speech quirks. It is reference material written as narrative prose: never continue it or copy its narration.\n<story_opening>\n${openingText}\n</story_opening>`;
         }
-        const storyText = splitsLiveContext() || settings.ctxMainChat === false ? '' : getSTStoryContext(char);
+        const storyText = splitsLiveContext() ? '' : getSTStoryContext(char);
         if (splitsLiveContext() && getSTStoryMessages(char).length) {
             prompt += `\n\nThe roleplay's recent events are in the chat below, in <story_events>, where they happened between the texts: what comes after one happened after it. ${name} remembers all of this, and the text messages must stay consistent with it.`;
         }
@@ -2283,10 +2281,11 @@
     /**
      * Recent messages of the live ST roleplay as "Speaker: text" lines, oldest first.
      * Skips hidden messages and the character's greeting (injected separately as the
-     * story opening). Returns '' when the open ST chat doesn't involve the character.
-     * With `from` and `until` (ms): only what was sent between them.
+     * story opening). Returns '' with the Main Chat setting off, or when the open ST chat
+     * doesn't involve the character. With `from` and `until` (ms): only what was sent between them.
      */
     function getSTStoryContext(char, { from = null, until = null, maxMessages = ST_STORY_MAX_MESSAGES, maxChars = ST_STORY_MAX_CHARS } = {}) {
+        if (settings.ctxMainChat === false) return '';
         try {
             const chat = SillyTavern.getContext().chat;
             if (!Array.isArray(chat) || !chat.length || !isCharInCurrentSTChat(char)) return '';
@@ -6223,7 +6222,7 @@
 
     /**
      * Time together is over: it goes in the life's Recent list right away, under the day
-     * it began, with its hours, and when the main chat has anything from that time, the
+     * it began, with its hours, and when Main Chat is on and has anything from that time, the
      * model's sentence about it takes its place and in Auto mode moves the feelings, with a
      * bar up meanwhile; paused, what's there stays. Today's change goes with it: it was most
      * likely written for this. A text may follow once they've parted. An accidental moment
@@ -6240,7 +6239,10 @@
         if (proactiveMessaging) proactiveMessaging.planParted(key, until);
         const story = getSTStoryContext(char, { from, until, maxMessages: ST_STRETCH_MAX_MESSAGES, maxChars: ST_STRETCH_MAX_CHARS });
         if (!story) {
-            if (explain) toastr.info(isCharInCurrentSTChat(char) ? 'No main chat messages from this time: no summary' : `Main chat isn't on ${char.name}: no summary`, 'Echogram');
+            if (explain) {
+                toastr.info(settings.ctxMainChat === false ? 'Main Chat is off: no summary'
+                    : isCharInCurrentSTChat(char) ? 'No main chat messages from this time: no summary' : `Main chat isn't on ${char.name}: no summary`, 'Echogram');
+            }
             return;
         }
         const controller = new AbortController();
@@ -6487,9 +6489,9 @@
     // CATCH-UP (docs/platform-plan.md 12c, 12d-3; the logic is lib/catch-up.js)
     // ============================================================
     // Proactive texts only ever run for the open character while the page runs. When you
-    // open a character's chat after a while nothing ran for them, one request fills the
-    // gap: how their life moved on (Daily Life) and the texts they sent you meanwhile
-    // (Catch up). A bar says so, and it can be paused (the gap is then left as it is).
+    // open a character's chat after a while nothing ran for them, Catch up fills the gap
+    // in one request: how their life moved on (Daily Life) and the texts they sent you
+    // meanwhile (Proactive). A bar says so, and it can be paused (the gap is then left as it is).
     //   settings.proactiveSeenAt[k]: when proactive texts last ran for the character
 
     const CatchUp = window.EchoTextCatchUp;
@@ -6526,9 +6528,9 @@
     }
 
     /**
-     * The open character's catch-up, when their chat is on screen and a gap is due:
-     * Daily Life settles their life over it, Catch up writes the texts they'd have sent
-     * (lib/catch-up.js planTexts). Nothing to do: they're simply marked seen.
+     * The open character's catch-up, with Catch up on, when their chat is on screen and a
+     * gap is due: Daily Life settles their life over it, Proactive writes the texts they'd
+     * have sent (lib/catch-up.js planTexts). Nothing to do: they're simply marked seen.
      */
     async function maybeCatchUp() {
         if (catchingUp || isGenerating || !panelOpen || inGroupSession() || !CatchUp) return;
@@ -6541,7 +6543,7 @@
         const history = getChatHistory();
         const seen = settings.proactiveSeenAt?.[key];
         const last = history[history.length - 1];
-        if (!seen || !last) { markSeen(true); return; }
+        if (!seen || !last || settings.catchUpEnabled === false) { markSeen(true); return; }
         const now = Date.now();
         const lastAt = Number(last.send_date) || Date.parse(last.send_date) || 0;
         const state = settings.lifeState?.[key];
@@ -6550,8 +6552,7 @@
         // Texts: not while she owes you a reply or a follow-up round is under way
         const textFrom = Math.max(seen, lastAt);
         let texts = [];
-        if (settings.catchUpEnabled !== false && settings.proactiveMessagingEnabled === true && settings.dynamicSystemsEnabled !== false
-            && proactiveMessaging && !last.is_user && now - textFrom >= CatchUp.GAP_MS) {
+        if (settings.proactiveMessagingEnabled === true && proactiveMessaging && !last.is_user && now - textFrom >= CatchUp.GAP_MS) {
             const inputs = proactiveMessaging.catchUpInputs(key, char);
             if (!inputs.roundActive) {
                 texts = CatchUp.planTexts({ from: textFrom, to: now, temperament: inputs.temperament, unanswered: inputs.unanswered,

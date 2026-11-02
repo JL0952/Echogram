@@ -1637,8 +1637,14 @@
         await r.noteTogether('mira.png', { from: Date.now() - 3 * HOUR, until: Date.now() - HOUR }, { explain: true });
         res.toldOtherChat = told[1] === "Main chat isn't on Mira: no summary";
         window.SillyTavern.getContext = ownContext;
-        window.toastr.info = info;
         story.push(...storySoFar);
+        // Main Chat off: what's there isn't read
+        const summariesBefore = summaries.length;
+        env.settings.ctxMainChat = settings.ctxMainChat = false;
+        await r.noteTogether('mira.png', { from: Date.now() - 3 * HOUR, until: Date.now() }, { explain: true });
+        res.toldMainChatOff = told[2] === 'Main Chat is off: no summary' && summaries.length === summariesBefore;
+        env.settings.ctxMainChat = settings.ctxMainChat = true;
+        window.toastr.info = info;
 
         // Paused: the request stops and the fixed line stays; no bar without a request
         env.settings.lifeState = settings.lifeState = {};
@@ -1847,15 +1853,18 @@
         const field = id => host.querySelector(`#${id}`).closest('.et-field');
         const off = id => field(id).classList.contains('et-field-off') && host.querySelector(`#${id}`).disabled;
         const on = id => !field(id).classList.contains('et-field-off') && !host.querySelector(`#${id}`).disabled;
-        Object.assign(s, { proactiveMessagingEnabled: true, dynamicSystemsEnabled: true, dailyLifeEnabled: true, memoryEnabled: true, imageGenerationEnabled: true, ctxSTMessages: false });
+        Object.assign(s, { proactiveMessagingEnabled: true, dailyLifeEnabled: true, memoryEnabled: true, imageGenerationEnabled: true, ctxSTMessages: false });
         const children = ['et_catch_up_panel', 'et_story_pause_panel', 'et_daily_life_made_up_panel', 'et_memory_summaries_panel', 'et_image_generation_include_text_reply_panel'];
         Controls.syncDependentControls(s);
         res.allOn = children.every(on);
         s.proactiveMessagingEnabled = false;
         Controls.syncDependentControls(s);
-        res.proactiveOff = off('et_catch_up_panel') && off('et_story_pause_panel') && on('et_daily_life_made_up_panel');
-        s.proactiveMessagingEnabled = true;
+        res.proactiveOff = on('et_catch_up_panel') && off('et_story_pause_panel') && on('et_daily_life_made_up_panel');
+        // Catch up has something to do with either one on
         s.dailyLifeEnabled = false;
+        Controls.syncDependentControls(s);
+        res.catchUpNeedsOne = off('et_catch_up_panel') && Controls.controlNeeded(field('et_catch_up_panel')) === 'Proactive or Daily Life';
+        s.proactiveMessagingEnabled = true;
         s.memoryEnabled = false;
         s.imageGenerationEnabled = false;
         host.querySelector('#et_memory_summaries_panel').checked = true;
@@ -2115,24 +2124,40 @@
         await r.maybeCatchUp();
         res.pausedStays = asked.length === 2;
 
-        // Catch up off: only the life; she owes you a reply: only the life too
-        for (const [label, off, lastIsUser] of [['catchUpOff', true, false], ['owesReply', false, true]]) {
+        // She owes you a reply, or Proactive is off: only the life
+        for (const [label, proactive, lastIsUser] of [['proactiveOff', false, false], ['owesReply', true, true]]) {
             fresh(lastIsUser);
-            env.settings.catchUpEnabled = !off;
+            env.settings.proactiveMessagingEnabled = proactive;
             answer = async () => '<life>happened 看电影 (' + Life.dateKey(new Date()) + ')</life>\n<text>x</text>';
             await r.maybeCatchUp();
             const t = asked.at(-1).apiMessages.at(-1).content;
             res[label] = !/<text at=/.test(t) && !chat().some(m => m.meta?.proactiveType === 'catch_up')
                 && env.settings.lifeState['mira.png'].start.log.some(e => e.text === '看电影');
-            env.settings.catchUpEnabled = true;
+            env.settings.proactiveMessagingEnabled = true;
         }
-        // Neither Daily Life nor Catch up: no request, just seen
+        // Daily Life off: only the texts
         fresh();
         env.settings.dailyLifeEnabled = false;
+        answer = async () => '<text>想你了</text>';
+        await r.maybeCatchUp();
+        const textsOnly = asked.at(-1).apiMessages.at(-1).content;
+        res.dailyLifeOff = /<text at=/.test(textsOnly) && !/<life>/.test(textsOnly) && chat().some(m => m.meta?.proactiveType === 'catch_up')
+            && !env.settings.lifeState['mira.png'].settledAt;
+        env.settings.dailyLifeEnabled = true;
+        // Catch up off: neither, no request, just seen
+        fresh();
         env.settings.catchUpEnabled = false;
         const before = asked.length;
         await r.maybeCatchUp();
+        res.catchUpOff = asked.length === before && env.settings.proactiveSeenAt['mira.png'] > Date.now() - 5000 && !env.settings.lifeState['mira.png'].settledAt;
+        env.settings.catchUpEnabled = true;
+        // Neither Daily Life nor Proactive: the same
+        fresh();
+        env.settings.dailyLifeEnabled = false;
+        env.settings.proactiveMessagingEnabled = false;
+        await r.maybeCatchUp();
         res.nothingToDo = asked.length === before && env.settings.proactiveSeenAt['mira.png'] > Date.now() - 5000;
+        env.settings.proactiveMessagingEnabled = true;
         // Never seen before (a new chat): marked seen, nothing caught up
         fresh();
         env.settings.dailyLifeEnabled = true;
