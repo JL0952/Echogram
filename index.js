@@ -5473,16 +5473,15 @@
      * model's sentence about it takes its place and in Auto mode moves the feelings, with a
      * bar up meanwhile; paused, what's there stays. Today's change goes with it: it was most
      * likely written for this. A text may follow once they've parted. An accidental moment
-     * leaves nothing. A catch-up has no texts to write for it. With `explain` (you ended
-     * it), says so when no sentence is to come.
+     * leaves nothing. The entry keeps the span, so a catch-up puts no texts in it. With
+     * `explain` (you ended it), says so when no sentence is to come.
      */
     async function noteTogether(key, { from, until }, { explain = false } = {}) {
         const char = getCurrentCharacter();
         if (!char || until - from < DailyLife.TOGETHER_MIN_MINUTES * 60000) return;
         const userName = getUserName();
-        const entry = { id: `with${from.toString(36)}`, date: DailyLife.dateKey(new Date(from)), text: DailyLife.togetherEntry({ userName, from, until }) };
+        const entry = { id: `with${from.toString(36)}`, date: DailyLife.dateKey(new Date(from)), text: DailyLife.togetherEntry({ userName, from, until }), from, until };
         writeLife(key, { edit: parts => ({ ...DailyLife.withEntry(parts, -1, entry), today: null }) });
-        if (settings.proactiveSeenAt?.[key]) settings.proactiveSeenAt[key] = Math.max(settings.proactiveSeenAt[key], until);
         if (emotionSystem) emotionSystem.refresh();
         if (proactiveMessaging) proactiveMessaging.planParted(key, until);
         const story = getSTStoryContext(char, { from, until, maxMessages: ST_STRETCH_MAX_MESSAGES, maxChars: ST_STRETCH_MAX_CHARS });
@@ -5813,8 +5812,10 @@
         if (settings.proactiveMessagingEnabled === true && proactiveMessaging && !last.is_user && now - textFrom >= CatchUp.GAP_MS) {
             const inputs = proactiveMessaging.catchUpInputs(key, char);
             if (!inputs.roundActive) {
+                // None while you were together: Recent keeps when that was, Daily Life on now or not
+                const together = DailyLife.normalizeLife(settings.lifeState?.[key]).start.log.filter(entry => entry.until);
                 texts = CatchUp.planTexts({ from: textFrom, to: now, temperament: inputs.temperament, unanswered: inputs.unanswered,
-                    baseHours: inputs.baseHours, schedule: activeSchedule(), override: phoneOverride(), left: inputs.left });
+                    baseHours: inputs.baseHours, schedule: activeSchedule(), override: phoneOverride(), left: inputs.left, together });
             }
         }
         if (!settle && !texts.length) { markSeen(true); return; }

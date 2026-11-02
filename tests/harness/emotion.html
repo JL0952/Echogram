@@ -1476,6 +1476,54 @@
         await sleep(20);
         res.nothingHeld = asked.length === 0;
 
+        // Her last text at 10:00 and the catch-up held from 14:00 while you play; with you 14:10–17:00, running out by
+        // itself meanwhile; then the main chat goes quiet. How far texts have run stays at 10:00: a text due before it
+        // still comes, one due in it goes after it (the clock set to today's times)
+        const Life = window.EchoTextDailyLife;
+        const today = new Date(realNow());
+        const clockAt = (h, m = 0) => new Date(today.getFullYear(), today.getMonth(), today.getDate(), h, m).getTime();
+        const day = Life.dateKey(today);
+        const setClock = ms => { shift = ms - realNow(); };
+        const moments = req => [...(req?.apiMessages.at(-1).content || '').matchAll(/^- (\d{4}-\d\d-\d\d \d\d:\d\d)/gm)].map(m => m[1]);
+        env.settings.dailyLifeEnabled = true;
+        env.settings.characterSchedules = { 'mira.png': Life.parseSchedule('every day 01:00-08:00 | 家 | 睡觉 | asleep') };
+        const heldThenTogether = async (temperament, baseHours) => {
+            env.catchUpInputs = () => ({ temperament, baseHours, unanswered: 0, left: 15, roundActive: false });
+            setClock(clockAt(14));
+            env.settings.chatHistory['mira.png'] = [{ is_user: true, mes: '晚安', send_date: clockAt(9, 59) }, { is_user: false, mes: '晚安~', send_date: clockAt(10) }];
+            env.settings.proactiveSeenAt = { 'mira.png': clockAt(10) };
+            env.settings.lifeState = {};
+            env.settings.phoneOverrides = {};
+            asked.length = 0;
+            r.noteStoryActivity(6);
+            await r.maybeCatchUp();
+            setClock(clockAt(14, 10));
+            env.settings.phoneOverrides['mira.png'] = { phone: 'together', from: clockAt(14, 10), until: clockAt(17) };
+            r.noteStoryActivity(7);
+            setClock(clockAt(16, 55));
+            r.noteStoryActivity(8);
+            // The minute's check after it ran out
+            setClock(clockAt(17, 1));
+            r.noteTogetherEnded();
+            await sleep(20);
+            const span = Life.normalizeLife(env.settings.lifeState['mira.png']).start.log.find(e => e.until);
+            const ended = asked.length === 0 && !env.settings.phoneOverrides['mira.png'] && span?.from === clockAt(14, 10) && span.until === clockAt(17)
+                && env.settings.proactiveSeenAt['mira.png'] === clockAt(10);
+            // Quiet since 16:55
+            setClock(clockAt(17, 15));
+            r.resumeHeldCatchUp();
+            await sleep(50);
+            return { ended, moments: asked.length === 1 ? moments(asked[0]) : null };
+        };
+        const before = await heldThenTogether('clingy', 4);
+        res.withYouEndsWhileHeld = before.ended;
+        res.dueBeforeComes = JSON.stringify(before.moments) === JSON.stringify([`${day} 14:00`]);
+        const during = await heldThenTogether('normal', 5);
+        res.dueDuringAfter = during.ended && JSON.stringify(during.moments) === JSON.stringify([`${day} 17:05`]);
+        env.settings.dailyLifeEnabled = false;
+        env.settings.phoneOverrides = {};
+        env.catchUpInputs = () => ({ temperament: 'clingy', baseHours: 4, unanswered: 0, left: 15, roundActive: false });
+
         // Leaves no pause behind for what runs next
         r.noteStoryActivity(5);
         const kept = env.settings.chatHistory['mira.png'];
@@ -1582,7 +1630,9 @@
         // The ⋯ menu's way: on, off. Off after a while with story since: noted, the model's sentence in its place
         emo.toggleTogether();
         res.toggledOn = plan()?.phone === 'together' && withYouOn();
-        plan().from = Date.now() - 2 * HOUR;
+        const togetherFrom = plan().from = Date.now() - 2 * HOUR;
+        const seenBefore = Date.now() - 5 * HOUR;
+        env.settings.proactiveSeenAt = { 'mira.png': seenBefore };
         story.push({ is_user: true, name: '我', mes: '走吧', send_date: Date.now() - 3 * HOUR }, { is_user: true, name: '我', mes: '去看电影', send_date: Date.now() - HOUR },
             { is_user: false, name: 'Mira', mes: '<think>x</think>好呀', send_date: new Date(Date.now() - HOUR + 60000).toISOString() });
         // A reply's change of plan for this
@@ -1600,6 +1650,9 @@
         res.partedPlanned = env.partedPlans.length === 1 && env.partedPlans[0][0] === 'mira.png' && Math.abs(env.partedPlans[0][1] - Date.now()) < 60000;
         const span = `${fromClock}–${clock(Date.now())}`;
         res.fixedFirst = log().length === 1 && log()[0].text === `${span} With 我`;
+        // What a catch-up keeps texts out of: the span, in Recent; how far texts have run is left alone
+        res.spanNoted = log()[0]?.from === togetherFrom && Math.abs(log()[0].until - Date.now()) < 60000;
+        res.seenLeftByHand = env.settings.proactiveSeenAt['mira.png'] === seenBefore;
         const asked = summaries[0]?.apiMessages.at(-1).content || '';
         res.storySent = summaries.length === 1 && asked.includes('去看电影') && asked.includes('Mira: 好呀') && !asked.includes('走吧') && !asked.includes('<think>');
         const bar = () => document.getElementById('et-together-bar');
@@ -1610,6 +1663,7 @@
         await sleep(20);
         res.barGoneAfter = !bar();
         res.sentence = log().length === 1 && log()[0].text === `${span} 和我去看了电影，在江边走了很久`;
+        res.sentenceKeepsSpan = log()[0]?.from === togetherFrom && log()[0].until > togetherFrom;
         click('[data-emo-tab="life"]');
         res.recentShows = $p('.et-life-entry').text().includes('在江边走了很久');
 
@@ -1618,16 +1672,19 @@
         story.length = 0;
         summaries.length = 0;
         const ranOutAt = Date.now() - HOUR;
-        env.settings.phoneOverrides['mira.png'] = settings.phoneOverrides['mira.png'] = { phone: 'together', from: Date.now() - 4 * HOUR, until: ranOutAt };
-        env.settings.proactiveSeenAt = { 'mira.png': Date.now() - 3 * HOUR };
+        const ranFrom = Date.now() - 4 * HOUR;
+        env.settings.phoneOverrides['mira.png'] = settings.phoneOverrides['mira.png'] = { phone: 'together', from: ranFrom, until: ranOutAt };
+        const seenThen = Date.now() - 3 * HOUR;
+        env.settings.proactiveSeenAt = { 'mira.png': seenThen };
         res.notWithYouAfter = !r.isWithYou();
         r.noteTogetherEnded();
         r.noteTogetherEnded();
         await sleep(20);
         res.ranOut = log().length === 1 && log()[0].text.endsWith(' With 我') && summaries.length === 0 && !plan()
             && env.partedPlans.length === 2 && env.partedPlans[1][1] === ranOutAt;
-        // A catch-up has nothing to text about for that time
-        res.seenThrough = env.settings.proactiveSeenAt['mira.png'] === ranOutAt;
+        // A catch-up keeps texts out of that time by its span, not by moving how far texts have run
+        res.ranOutSpan = log()[0]?.from === ranFrom && log()[0].until === ranOutAt;
+        res.seenLeft = env.settings.proactiveSeenAt['mira.png'] === seenThen;
         // Replacing what's already noted notes nothing more
         click('[data-emo-plan-phone="free"]');
         await sleep(20);
@@ -2196,6 +2253,37 @@
         delete env.settings.proactiveSeenAt['mira.png'];
         await r.maybeCatchUp();
         res.newChat = asked.length === before && env.settings.proactiveSeenAt['mira.png'] > Date.now() - 5000;
+
+        // Closed while with you (texts had run till 14:00; with you 13:40–17:00), back at 20:00 after it ran out: it's
+        // noted first, and the text due at 15:30 goes after it. Daily Life off by the next time: still kept out of it
+        const realNow = Date.now;
+        const today = new Date();
+        const clockAt = (h, m = 0) => new Date(today.getFullYear(), today.getMonth(), today.getDate(), h, m).getTime();
+        const afterIt = JSON.stringify([`${Life.dateKey(today)} 17:05`]);
+        const moments = req => JSON.stringify([...(req?.apiMessages.at(-1).content || '').matchAll(/^- (\d{4}-\d\d-\d\d \d\d:\d\d)/gm)].map(m => m[1]));
+        const closed = () => {
+            env.settings.chatHistory['mira.png'] = [{ is_user: true, mes: '晚安', send_date: clockAt(9, 59) }, { is_user: false, mes: '晚安~', send_date: clockAt(10) }];
+            env.settings.proactiveSeenAt = { 'mira.png': clockAt(14) };
+        };
+        Date.now = () => clockAt(20);
+        env.catchUpInputs = () => ({ temperament: 'obsessed', baseHours: 1.5, unanswered: 0, left: 30, roundActive: false });
+        closed();
+        env.settings.lifeState = {};
+        env.settings.phoneOverrides = { 'mira.png': { phone: 'together', from: clockAt(13, 40), until: clockAt(17) } };
+        answer = async () => '';
+        let asks = asked.length;
+        await r.maybeCatchUp();
+        const span = Life.normalizeLife(env.settings.lifeState['mira.png']).start.log.find(e => e.until);
+        res.closedWhileTogether = asked.length === asks + 1 && !env.settings.phoneOverrides['mira.png'] && span?.from === clockAt(13, 40)
+            && span.until === clockAt(17) && moments(asked.at(-1)) === afterIt;
+        closed();
+        env.settings.dailyLifeEnabled = false;
+        asks = asked.length;
+        await r.maybeCatchUp();
+        res.keptOutWithoutDailyLife = asked.length === asks + 1 && moments(asked.at(-1)) === afterIt;
+        Date.now = realNow;
+        env.settings.phoneOverrides = {};
+        env.catchUpInputs = () => ({ temperament: 'clingy', baseHours: 4, unanswered: 0, left: 15, roundActive: false });
 
         env.settings.dailyLifeEnabled = false;
         res.errors = errors.slice();

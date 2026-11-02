@@ -691,6 +691,33 @@ test('time together in a sentence', () => {
     assert.equal(Life.cleanTogetherEntry('   '), '');
 });
 
+test('time together keeps its span in Recent through every way the life is written', () => {
+    const from = at(26, 14).getTime(), until = at(26, 17, 30).getTime();
+    const entry = { id: 'with1', date: '2026-10-26', text: Life.togetherEntry({ userName: 'Qi', from, until }), from, until };
+    const span = log => log.filter(e => e.until).map(e => [e.id, e.from, e.until]);
+    // Noted when it ends, with a reply's report replayed in beside it
+    const history = [{ is_user: false, send_date: 1000, life: [{ op: 'happened', text: '下雨了', date: '2026-10-26' }] }];
+    const noted = Life.rewriteLife(undefined, history, new Date(2000), { edit: parts => Life.withEntry(parts, -1, entry) });
+    assert.deepEqual(span(noted.start.log), [['with1', from, until]]);
+    // The model's sentence in its place
+    const index = noted.start.log.findIndex(e => e.id === 'with1');
+    const summed = Life.rewriteLife(noted, [], new Date(3000), { edit: parts => Life.withEntry(parts, index, { ...entry, text: '14:00–17:30 和 Qi 去看了电影' }) });
+    assert.deepEqual(span(summed.start.log), [['with1', from, until]]);
+    // Edited by hand on the Life tab (its text and day), another entry added, a catch-up settled
+    const life = Life.currentLife(summed, at(27, 9));
+    const edited = Life.withEntry(life, life.log.findIndex(e => e.id === 'with1'), { ...life.log.find(e => e.id === 'with1'), date: '2026-10-27', text: '看电影' });
+    const added = Life.withEntry(edited, -1, { date: '2026-10-27', text: '买了花' });
+    const settled = Life.rewriteLife(summed, [], new Date(4000), { edit: () => added, changes: [{ op: 'happened', text: '加班', date: '2026-10-27' }] });
+    assert.deepEqual(span(settled.start.log), [['with1', from, until]]);
+    assert.equal(settled.start.log.find(e => e.id === 'with1').text, '看电影');
+    // Deleted: gone
+    assert.deepEqual(span(Life.withoutEntry(settled.start, settled.start.log.findIndex(e => e.id === 'with1')).log), []);
+    // Only a real span: both times, in order
+    for (const bad of [{ from }, { from: String(from), until }, { from: until, until: from }]) {
+        assert.equal(Life.normalizeLife({ start: { log: [{ date: '2026-10-26', text: 'x', ...bad }] } }).start.log[0].until, undefined);
+    }
+});
+
 test('the day for the roleplay prompt: what the schedule says, no phone, the story first', () => {
     const date = at(26, 11);
     const life = { errands: [{ id: 'e', text: '搬家', progress: '', due: '2026-10-27', feeling: '' }], log: [{ id: 'l', date: '2026-10-26', text: '吵了一架' }], today: { date: '2026-10-26', text: '请了假' } };

@@ -126,6 +126,46 @@ test('time together: no texts in it', () => {
     assert.equal(C.clockText(C.placeText(at(31, 9), WEEK, together)).slice(11), '23:05');
 });
 
+test('time together in Recent: no texts in it, and the ones before it kept', () => {
+    // Saturday: her last text at 10:00, and nothing ran since (held by the main chat); with you 14:10–17:00
+    const together = [{ from: at(31, 14, 10), until: at(31, 17) }];
+    const plan = (temperament, baseHours, to, spans = together) => clock(C.planTexts({ from: at(31, 10), to, temperament, baseHours, schedule: WEEK, together: spans }));
+    // Due before it: kept, back at 22:00 or already at 18:30
+    assert.deepEqual(plan('clingy', 4, at(31, 22)), ['2026-10-31 14:00']);
+    assert.deepEqual(plan('clingy', 4, at(31, 18, 30)), ['2026-10-31 14:00']);
+    // Due in it: after it
+    assert.deepEqual(plan('normal', 5, at(31, 22), []), ['2026-10-31 15:00']);
+    assert.deepEqual(plan('normal', 5, at(31, 22)), ['2026-10-31 17:05']);
+    // Over days: Friday evening together, Thursday's and Saturday's texts as they were
+    assert.deepEqual(clock(C.planTexts({ from: at(29, 19), to: NOW, temperament: 'obsessed', baseHours: 1.5, schedule: WEEK,
+        together: [{ from: at(30, 19), until: at(30, 22, 30) }] })), ['2026-10-29 20:30', '2026-10-30 18:05', '2026-10-31 10:05']);
+    // The app closed while together (texts ran till 14:30), back after it ran out
+    const closed = { from: at(31, 14, 30), to: at(31, 22), temperament: 'obsessed', baseHours: 1.5, schedule: WEEK };
+    assert.deepEqual(clock(C.planTexts(closed)), ['2026-10-31 16:00']);
+    assert.deepEqual(clock(C.planTexts({ ...closed, together: [{ from: at(31, 14, 10), until: at(31, 17, 10) }] })), ['2026-10-31 17:15']);
+    // Without a schedule too, and one span right after another
+    assert.equal(C.clockText(C.placeText(at(31, 12), null, null, [{ from: at(31, 11), until: at(31, 14) }, { from: at(31, 14, 3), until: at(31, 18) }])), '2026-10-31 18:05');
+    // Outside the gap: nothing moves
+    assert.deepEqual(plan('clingy', 4, at(31, 22), [{ from: at(30, 14), until: at(30, 17) }]), ['2026-10-31 14:00']);
+});
+
+test('texts moved out of time together keep their waits and their number', () => {
+    // Together every day 08:00–22:00: each text goes after it, a day apart, no more than before
+    const spans = [28, 29, 30, 31].map(d => ({ from: at(d, 8), until: at(d, 22) }));
+    for (const [temperament, baseHours] of [['obsessed', 1], ['clingy', 3], ['normal', 6]]) {
+        const gap = { from: at(28, 20), to: at(31, 23, 30), temperament, baseHours };
+        const plain = C.planTexts(gap);
+        const moved = C.planTexts({ ...gap, together: spans });
+        assert.equal(moved.length, plain.length, temperament);
+        assert.ok(moved.every(t => C.clockText(t).endsWith('22:05')), temperament);
+        moved.slice(1).forEach((t, i) => assert.ok(t - moved[i] >= Math.max(baseHours * HOUR, DAY), temperament));
+    }
+    // Two that would have gone in it on one day: one after it, the day's one
+    assert.deepEqual(clock(C.planTexts({ from: at(31, 10), to: at(31, 23), temperament: 'obsessed', baseHours: 1 })), ['2026-10-31 11:00']);
+    assert.deepEqual(clock(C.planTexts({ from: at(31, 10), to: at(31, 23), temperament: 'obsessed', baseHours: 1, together: [{ from: at(31, 10, 30), until: at(31, 20) }] })),
+        ['2026-10-31 20:05']);
+});
+
 test('settling is told not to repeat what\'s recorded, and may still build on it', () => {
     const told = C.buildInstruction({ charName: 'Mira', userName: 'Qi', from: at(31, 8), now: NOW, settle: true, schedule: WEEK });
     assert.match(told, /Do not create duplicate entries for events already recorded in What happened lately\./);
