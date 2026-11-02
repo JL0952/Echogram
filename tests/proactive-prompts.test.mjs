@@ -59,7 +59,7 @@ test('a trigger turn offers its media when the platform has them', () => {
         '[Instruction for this turn — not a message from Me; never quote or answer it: '
         + 'It is {{time}} on {{weekday}} — morning or evening commute time. Text {{user}} from the commute — traffic, transit, people-watching, or just boredom.'
         + ' If it feels natural, send a <photo> of the view on the way with it, or instead of text.'
-        + ' Reply only with what Mira sends now, 3 texts at most, in the usual format: text messages, plus a photo, a voice message, a location, a file, a link or a song when one fits.]');
+        + ' Reply only with what Mira sends now, 3 texts at most, in the usual format: text messages, plus a photo, a voice message, a file, a link or a song when one fits.]');
     assert.match(turn(ECHOTEXT, 'song_stuck'), /send a <voice> message humming or singing a bit of it or the song as <music> with it/);
     assert.match(turn(['voice'], 'song_stuck'), /send a <voice> message humming or singing a bit of it with it/);
     assert.match(turn(WECHAT, 'random_thought'), /send a <photo> of what sparked it or a <link> with it/);
@@ -74,10 +74,19 @@ test('media the platform lacks are never offered', () => {
     assert.match(turn(['photo'], 'random_thought'), /send a <photo> of what sparked it with it, or instead of text\. Reply only with what Mira sends now, 3 texts at most, in the usual format: text messages, plus a photo when one fits\.\]$/);
 });
 
-test('triggers without a media idea still allow any media', () => {
+test('triggers without a media idea still allow any media, but a place', () => {
     const text = turn(WECHAT, 'checkin');
     assert.doesNotMatch(text, /If it feels natural/);
-    assert.match(text, /plus a photo, a voice message, a location, a file, a link or a song when one fits/);
+    assert.match(text, /plus a photo, a voice message, a file, a link or a song when one fits/);
+    assert.doesNotMatch(text, /location/);
+});
+
+test('a place only on the topics of being out, and only when they are out or on their way', () => {
+    const out = /or a <location> when you're out or on your way somewhere \(never when you're home\) with it/;
+    for (const type of ['block_change', 'life_event', 'lunch_nudge', 'weekend_ping', 'post_work']) assert.match(turn(WECHAT, type, 'x.'), out, type);
+    for (const type of ['random_thought', 'craving_share', 'commute_ping', 'checkin']) assert.doesNotMatch(turn(WECHAT, type, 'x.'), /location/, type);
+    // A platform without places: none
+    assert.doesNotMatch(turn(['photo'], 'lunch_nudge'), /location/);
 });
 
 test('every text has its kind, and every kind\'s text a template (their own day\'s three are worded apart)', () => {
