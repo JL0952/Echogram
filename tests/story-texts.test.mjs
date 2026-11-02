@@ -44,10 +44,11 @@ test('texts go between the story messages they were sent between, each run as on
     assert.match(block.mes, /\n<\/text_messages>$/);
 });
 
-test('texts from before the story began are left out; texts after the last message go at the end', () => {
+test('texts from before the story began go first; texts after the last message go at the end', () => {
     const chat = [story('开场', 0), story('我来了', 5, true)];
     insertTexts(chat, [text('old story', -60, true), text('在吗', 6, true)], options);
-    assert.deepEqual(shape(chat), ['开场', '我来了', '齐宁: 在吗']);
+    assert.deepEqual(shape(chat), ['齐宁: old story', '开场', '我来了', '齐宁: 在吗']);
+    assert.match(chat[0].mes, /\[2026-10-10 Sat 13:00\]/);
 });
 
 test('Continue keeps the message being continued last', () => {
@@ -155,7 +156,6 @@ test('a shared song is written out as its title and artist', () => {
 test('nothing to add leaves the chat alone', () => {
     const chat = [story('开场', 0)];
     assert.equal(insertTexts(chat, [], options), 0);
-    assert.equal(insertTexts(chat, [text('old', -5, true)], options), 0);
     assert.equal(insertTexts([], [text('a', 1, true)], options), 0);
     assert.deepEqual(shape(chat), ['开场']);
 });
