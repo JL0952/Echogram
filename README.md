@@ -26,6 +26,7 @@ Text your SillyTavern characters like they're on your phone.
 - Rapport, Romance, Desire, moods, Big Five, Morality and texting style, set by hand or left to change on their own.
 - Characters text you first, sometimes with a photo or voice message.
 - A weekly schedule, errands and what's happened lately; busy or asleep, they may not see your texts until you send more or they wake up.
+- Time together in person, and texts and the character's day that reach your roleplay; they hold off while you're playing it.
 - Memories and summaries of long chats.
 - Swipes, group chats, saved chats, themes, custom avatars and fonts.
 - Works on mobile.
