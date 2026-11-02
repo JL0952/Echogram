@@ -50,6 +50,7 @@ const FUNC_STUBS = [
     'openTransferResponseMenu', 'openGeneratedImageLightbox', 'bindBubbleTouchSwipe',
     'showMemorySaveModal', 'showMemoryRemoveModal', 'setComposeMode', 'saveSettings',
     'getAvatarUrlForCharacter', 'isCombinedGroupMode', 'getUserAvatarUrl', 'pickImageFile', 'error', 'warn', 'getCustomCharAvatarUrl',
+    'drawStatusBars', 'syncSendButton',
 ];
 
 for (const name of (process.env.EXTRA || '').split(',').filter(Boolean)) WANT.push(name);
@@ -78,6 +79,8 @@ for (const name of VALUE_STUBS) if (!found.has(name)) lines.push(`let ${name} = 
 for (const name of FUNC_STUBS) {
     if (!found.has(name)) lines.push(`function ${name}(...a) { return env.${name} ? env.${name}(...a) : undefined; }`);
 }
+// Whether "typing" shows: as the page says, the chat it's for being the one open
+if (!found.has('typingShown')) lines.push('function typingShown() { return !!showTypingIndicator; }');
 for (const name of WANT) if (found.has(name)) lines.push(found.get(name));
 lines.push(`return { ${functions.join(', ')} };`);
 lines.push('};');

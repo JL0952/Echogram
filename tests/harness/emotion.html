@@ -2136,6 +2136,15 @@
         click(`[data-emo-mode="${modeBefore || 'manual'}"]`);
         res.heights = heights;
         res.same = new Set(Object.values(heights)).size === 1;
+        // Redrawn with the keyboard up (the panel short, as index.js sets it from the visual
+        // viewport), say saving a block: once it's down, as tall as before
+        const panel = document.getElementById('et-panel');
+        panel.style.setProperty('height', '320px', 'important');
+        click('[data-emo-tab="schedule"]');
+        const keyboardUp = popup.offsetHeight;
+        panel.style.removeProperty('height');
+        res.keyboardCapped = keyboardUp < heights.schedule;
+        res.backAfterKeyboard = popup.offsetHeight === heights.schedule;
         // Long text: two lines, the rest hidden
         click('[data-emo-tab="schedule"]');
         click('[data-emo-day="weekday"]');
@@ -2355,8 +2364,12 @@
             };
             return env.settings.chatHistory['mira.png'];
         };
-        // You open Other: the panel shows her chat
+        // You open Other: the panel shows her chat; and back on Mira's
         const openOther = () => { open = 'other.png'; r.renderMessages(env.settings.chatHistory['other.png']); };
+        const openMira = () => { open = 'mira.png'; r.renderMessages(env.settings.chatHistory['mira.png']); };
+        // "Typing" in the list and in the header (WeChat's 对方正在输入…)
+        const typing = () => !!document.querySelector('#et-messages-inner [data-et-role~="typing"]') && document.getElementById('et-panel').hasAttribute('data-et-typing');
+        const noTyping = () => !document.querySelector('#et-messages-inner [data-et-role~="typing"]') && !document.getElementById('et-panel').hasAttribute('data-et-typing');
 
         // Nothing changes meanwhile: the reply as ever
         let h = fresh();
@@ -2364,12 +2377,46 @@
         await r.generateEchoText(h);
         res.replyAsEver = mes('mira.png') === 'Mira 之前说的|给 Mira|Mira 的回复' && shown('Mira 的回复');
 
-        // Other opened while it's on its way: it lands in Mira's chat, Other's untouched, not drawn over hers
+        // Other opened while it's on its way: it lands in Mira's chat, Other's untouched, not drawn over hers.
+        // Her "typing" shows only in her chat: gone in Other's, back on hers
         h = fresh();
         r.renderMessages(h);
-        env.requestEchoTextCompletion = async () => { openOther(); return 'Mira 的回复'; };
+        let typingFollows = false;
+        env.requestEchoTextCompletion = async () => {
+            const before = typing();
+            openOther();
+            const away = noTyping();
+            openMira();
+            const back = typing();
+            openOther();
+            typingFollows = before && away && back;
+            return 'Mira 的回复';
+        };
         await r.generateEchoText(h);
         res.replyToItsChat = mes('mira.png') === 'Mira 之前说的|给 Mira|Mira 的回复' && mes('other.png') === OTHER && !shown('Mira 的回复') && shown('Other 的回复');
+        res.typingInItsChat = typingFollows && noTyping();
+
+        // Its stop button only in her chat; a text sent in Other's meanwhile goes in there and
+        // doesn't cancel her reply
+        h = fresh();
+        r.renderMessages(h);
+        const stop = () => document.getElementById('et-send-btn').classList.contains('et-send-stop');
+        let stopFollows = false;
+        env.requestEchoTextCompletion = async () => {
+            openMira();
+            const here = stop();
+            openOther();
+            const away = !stop();
+            document.getElementById('et-input').value = '给 Other';
+            r.handleSend();
+            openMira();
+            stopFollows = here && away && stop();
+            openOther();
+            return 'Mira 的回复';
+        };
+        await r.generateEchoText(h);
+        res.stopInItsChat = stopFollows && !stop();
+        res.sendElsewhereKeepsReply = mes('mira.png') === 'Mira 之前说的|给 Mira|Mira 的回复' && mes('other.png') === `${OTHER}|给 Other`;
 
         // Other opened while its prompt is put together: not sent; the reply comes when you're back
         h = fresh();
@@ -2444,13 +2491,30 @@
             env.settings.lifeState = { 'mira.png': { startAt: gapStart - HOUR, start: { errands: [{ id: 'e1', text: '搬家', progress: '打包了一半', due: Life.dateKey(new Date()) }], log: [], today: null } } };
         };
         // Other opened while it's on its way: her texts and her life, settled
+        // Its bar shows only in her chat: gone in Other's, back on hers
         gap();
+        r.renderMessages(env.settings.chatHistory['mira.png']);
         asks = 0;
-        env.requestEchoTextCompletion = async () => { asks++; openOther(); return '<life>update 搬家: 搬完了</life><text n="1">想你了</text>'; };
+        const bar = () => !!document.querySelector('#et-messages #et-catchup-bar [data-et-catchup="pause"]');
+        let barFollows = false;
+        env.requestEchoTextCompletion = async () => {
+            asks++;
+            const before = bar();
+            openOther();
+            const away = !bar();
+            openMira();
+            const back = bar();
+            openOther();
+            barFollows = before && away && back;
+            return '<life>update 搬家: 搬完了</life><text n="1">想你了</text>';
+        };
         await r.maybeCatchUp();
         const life = () => env.settings.lifeState['mira.png'];
         res.catchUpToItsChat = asks === 1 && mes('mira.png').endsWith('|想你了') && life().start.errands[0].progress === '搬完了' && life().settledAt > gapStart
             && mes('other.png') === OTHER && !shown('想你了');
+        res.catchUpBarInItsChat = barFollows && !bar();
+        openMira();
+        res.catchUpBarGoneAfter = !bar();
         // Other opened while its prompt is put together: not sent, the gap waits; back on her chat, it comes
         gap();
         asks = 0;

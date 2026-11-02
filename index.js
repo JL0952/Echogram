@@ -114,6 +114,8 @@
     let fabDragging = false;
     let loadedFontFamily = null;
     let showTypingIndicator = false;
+    // The chat "typing" is for
+    let typingTarget = null;
     // When set ('photo' | 'voice' | 'location' | 'transfer' | 'file' | 'link' | 'music'), the next message
     // the user sends is that kind of content and the typed text is its description / words / place / amount / song
     let composeMode = null;
@@ -126,6 +128,8 @@
     let replyTimer = null;
     let replyQueued = false;
     let replyInProgress = false;
+    // The chat the generation under way is for (generatingHere)
+    let generatingTarget = null;
     // Completion requests in flight — once the model is writing, a new user text
     // waits for a follow-up reply instead of cancelling it
     let activeCompletionRequests = 0;
@@ -2293,6 +2297,7 @@
         }
 
         isGenerating = true;
+        generatingTarget = chatTarget();
         abortController = new AbortController();
         updateSendButton(true);
 
@@ -2369,7 +2374,7 @@
             const bypassTextGeneration = (imageGeneration && latestUserMessage?.is_user && pendingImageDetection?.triggered && settings.imageGenerationIncludeTextReply === false);
 
             if (!bypassTextGeneration) {
-                setTypingIndicatorVisible(true);
+                setTypingIndicatorVisible(true, target);
                 await sleepWithAbort(timing.replyDelayMs, abortController.signal);
                 result = await requestEchoTextCompletion({ apiMessages, rawPrompt, systemPrompt, signal: abortController.signal });
             }
@@ -2606,6 +2611,7 @@
         }
 
         isGenerating = true;
+        generatingTarget = chatTarget();
         abortController = new AbortController();
         updateSendButton(true);
         setTypingIndicatorVisible(true);
@@ -3095,6 +3101,7 @@
         const stanceHint = stances[Math.floor(Math.random() * stances.length)];
 
         isGenerating = true;
+        generatingTarget = chatTarget();
         abortController = new AbortController();
         updateSendButton(true);
 
@@ -3104,7 +3111,7 @@
         const timing = { typingLeadMs: 180, replyDelayMs: 320 };
 
         try {
-            setTypingIndicatorVisible(true);
+            setTypingIndicatorVisible(true, target);
             await sleepWithAbort(timing.typingLeadMs, abortController.signal);
             await sleepWithAbort(timing.replyDelayMs, abortController.signal);
 
@@ -3174,6 +3181,7 @@
         if (!groupId) return;
 
         isGenerating = true;
+        generatingTarget = chatTarget();
         abortController = new AbortController();
         updateSendButton(true);
 
@@ -3217,7 +3225,7 @@
                 groupManager.setActiveCharKey(charKey);
 
                 try {
-                    setTypingIndicatorVisible(true);
+                    setTypingIndicatorVisible(true, target);
                     await sleepWithAbort(timing.typingLeadMs, abortController.signal);
                     await sleepWithAbort(timing.replyDelayMs, abortController.signal);
 
@@ -3310,6 +3318,7 @@
         }
 
         isGenerating = true;
+        generatingTarget = chatTarget();
         abortController = new AbortController();
         updateSendButton(true);
 
@@ -3325,7 +3334,7 @@
         const timing = { typingLeadMs: 250, replyDelayMs: 450 };
 
         try {
-            setTypingIndicatorVisible(true);
+            setTypingIndicatorVisible(true, target);
             await sleepWithAbort(timing.typingLeadMs, abortController.signal);
             await sleepWithAbort(timing.replyDelayMs, abortController.signal);
 
@@ -3414,16 +3423,23 @@
         return -1;
     }
 
-    function setTypingIndicatorVisible(visible) {
+    /** Whether "typing" shows now: it's on, and its chat is the one open. */
+    function typingShown() {
+        return showTypingIndicator && isViewing(typingTarget);
+    }
+
+    /** "Typing" for a chat (`target`): shown only while that chat is open (renderMessages draws it again on the way back). */
+    function setTypingIndicatorVisible(visible, target = chatTarget()) {
         showTypingIndicator = !!visible;
+        typingTarget = visible ? target : null;
         if (!panelOpen) return;
         // For platforms that say it in the header ("对方正在输入…") rather than in the list
-        jQuery('#et-panel').attr('data-et-typing', showTypingIndicator ? '' : null);
+        jQuery('#et-panel').attr('data-et-typing', typingShown() ? '' : null);
 
         const inner = jQuery('#et-messages-inner');
         if (!inner.length) return;
 
-        if (visible) {
+        if (typingShown()) {
             if (!inner.find('[data-et-role~="typing"]').length) {
                 const el = jQuery(getActivePlatform().templates.typing(getMessageRenderContext()).trim());
                 inner.append(el);
@@ -4615,7 +4631,8 @@
         const input = jQuery('#et-input');
         const text = input.val().trim();
 
-        if (isGenerating) {
+        // Another chat's reply under way isn't touched: this one's texts wait for it (startCharacterReply)
+        if (generatingHere()) {
             // An empty send — or any send during a regeneration/swipe — cancels, as before
             if (!replyInProgress || !text) {
                 if (abortController) abortController.abort();
@@ -4764,7 +4781,7 @@
             return;
         }
         // Same as a new text: a reply still in its read/typing delays restarts
-        if (isGenerating && activeCompletionRequests === 0 && abortController) abortController.abort();
+        if (generatingHere() && activeCompletionRequests === 0 && abortController) abortController.abort();
         const tag = accept ? 'transfer_accept' : 'transfer_decline';
         postUserMessage(createUserMessage(`<${tag}>${amount}</${tag}>`));
     }
@@ -5113,18 +5130,28 @@
         });
     }
 
-    function updateSendButton(generating) {
+    /** Whether a generation is under way for the chat open now: only there can it be cancelled. */
+    function generatingHere() {
+        return isGenerating && isViewing(generatingTarget);
+    }
+
+    /** The send button as the chat open now has it (renderMessages sets it again for another chat). */
+    function syncSendButton() {
         const btn = jQuery('#et-send-btn');
         // While a reply is being written the button cancels it — unless the user
         // has typed another text, which they can send without interrupting
         const hasDraft = !!String(jQuery('#et-input').val() || '').trim();
-        if (generating && !(replyInProgress && hasDraft)) {
+        if (generatingHere() && !(replyInProgress && hasDraft)) {
             btn.addClass('et-send-stop').attr('title', 'Cancel generation');
             btn.html('<i class="fa-solid fa-stop"></i>');
         } else {
             btn.removeClass('et-send-stop').attr('title', 'Send message');
             btn.html('<i class="fa-solid fa-paper-plane"></i>');
         }
+    }
+
+    function updateSendButton(generating) {
+        syncSendButton();
         if (generating) updatePanelStatusRow({ typing: true });
         else updatePanelStatusRow();
     }
@@ -5594,7 +5621,7 @@
         }
         const controller = new AbortController();
         summingUp = controller;
-        setStatusBar('et-together-bar', 'Summing up…', 'pause-together');
+        setStatusBar('et-together-bar', 'Summing up…', 'pause-together', soloTarget(key));
         try {
             const request = DailyLife.buildTogetherRequest({ charName: char.name || 'Character', userName, story, moodRule: buildMoodRules(char) });
             const systemPrompt = withRefusalFrame(request.systemPrompt);
@@ -5877,23 +5904,39 @@
         if (force || now - seenSavedAt > 10 * 60000) { seenSavedAt = now; saveSettings(); }
     }
 
-    /** A bar over the messages while something runs in the background, with its pause button (none with `pause` null); gone without `text`. */
-    function setStatusBar(id, text, pause = 'pause') {
-        jQuery(`#${id}`).remove();
-        if (!text) return;
-        jQuery('#et-messages').prepend(`<div id="${id}" class="et-catchup-bar"><i class="fa-solid fa-clock-rotate-left"></i>`
-            + `<span>${text}</span>`
-            + (pause ? `<button type="button" class="et-catchup-pause" data-et-catchup="${pause}" title="Pause"><i class="fa-solid fa-pause"></i></button>` : '')
-            + `</div>`);
+    // The bars up now, by id: { target, text, pause }
+    const statusBars = new Map();
+
+    /**
+     * A bar over the messages while something runs in the background for a chat (`target`),
+     * with its pause button (none with `pause` null); gone without `text`. Shown only while
+     * that chat is open.
+     */
+    function setStatusBar(id, text, pause = 'pause', target = chatTarget()) {
+        if (text) statusBars.set(id, { target, text, pause });
+        else statusBars.delete(id);
+        drawStatusBars();
     }
 
-    function setCatchUpBar(on) {
-        setStatusBar('et-catchup-bar', on ? 'Catching up…' : '');
+    /** The bars of the chat open now (the list's chat changed, or a bar did). */
+    function drawStatusBars() {
+        jQuery('#et-messages > .et-catchup-bar').remove();
+        for (const [id, { target, text, pause }] of statusBars) {
+            if (!isViewing(target)) continue;
+            jQuery('#et-messages').prepend(`<div id="${id}" class="et-catchup-bar"><i class="fa-solid fa-clock-rotate-left"></i>`
+                + `<span>${text}</span>`
+                + (pause ? `<button type="button" class="et-catchup-pause" data-et-catchup="${pause}" title="Pause"><i class="fa-solid fa-pause"></i></button>` : '')
+                + `</div>`);
+        }
+    }
+
+    function setCatchUpBar(on, key) {
+        setStatusBar('et-catchup-bar', on ? 'Catching up…' : '', 'pause', soloTarget(key));
     }
 
     /** The same while a follow-up round writes texts gone by (lib/proactive-messaging.js); its request can't be stopped. */
-    function setRoundBar(on) {
-        setStatusBar('et-round-bar', on ? 'Catching up…' : '', null);
+    function setRoundBar(on, key) {
+        setStatusBar('et-round-bar', on ? 'Catching up…' : '', null, soloTarget(key));
     }
 
     /**
@@ -5963,7 +6006,8 @@
         catchingUp = { key, controller };
         // Holds the proactive timers and your next reply until it's done (onGenerationSettled)
         isGenerating = true;
-        setCatchUpBar(true);
+        generatingTarget = soloTarget(key);
+        setCatchUpBar(true, key);
         // Its chat, whatever's open when it answers; written while its last message is still there
         const target = soloTarget(key);
         // The texts the model writes: those no round had written already, numbered over all of them
@@ -6019,7 +6063,7 @@
             }
             catchingUp = null;
             isGenerating = false;
-            setCatchUpBar(false);
+            setCatchUpBar(false, key);
             saveSettings();
             if (emotionSystem) emotionSystem.refresh();
             refreshProactiveInsights();
@@ -6720,7 +6764,7 @@
         jQuery('#et-panel').attr({
             'data-platform': platform.id,
             'data-et-scheme': getColorScheme(),
-            'data-et-typing': showTypingIndicator ? '' : null,
+            'data-et-typing': typingShown() ? '' : null,
         });
 
         const href = platform.stylesheet
@@ -7015,7 +7059,7 @@
         // Indicators as a full render leaves them: the typing indicator last, if on
         children.filter('[data-et-role~="image-generating"]').remove();
         const typing = inner.children('[data-et-role~="typing"]');
-        if (!showTypingIndicator) typing.remove();
+        if (!typingShown()) typing.remove();
         else if (!typing.length) inner.append(platform.templates.typing(ctx));
 
         if (settings.swipedMessages && isMobileDevice() && rebuilt.has(view.lastCharIndex)) {
@@ -7041,6 +7085,8 @@
         const savedScrollTop = (preserveScroll && messagesEl) ? messagesEl.scrollTop : null;
 
         syncPlatformChrome();
+        drawStatusBars();
+        syncSendButton();
         if (replyDraft && replyDraft.charKey !== getCharacterKey()) clearReplyDraft();
 
         if (!history || history.length === 0) {
@@ -7076,7 +7122,7 @@
             renderedViews.set(m.index, renderedEntry(m));
         });
 
-        if (showTypingIndicator) {
+        if (typingShown()) {
             inner.append(platform.templates.typing(ctx));
         }
 

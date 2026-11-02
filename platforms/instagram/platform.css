@@ -193,6 +193,16 @@
     cursor: pointer;
 }
 
+/* Touch screens: the line takes the column's width and the header below it to the
+   bottom edge, so a finger finds it; it looks the same (the panel doesn't drag there) */
+@media (hover: none) {
+    [data-platform="instagram"] #et-panel-status-trigger {
+        align-self: stretch;
+        padding: 2px 0 14px;
+        margin: -2px 0 -14px;
+    }
+}
+
 [data-platform="instagram"] .et-status-chip,
 [data-platform="instagram"] .et-status-chip-emotion {
     gap: 4px;
