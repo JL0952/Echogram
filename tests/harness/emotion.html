@@ -562,7 +562,7 @@
     };
 
     // Memories (docs/platform-plan.md 10a): Add Memory on every bubble with keywords, the
-    // settings panel (settings.html as shipped) adding and editing them, and its list
+    // settings modal adding and editing them, and its list
     // marking what the last prompt carried
     const memoryChat = () => [
         { is_user: true, mes: '我知道你是谁', send_date: Date.now() - 120000, memoryHighlights: [{ text: '你是谁', category: 'custom', label: 'x' }] },
@@ -575,10 +575,6 @@
     };
     let settingsModal = null;
     async function mountSettingsPanel() {
-        const host = document.createElement('div');
-        host.id = 'settings-host';
-        host.innerHTML = await (await fetch('../../settings.html')).text();
-        document.body.appendChild(host);
         window._etGetCharacterKey = () => 'mira.png';
         window._etGetCharacterName = () => 'Mira';
         window._etGetRecalledMemoryIds = () => env.memorySystem.getRecalledIds();
@@ -588,8 +584,14 @@
         window._etKeepChatMemory = id => { env.memorySystem.moveToPermanent(id); r.refreshMemoryLists(); };
         window._etSetChatSummary = r.setChatSummary;
         // Once: it binds its handlers on the document
-        const sm = settingsModal || (settingsModal = window.EchoTextSettingsModal.createSettingsModal({ getSettings: () => env.settings, saveSettings: () => {} }));
-        const render = () => sm.renderMemoryListInto('#et_memory_list_panel', '#et_memory_empty_panel', '#et_memory_list_label_panel');
+        const sm = settingsModal || (settingsModal = window.EchoTextSettingsModal.createSettingsModal({ getSettings: () => env.settings, saveSettings: () => {},
+            buildThemeDropdownHtml: () => '', buildFontDropdownHtml: () => '' }));
+        const host = document.createElement('div');
+        host.id = 'settings-host';
+        host.innerHTML = sm.buildSettingsModalHtml();
+        document.body.appendChild(host);
+        sm.bindSettingsModalEvents();
+        const render = () => sm.renderMemoryListInto('#et_memory_list', '#et_memory_empty', '#et_memory_list_label');
         render();
         return { host, render };
     }
@@ -621,15 +623,15 @@
         jQuery('#et-mem-save-dismiss').trigger('click');
         await sleep(300);
 
-        // The settings panel: no highlight controls; adding with keywords
+        // The settings modal: no highlight controls; adding with keywords
         const { host, render } = await mountSettingsPanel();
-        res.noHighlightControls = !host.querySelector('#et_memory_auto_extract_panel, .et-mem-hl-btn');
-        jQuery('#et_memory_form_content_panel').val('齐宁怕黑');
-        jQuery('#et_memory_form_keys_panel').val('黑, 夜路');
-        jQuery('#et_memory_form_save_panel').trigger('click');
+        res.noHighlightControls = !host.querySelector('#et_memory_auto_extract, .et-mem-hl-btn');
+        jQuery('#et_memory_form_content').val('齐宁怕黑');
+        jQuery('#et_memory_form_keys').val('黑, 夜路');
+        jQuery('#et_memory_form_save').trigger('click');
         res.panelAdd = mems().length === 2 && mems()[0].content === '齐宁怕黑' && JSON.stringify(mems()[0].keys) === '["黑","夜路"]'
-            && !jQuery('#et_memory_form_keys_panel').val();
-        const card = content => [...host.querySelectorAll('#et_memory_list_panel .et-mem-card')].find(c => c.querySelector('.et-mem-card-content').textContent === content);
+            && !jQuery('#et_memory_form_keys').val();
+        const card = content => [...host.querySelectorAll('#et_memory_list .et-mem-card')].find(c => c.querySelector('.et-mem-card-content').textContent === content);
 
         // What the last prompt carried is marked: small talk brings nothing, a keyword the shift
         env.memorySystem.buildMemoryContext(['在干嘛', '你在哪上班']);
@@ -1615,13 +1617,17 @@
         env.settings.lifeState = settings.lifeState = {};
         story.length = 0;
         summaries.length = 0;
-        env.settings.phoneOverrides['mira.png'] = settings.phoneOverrides['mira.png'] = { phone: 'together', from: Date.now() - 4 * HOUR, until: Date.now() - HOUR };
+        const ranOutAt = Date.now() - HOUR;
+        env.settings.phoneOverrides['mira.png'] = settings.phoneOverrides['mira.png'] = { phone: 'together', from: Date.now() - 4 * HOUR, until: ranOutAt };
+        env.settings.proactiveSeenAt = { 'mira.png': Date.now() - 3 * HOUR };
         res.notWithYouAfter = !r.isWithYou();
         r.noteTogetherEnded();
         r.noteTogetherEnded();
         await sleep(20);
-        res.ranOut = log().length === 1 && log()[0].text.endsWith(' With 我') && summaries.length === 0 && plan().noted === true
-            && env.partedPlans.length === 2 && env.partedPlans[1][1] === plan().until;
+        res.ranOut = log().length === 1 && log()[0].text.endsWith(' With 我') && summaries.length === 0 && !plan()
+            && env.partedPlans.length === 2 && env.partedPlans[1][1] === ranOutAt;
+        // A catch-up has nothing to text about for that time
+        res.seenThrough = env.settings.proactiveSeenAt['mira.png'] === ranOutAt;
         // Replacing what's already noted notes nothing more
         click('[data-emo-plan-phone="free"]');
         await sleep(20);
@@ -1869,30 +1875,33 @@
         const off = id => field(id).classList.contains('et-field-off') && host.querySelector(`#${id}`).disabled;
         const on = id => !field(id).classList.contains('et-field-off') && !host.querySelector(`#${id}`).disabled;
         Object.assign(s, { proactiveMessagingEnabled: true, dailyLifeEnabled: true, memoryEnabled: true, imageGenerationEnabled: true, ctxSTMessages: false });
-        const children = ['et_catch_up_panel', 'et_story_pause_panel', 'et_daily_life_made_up_panel', 'et_memory_summaries_panel', 'et_image_generation_include_text_reply_panel'];
+        const children = ['et_catch_up', 'et_story_pause', 'et_daily_life_made_up', 'et_memory_summaries', 'et_image_generation_include_text_reply'];
         Controls.syncDependentControls(s);
         res.allOn = children.every(on);
         s.proactiveMessagingEnabled = false;
         Controls.syncDependentControls(s);
-        res.proactiveOff = on('et_catch_up_panel') && off('et_story_pause_panel') && on('et_daily_life_made_up_panel');
-        // Catch up has something to do with either one on
+        res.proactiveOff = on('et_catch_up') && on('et_story_pause') && on('et_daily_life_made_up');
+        // Catch up and the pause have something to do with either one on
         s.dailyLifeEnabled = false;
         Controls.syncDependentControls(s);
-        res.catchUpNeedsOne = off('et_catch_up_panel') && Controls.controlNeeded(field('et_catch_up_panel')) === 'Proactive or Daily Life';
+        res.catchUpNeedsOne = off('et_catch_up') && off('et_story_pause') && Controls.controlNeeded(field('et_catch_up')) === 'Proactive or Daily Life';
         s.proactiveMessagingEnabled = true;
         s.memoryEnabled = false;
         s.imageGenerationEnabled = false;
-        host.querySelector('#et_memory_summaries_panel').checked = true;
+        host.querySelector('#et_memory_summaries').checked = true;
         Controls.syncDependentControls(s);
-        res.othersOff = off('et_daily_life_made_up_panel') && off('et_memory_summaries_panel') && off('et_image_generation_include_text_reply_panel') && on('et_catch_up_panel');
-        res.keepsItsValue = host.querySelector('#et_memory_summaries_panel').checked;
-        res.subFieldOff = host.querySelector('#et_memory_keep_panel').disabled;
-        res.saysWhat = Controls.controlNeeded(field('et_memory_summaries_panel')) === 'Memory System';
+        res.othersOff = off('et_daily_life_made_up') && off('et_memory_summaries') && off('et_image_generation_include_text_reply') && on('et_catch_up');
+        res.keepsItsValue = host.querySelector('#et_memory_summaries').checked;
+        res.subFieldOff = host.querySelector('#et_memory_keep').disabled;
+        res.saysWhat = Controls.controlNeeded(field('et_memory_summaries')) === 'Memory System';
         // Back on, they're back
         Object.assign(s, { dailyLifeEnabled: true, memoryEnabled: true, imageGenerationEnabled: true });
         Controls.syncDependentControls(s);
-        res.backOn = children.every(on) && !host.querySelector('#et_memory_keep_panel').disabled;
+        res.backOn = children.every(on) && !host.querySelector('#et_memory_keep').disabled;
         // The line only with both on
+        // SillyTavern's extensions drawer: the master switch and the way in
+        const drawer = await (await fetch('../../settings.html')).text();
+        res.drawer = drawer.includes('id="et_enabled_quick"') && drawer.includes('id="et-open-settings-btn"') && (drawer.match(/<input/g) || []).length === 1;
         const line = () => host.querySelector('[data-et-reveal="story-day"]');
         res.lineHidden = line().style.display === 'none';
         s.ctxSTMessages = true;
@@ -1924,9 +1933,9 @@
         const mine = env.memorySystem.addMemory({ category: 'custom', label: 'mine', content: '我写的' });
         const { host, render } = await mountSettingsPanel();
         const section = () => host.querySelector('.et-memo-section');
-        const permanent = () => host.querySelector('#et_memory_list_panel');
+        const permanent = () => host.querySelector('#et_memory_list');
         res.twoSections = section().style.display !== 'none' && section().textContent.includes('This chat')
-            && host.querySelector('#et_memory_list_label_panel').textContent === 'Permanent — Mira';
+            && host.querySelector('#et_memory_list_label').textContent === 'Permanent — Mira';
         res.chatCard = !!section().querySelector(`[data-mem-id="${life.id}"]`) && !permanent().querySelector(`[data-mem-id="${life.id}"]`)
             && !!permanent().querySelector(`[data-mem-id="${mine.id}"]`) && !!section().querySelector('.et-memo-card');
         // Only what's in the chat can be moved
@@ -2396,11 +2405,9 @@
         r.renderMessages(env.settings.chatHistory['mira.png']);
         env.memorySystem.buildMemoryContext(['夜班累吗'], window.EchoTextChatSummaries.summaries(env.settings.chatHistory['mira.png']));
         const { host, render } = await mountSettingsPanel();
-        host.style.cssText = 'position:fixed;left:416px;top:10px;width:360px;height:640px;overflow:auto';
-        const section = host.querySelector('[data-section="memory"]');
-        section.classList.add('open');
-        host.querySelectorAll('.et-accordion-section').forEach(sec => { if (sec !== section) sec.style.display = 'none'; });
-        jQuery('#et_memory_add_form_panel').show();
+        host.querySelector('.et-settings-modal').classList.add('et-settings-visible');
+        host.querySelector('.et-nav-item[data-section="memory"]').click();
+        jQuery('#et_memory_add_form').show();
         render();
         bubbleMenu('[data-et-action="part-menu"][data-index="2"][data-part="1"]', 2, false, 1).find(i => i.dataset.action === 'add_memory').click();
         // The harness's closeAllDotMenus is a stub

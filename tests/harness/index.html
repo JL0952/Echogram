@@ -574,7 +574,7 @@
                 saveSettings: () => { saves++; }, setComposeMode: () => {} };
             // Stand-ins for the panel and the settings pickers
             const chrome = document.createElement('div');
-            chrome.innerHTML = '<div id="et-panel"></div><button id="et-attach-btn"></button><select id="et_platform_default_panel"></select><label id="et_platform_character_label_panel"></label><select id="et_platform_character_panel"></select>';
+            chrome.innerHTML = '<div id="et-panel"></div><button id="et-attach-btn"></button><select id="et_platform_default"></select><label id="et_platform_character_label"></label><select id="et_platform_character"></select>';
             document.body.appendChild(chrome);
             const count = () => ({
                 platform: document.getElementById('et-panel').dataset.platform,
@@ -587,9 +587,9 @@
             r.bindPlatformSelects();
             r.renderMessages(history);
             const on = count();
-            const select = document.getElementById('et_platform_character_panel');
+            const select = document.getElementById('et_platform_character');
             const menu = [...select.options].map(o => o.textContent);
-            const label = document.getElementById('et_platform_character_label_panel').textContent;
+            const label = document.getElementById('et_platform_character_label').textContent;
             // WeChat: a real pack without reactions
             select.value = 'wechat';
             select.dispatchEvent(new Event('change', { bubbles: true }));

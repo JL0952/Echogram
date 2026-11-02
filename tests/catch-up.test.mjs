@@ -119,17 +119,19 @@ test('a change of plan by hand moves where a text can go', () => {
     assert.equal(C.clockText(C.placeText(at(29, 1, 30), WEEK, up)), '2026-10-29 07:05');
 });
 
-test('time together: no texts in it, and the model is told', () => {
+test('time together: no texts in it', () => {
     const together = Life.makeOverride('together', '23:00', new Date(at(31, 10)));
     // A free Saturday in town, but with you till 23:00: the text waits till after
     assert.equal(C.clockText(C.placeText(at(31, 12), WEEK, together)), '2026-10-31 23:05');
     assert.equal(C.clockText(C.placeText(at(31, 9), WEEK, together)).slice(11), '23:05');
-    const told = C.buildInstruction({ charName: 'Mira', userName: 'Qi', from: at(31, 8), now: NOW, settle: true, schedule: WEEK, together });
-    assert.match(told, /Mira was with Qi in person from 2026-10-31 10:00 to 2026-10-31 20:00; that's noted already/);
-    // Outside the gap: no word of it
-    const earlier = C.buildInstruction({ charName: 'Mira', userName: 'Qi', from: at(31, 8), now: NOW, settle: true, schedule: WEEK,
-        together: { phone: 'together', from: at(30, 8), until: at(30, 12) } });
-    assert.doesNotMatch(earlier, /in person/);
+});
+
+test('settling is told not to repeat what\'s recorded, and may still build on it', () => {
+    const told = C.buildInstruction({ charName: 'Mira', userName: 'Qi', from: at(31, 8), now: NOW, settle: true, schedule: WEEK });
+    assert.match(told, /Do not create duplicate entries for events already recorded in What happened lately\./);
+    assert.match(told, /You may reference those events for continuity, but only add genuinely new developments\./);
+    // Texts alone write no entries
+    assert.doesNotMatch(C.buildInstruction({ charName: 'Mira', userName: 'Qi', from: at(31, 8), now: NOW, texts: [at(31, 12)] }), /duplicate entries/);
 });
 
 test('what a catch-up reports says when it happened, never the time you came back', () => {

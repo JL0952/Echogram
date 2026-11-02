@@ -405,6 +405,8 @@
         if (!s.phoneOverrides || typeof s.phoneOverrides !== 'object' || Array.isArray(s.phoneOverrides)) {
             s.phoneOverrides = {};
         }
+        // With you used to stay here once it was over and noted
+        for (const [key, plan] of Object.entries(s.phoneOverrides)) if (plan?.noted) delete s.phoneOverrides[key];
         window.EchoTextMemorySystem?.moveLifeMemories(s);
         if (!s.chatMemories || typeof s.chatMemories !== 'object' || Array.isArray(s.chatMemories)) {
             s.chatMemories = {};
@@ -438,8 +440,14 @@
         settings = getSettings();
         applySettingsToUI();
         applyAppearanceSettings();
-        // Initialize panel accordion after settings are loaded
-        initPanelAccordion();
+        bindPlatformSelects();
+        // The switch in SillyTavern's extensions drawer
+        jQuery('#et_enabled_quick').off('change.et').on('change.et', function () {
+            settings.enabled = jQuery(this).is(':checked');
+            saveSettings();
+            toggleEchoTextMaster();
+            jQuery('#et_enabled').prop('checked', settings.enabled);
+        });
     }
 
     function applySettingsToUI() {
@@ -510,122 +518,8 @@
         renderCustomPatternRows('et_custom_pattern_list');
         updateStripTagsSubsectionVisibility();
 
-        // Also sync to panel accordion settings
-        applySettingsToPanel();
-    }
-
-    // Apply settings to the panel accordion UI
-    function applySettingsToPanel() {
-        // General
-        jQuery('#et_enabled_panel').prop('checked', settings.enabled);
-        jQuery('#et_auto_open_panel').prop('checked', settings.autoOpenOnReload);
-        jQuery('#et_auto_load_last_char_panel').prop('checked', settings.autoLoadLastCharacter === true);
-        jQuery('#et_auto_scroll_panel').prop('checked', settings.autoScroll);
-        renderRecoverRows();
-        jQuery('#et_emotion_mode_panel').val(settings.emotionMode || 'manual');
-        jQuery('#et_nsfw_enabled_panel').prop('checked', settings.nsfwEnabled === true);
-        jQuery('#et_daily_life_panel').prop('checked', settings.dailyLifeEnabled === true);
-        jQuery('#et_daily_life_made_up_panel').prop('checked', settings.dailyLifeMadeUp === true);
-        jQuery('#et_catch_up_panel').prop('checked', settings.catchUpEnabled !== false);
-        jQuery('#et_story_pause_panel').prop('checked', settings.storyPauseEnabled !== false);
-        jQuery('#et_swiped_messages_panel').prop('checked', settings.swipedMessages === true);
-        jQuery('#et_verbosity_default_panel').val(settings.verbosityDefault || 'medium');
-
-        // Generation Engine
-        jQuery('#et_source_panel').val(settings.source);
-        jQuery('#et_profile_select_panel').val(settings.preset);
-        jQuery('#et_ollama_url_panel').val(settings.ollama_url);
-        jQuery('#et_openai_preset_panel').val(settings.openai_preset);
-        jQuery('#et_openai_url_panel').val(settings.openai_url);
-        jQuery('#et_openai_key_panel').val(settings.openai_key);
-        jQuery('#et_openai_model_panel').val(settings.openai_model);
-        jQuery('#et_anti_refusal_panel').prop('checked', settings.antiRefusal === true);
-        jQuery('#et_image_generation_enabled_panel').prop('checked', settings.imageGenerationEnabled === true);
-        jQuery('#et_image_generation_include_text_reply_panel').prop('checked', settings.imageGenerationIncludeTextReply !== false);
-        jQuery('#et_image_generation_plugin_notice_panel').toggle(settings.imageGenerationEnabled === true);
         updateImageGenerationVisibility();
-        updateProviderVisibilityPanel();
-
-        // Populate connection profiles for panel
-        populateConnectionProfilesPanel();
-
-        // Context
-        jQuery('#et_ctx_description_panel').prop('checked', settings.ctxDescription !== false);
-        jQuery('#et_ctx_personality_panel').prop('checked', settings.ctxPersonality !== false);
-        jQuery('#et_ctx_scenario_panel').prop('checked', settings.ctxScenario !== false);
-        jQuery('#et_ctx_persona_panel').prop('checked', settings.ctxPersona === true);
-        jQuery('#et_ctx_authors_note_panel').prop('checked', settings.ctxAuthorsNote === true);
-        jQuery('#et_ctx_world_info_panel').prop('checked', settings.ctxWorldInfo === true);
-        // World Info sub-panel — toggle visibility and apply saved mode state
-        const _wiEnabled = settings.ctxWorldInfo === true;
-        jQuery('#et-ctx-wi-sub_panel').toggle(_wiEnabled);
-        if (_wiEnabled) {
-            const _wiMode = settings.ctxWorldInfoMode || 'min_order';
-            jQuery('#et-ctx-wi-sub_panel .et-ctx-wi-mode-btn').removeClass('et-ctx-wi-mode-btn-active');
-            jQuery('#et-ctx-wi-sub_panel .et-ctx-wi-mode-btn[data-mode="' + _wiMode + '"]').addClass('et-ctx-wi-mode-btn-active');
-            jQuery('#et_ctx_wi_min_panel').val(typeof settings.ctxWorldInfoMinOrder === 'number' ? settings.ctxWorldInfoMinOrder : 250);
-            jQuery('#et_ctx_wi_max_panel').val(typeof settings.ctxWorldInfoMaxOrder === 'number' ? String(settings.ctxWorldInfoMaxOrder) : '');
-            jQuery('#et_ctx_wi_targeted_panel').val(Array.isArray(settings.ctxWorldInfoTargetedOrders) ? settings.ctxWorldInfoTargetedOrders.join(', ') : '');
-            toggleWIPanelRows(_wiMode);
-        }
-        jQuery('#et_ctx_st_messages_panel').prop('checked', settings.ctxSTMessages === true);
-        jQuery('#et_ctx_main_chat_panel').prop('checked', settings.ctxMainChat !== false);
-        updateProactiveToggleButtons();
-
-        // Appearance
-        jQuery('#et_font_size_panel').val(settings.fontSize);
-        jQuery('#et_font_size_val_panel').text(settings.fontSize + 'px');
-        jQuery('#et_glass_blur_panel').val(settings.glassBlur);
-        jQuery('#et_glass_blur_val_panel').text(settings.glassBlur + 'px');
-        jQuery('#et_glass_opacity_panel').val(settings.glassOpacity);
-        jQuery('#et_glass_opacity_val_panel').text(settings.glassOpacity + '%');
-        jQuery('#et_line_spacing_panel').val(settings.lineSpacing || 1.3);
-        jQuery('#et_line_spacing_val_panel').text((settings.lineSpacing || 1.3).toFixed(2));
-        jQuery('#et_paragraph_spacing_panel').val(settings.paragraphSpacing || 12);
-        jQuery('#et_paragraph_spacing_val_panel').text((settings.paragraphSpacing || 12) + 'px');
-
-
         populatePlatformSelects();
-
-        // Populate theme dropdown
-        jQuery('#et_theme_panel_container').html(buildThemeDropdownHtml(settings.theme));
-        // Populate font dropdown
-        jQuery('#et_font_family_panel_container').html(buildFontDropdownHtml(settings.fontFamily));
-        // Initialize custom dropdowns in panel
-        initCustomDropdownsPanel();
-
-        // Action Button
-        jQuery('#et_fab_size_panel').val(settings.fabSize);
-        jQuery('#et_fab_size_val_panel').text(settings.fabSize + 'px');
-        jQuery('#et_fab_opacity_panel').val(settings.fabOpacity || 100);
-        jQuery('#et_fab_opacity_val_panel').text((settings.fabOpacity || 100) + '%');
-        initCustomDropdownPanel('et_fab_icon_panel', settings.fabIcon);
-
-        // Populate Prompt Manager in Panel if available
-        if (typeof settingsModal !== 'undefined' && settingsModal && typeof settingsModal.buildPromptManagerSectionHtml === 'function') {
-            jQuery('#et_prompt_manager_panel_container').html(settingsModal.buildPromptManagerSectionHtml());
-        }
-
-        // Populate Memory System panel card list and apply scope pill state
-        if (typeof settingsModal !== 'undefined' && settingsModal && typeof settingsModal.renderMemoryListInto === 'function') {
-            settingsModal.renderMemoryListInto('#et_memory_list_panel', '#et_memory_empty_panel', '#et_memory_list_label_panel');
-        }
-        // Memory panel toggles
-        jQuery('#et_memory_enabled_panel').prop('checked', settings.memoryEnabled !== false);
-        jQuery('#et_memory_summaries_panel').prop('checked', settings.memorySummaries !== false);
-        jQuery('#et_memory_keep_panel').val(settings.memoryKeepMessages || 60);
-        // Memory scope pills
-        const _memScope = settings.memoryScope || 'per-character';
-        jQuery('#et_memory_scope_pills_panel .et-mem-scope-btn').removeClass('et-mem-scope-btn-active');
-        jQuery(`#et_memory_scope_pills_panel .et-mem-scope-btn[data-scope="${_memScope}"]`).addClass('et-mem-scope-btn-active');
-        jQuery('#et_memory_scope_hint_panel').text(
-            _memScope === 'global' ? 'One shared memory pool for all characters.' : 'Each character keeps their own separate memory pool.'
-        );
-        // Strip reasoning tags
-        jQuery('#et_strip_thinking_enabled_panel').prop('checked', settings.stripThinkingTagsEnabled !== false);
-        renderStripTagChips('et_strip_tag_chips_panel');
-        renderCustomPatternRows('et_custom_pattern_list_panel');
-        updateStripTagsSubsectionVisibility();
     }
 
     function updateProactiveToggleButtons() {
@@ -639,37 +533,8 @@
             btn.find('span').text(`Proactive: ${enabled ? 'Enabled' : 'Paused'}`);
         };
 
-        syncButton('#et_proactive_toggle_panel');
         syncButton('#et_proactive_toggle');
         window.EchoTextSettingsModal?.syncDependentControls(settings);
-    }
-
-    // Initialize a custom dropdown in the panel
-    function initCustomDropdownPanel(id, currentValue) {
-        const dropdown = jQuery('#' + id);
-        if (!dropdown.length) return;
-
-        dropdown.attr('data-value', currentValue);
-
-        // Update selected option in menu
-        dropdown.find('.et-dd-option').removeClass('et-dd-selected');
-        dropdown.find(`.et-dd-option[data-value="${currentValue}"]`).addClass('et-dd-selected');
-
-        // Update display
-        const selectedOption = dropdown.find(`.et-dd-option[data-value="${currentValue}"]`).html();
-        dropdown.find('.et-dd-display').html(selectedOption);
-    }
-
-    // Update provider visibility for panel
-    function updateProviderVisibilityPanel() {
-        const source = jQuery('#et_source_panel').val() || settings.source;
-        jQuery('#et_profile_settings_panel').hide();
-        jQuery('#et_ollama_settings_panel').hide();
-        jQuery('#et_openai_settings_panel').hide();
-        jQuery('#et_image_generation_plugin_notice_panel').toggle(settings.imageGenerationEnabled === true);
-        if (source === 'profile') jQuery('#et_profile_settings_panel').show();
-        if (source === 'ollama') jQuery('#et_ollama_settings_panel').show();
-        if (source === 'openai') jQuery('#et_openai_settings_panel').show();
     }
 
     function updateImageGenerationVisibility() {
@@ -677,593 +542,7 @@
         const hasChar = !!getCurrentCharacter();
         const inGroup = groupManager && groupManager.isGroupSession();
         jQuery('#et_image_generation_plugin_notice').toggle(imgEnabled);
-        jQuery('#et_image_generation_plugin_notice_panel').toggle(imgEnabled);
         jQuery('#et-overflow-gallery').toggle(imgEnabled && hasChar && !inGroup);
-    }
-
-    // Initialize custom dropdowns for panel
-    function initCustomDropdownsPanel() {
-        jQuery(document).off('click.et-dd-panel').on('click.et-dd-panel', '#et_theme_panel_container .et-custom-dropdown .et-dd-trigger, #et_font_family_panel_container .et-custom-dropdown .et-dd-trigger, #et_fab_icon_panel .et-dd-trigger', function (e) {
-            e.stopPropagation();
-            const dropdown = jQuery(this).closest('.et-custom-dropdown');
-            const isOpen = dropdown.hasClass('et-dd-open');
-
-            // Close all other dropdowns
-            jQuery('.et-custom-dropdown').removeClass('et-dd-open');
-
-            if (!isOpen) {
-                dropdown.addClass('et-dd-open');
-            }
-        });
-
-        jQuery(document).off('click.et-dd-option-panel').on('click.et-dd-option-panel', '#et_theme_panel_container .et-dd-option, #et_font_family_panel_container .et-dd-option', function () {
-            const option = jQuery(this);
-            const dropdown = option.closest('.et-custom-dropdown');
-            const value = option.data('value');
-            const id = dropdown.attr('id');
-
-            dropdown.attr('data-value', value);
-            dropdown.find('.et-dd-option').removeClass('et-dd-selected');
-            option.addClass('et-dd-selected');
-
-            // Update display
-            dropdown.find('.et-dd-display').html(option.html());
-            dropdown.removeClass('et-dd-open');
-
-            // Trigger change based on dropdown type
-            if (id === 'et_theme_custom') {
-                settings.theme = value;
-                saveSettings();
-                applyAppearanceSettings();
-                updateThemePreview();
-                // Also update modal dropdown if open
-                updateCustomDropdown('et_theme_custom', value);
-            } else if (id === 'et_font_family_custom') {
-                settings.fontFamily = value;
-                saveSettings();
-                applyAppearanceSettings();
-                updateFontPreview(value);
-                // Also update modal dropdown if open
-                updateCustomDropdown('et_font_family_custom', value);
-            }
-        });
-
-        // Close dropdowns when clicking outside
-        jQuery(document).off('click.et-dd-outside-panel').on('click.et-dd-outside-panel', function (e) {
-            if (!jQuery(e.target).closest('.et-custom-dropdown').length) {
-                jQuery('.et-custom-dropdown').removeClass('et-dd-open');
-            }
-        });
-    }
-
-    // Initialize accordion functionality
-    function initPanelAccordion() {
-        jQuery(document).off('click.et-accordion').on('click.et-accordion', '.et-accordion-header', function () {
-            const section = jQuery(this).closest('.et-accordion-section');
-            const isOpen = section.hasClass('open');
-
-            // Close all other sections with animation
-            jQuery('.et-accordion-section').not(section).each(function () {
-                const otherSection = jQuery(this);
-                if (otherSection.hasClass('open')) {
-                    otherSection.addClass('closing');
-                    otherSection.removeClass('open');
-                    setTimeout(() => otherSection.removeClass('closing'), 350);
-                }
-            });
-
-            // Toggle current section
-            if (isOpen) {
-                section.addClass('closing');
-                section.removeClass('open');
-                setTimeout(() => section.removeClass('closing'), 350);
-            } else {
-                section.addClass('open');
-                // Opening the proactive section: its insights as they are now
-                if (section.data('section') === 'proactive-insights') refreshProactiveInsights();
-            }
-        });
-
-        // Bind panel settings event handlers
-        bindPanelSettingsEvents();
-        bindPlatformSelects();
-    }
-
-    // Bind settings change events from panel to settings
-    function bindPanelSettingsEvents() {
-        // General - Enable toggle
-        jQuery('#et_enabled_panel').off('change.panel').on('change.panel', function () {
-            const checked = jQuery(this).is(':checked');
-            settings.enabled = checked;
-            saveSettings();
-            toggleEchoTextMaster();
-            // Sync with quick toggle and modal toggle
-            jQuery('#et_enabled_quick').prop('checked', checked);
-            jQuery('#et_enabled').prop('checked', checked);
-        });
-
-        // Quick toggle also needs to sync with panel toggle
-        jQuery('#et_enabled_quick').off('change.panel').on('change.panel', function () {
-            const checked = jQuery(this).is(':checked');
-            settings.enabled = checked;
-            saveSettings();
-            toggleEchoTextMaster();
-            // Sync with panel toggle and modal toggle
-            jQuery('#et_enabled_panel').prop('checked', checked);
-            jQuery('#et_enabled').prop('checked', checked);
-        });
-
-        // Auto-Open on Reload
-        jQuery('#et_auto_open_panel').off('change.panel').on('change.panel', function () {
-            settings.autoOpenOnReload = jQuery(this).is(':checked');
-            saveSettings();
-            // Sync with modal
-            jQuery('#et_auto_open').prop('checked', settings.autoOpenOnReload);
-        });
-
-        // Auto-Load Last Character
-        jQuery('#et_auto_load_last_char_panel').off('change.panel').on('change.panel', function () {
-            settings.autoLoadLastCharacter = jQuery(this).is(':checked');
-            saveSettings();
-            // Sync with modal
-            jQuery('#et_auto_load_last_char').prop('checked', settings.autoLoadLastCharacter);
-        });
-
-        // Auto-scroll
-        jQuery('#et_auto_scroll_panel').off('change.panel').on('change.panel', function () {
-            settings.autoScroll = jQuery(this).is(':checked');
-            saveSettings();
-            // Sync with modal
-            jQuery('#et_auto_scroll').prop('checked', settings.autoScroll);
-        });
-
-        // Verbosity Default
-        jQuery('#et_verbosity_default_panel').off('change.panel').on('change.panel', function () {
-            settings.verbosityDefault = jQuery(this).val();
-            saveSettings();
-            // Sync with modal
-            jQuery('#et_verbosity_default').val(settings.verbosityDefault);
-        });
-
-        // Emotion mode and NSFW (panel)
-        jQuery('#et_emotion_mode_panel').off('change.panel').on('change.panel', function () {
-            setEmotionMode(jQuery(this).val());
-            saveSettings();
-            // Sync with modal
-            jQuery('#et_emotion_mode').val(settings.emotionMode);
-            updatePanelStatusRow();
-        });
-
-        jQuery('#et_nsfw_enabled_panel').off('change.panel').on('change.panel', function () {
-            settings.nsfwEnabled = jQuery(this).is(':checked');
-            saveSettings();
-            // Sync with modal
-            jQuery('#et_nsfw_enabled').prop('checked', settings.nsfwEnabled);
-            updatePanelStatusRow();
-        });
-
-        jQuery('#et_daily_life_panel').off('change.panel').on('change.panel', function () {
-            setDailyLifeEnabled(jQuery(this).is(':checked'));
-        });
-
-        jQuery('#et_daily_life_made_up_panel').off('change.panel').on('change.panel', function () {
-            settings.dailyLifeMadeUp = jQuery(this).is(':checked');
-            saveSettings();
-            jQuery('#et_daily_life_made_up').prop('checked', settings.dailyLifeMadeUp);
-        });
-
-        jQuery('#et_catch_up_panel').off('change.panel').on('change.panel', function () {
-            settings.catchUpEnabled = jQuery(this).is(':checked');
-            saveSettings();
-            jQuery('#et_catch_up').prop('checked', settings.catchUpEnabled);
-        });
-
-        jQuery('#et_story_pause_panel').off('change.panel').on('change.panel', function () {
-            settings.storyPauseEnabled = jQuery(this).is(':checked');
-            saveSettings();
-            jQuery('#et_story_pause').prop('checked', settings.storyPauseEnabled);
-            refreshProactiveInsights();
-        });
-
-        // Swiped messages toggle (panel)
-        jQuery('#et_swiped_messages_panel').off('change.panel').on('change.panel', function () {
-            settings.swipedMessages = jQuery(this).is(':checked');
-            saveSettings();
-            // Sync with modal
-            jQuery('#et_swiped_messages').prop('checked', settings.swipedMessages === true);
-        });
-
-        // Generation Engine - Source
-        jQuery('#et_source_panel').off('change.panel').on('change.panel', function () {
-            settings.source = jQuery(this).val();
-            saveSettings();
-            updateProviderVisibilityPanel();
-            // Sync with modal
-            jQuery('#et_source').val(settings.source);
-            updateProviderVisibility();
-            if (settings.source === 'profile') populateConnectionProfiles();
-            if (settings.source === 'ollama') fetchOllamaModels();
-        });
-
-        // Profile select
-        jQuery('#et_profile_select_panel').off('change.panel').on('change.panel', function () {
-            settings.preset = jQuery(this).val();
-            saveSettings();
-            // Sync with modal
-            jQuery('#et_profile_select').val(settings.preset);
-        });
-
-        // Ollama
-        jQuery('#et_ollama_url_panel').off('change.panel').on('change.panel', function () {
-            settings.ollama_url = jQuery(this).val();
-            saveSettings();
-            // Sync with modal
-            jQuery('#et_ollama_url').val(settings.ollama_url);
-            fetchOllamaModels();
-        });
-
-        jQuery('#et_ollama_model_select_panel').off('change.panel').on('change.panel', function () {
-            settings.ollama_model = jQuery(this).val();
-            saveSettings();
-            // Sync with modal
-            jQuery('#et_ollama_model_select').val(settings.ollama_model);
-        });
-
-        // OpenAI
-        jQuery('#et_openai_preset_panel').off('change.panel').on('change.panel', function () {
-            settings.openai_preset = jQuery(this).val();
-            const presets = { lmstudio: 'http://localhost:1234/v1', kobold: 'http://localhost:5001/v1', textgen: 'http://localhost:5000/v1', vllm: 'http://localhost:8000/v1' };
-            if (presets[settings.openai_preset]) {
-                settings.openai_url = presets[settings.openai_preset];
-                jQuery('#et_openai_url_panel').val(settings.openai_url);
-            }
-            saveSettings();
-            // Sync with modal
-            jQuery('#et_openai_preset').val(settings.openai_preset);
-            jQuery('#et_openai_url').val(settings.openai_url);
-        });
-
-        jQuery('#et_openai_url_panel').off('change.panel').on('change.panel', function () {
-            settings.openai_url = jQuery(this).val();
-            saveSettings();
-            // Sync with modal
-            jQuery('#et_openai_url').val(settings.openai_url);
-        });
-
-        jQuery('#et_openai_key_panel').off('change.panel').on('change.panel', function () {
-            settings.openai_key = jQuery(this).val();
-            saveSettings();
-            // Sync with modal
-            jQuery('#et_openai_key').val(settings.openai_key);
-        });
-
-        jQuery('#et_openai_model_panel').off('change.panel').on('change.panel', function () {
-            settings.openai_model = jQuery(this).val();
-            saveSettings();
-            // Sync with modal
-            jQuery('#et_openai_model').val(settings.openai_model);
-        });
-
-        // Anti-Refusal Framing
-        jQuery('#et_anti_refusal_panel').off('change.panel').on('change.panel', function () {
-            settings.antiRefusal = jQuery(this).is(':checked');
-            saveSettings();
-            // Sync with modal
-            jQuery('#et_anti_refusal').prop('checked', settings.antiRefusal);
-        });
-
-        // Image Generation toggle (panel)
-        jQuery('#et_image_generation_enabled_panel').off('change.panel').on('change.panel', function () {
-            settings.imageGenerationEnabled = jQuery(this).is(':checked');
-            saveSettings();
-            // Sync with modal
-            jQuery('#et_image_generation_enabled').prop('checked', settings.imageGenerationEnabled);
-            jQuery('#et_image_generation_plugin_notice').toggle(settings.imageGenerationEnabled === true);
-            updateImageGenerationVisibility();
-        });
-
-        // Context settings
-        jQuery('#et_ctx_description_panel').off('change.panel').on('change.panel', function () {
-            settings.ctxDescription = jQuery(this).is(':checked');
-            saveSettings();
-            // Sync with modal
-            jQuery('#et_ctx_description').prop('checked', settings.ctxDescription);
-        });
-
-        jQuery('#et_ctx_personality_panel').off('change.panel').on('change.panel', function () {
-            settings.ctxPersonality = jQuery(this).is(':checked');
-            saveSettings();
-            // Sync with modal
-            jQuery('#et_ctx_personality').prop('checked', settings.ctxPersonality);
-        });
-
-        jQuery('#et_ctx_scenario_panel').off('change.panel').on('change.panel', function () {
-            settings.ctxScenario = jQuery(this).is(':checked');
-            saveSettings();
-            // Sync with modal
-            jQuery('#et_ctx_scenario').prop('checked', settings.ctxScenario);
-        });
-
-        jQuery('#et_ctx_persona_panel').off('change.panel').on('change.panel', function () {
-            settings.ctxPersona = jQuery(this).is(':checked');
-            saveSettings();
-            // Sync with modal
-            jQuery('#et_ctx_persona').prop('checked', settings.ctxPersona);
-        });
-
-        jQuery('#et_ctx_authors_note_panel').off('change.panel').on('change.panel', function () {
-            settings.ctxAuthorsNote = jQuery(this).is(':checked');
-            saveSettings();
-            // Sync with modal
-            jQuery('#et_ctx_authors_note').prop('checked', settings.ctxAuthorsNote);
-        });
-
-        jQuery('#et_ctx_world_info_panel').off('change.panel').on('change.panel', function () {
-            settings.ctxWorldInfo = jQuery(this).is(':checked');
-            saveSettings();
-            // Sync with modal
-            jQuery('#et_ctx_world_info').prop('checked', settings.ctxWorldInfo);
-            // Toggle sub-panel
-            jQuery('#et-ctx-wi-sub_panel').toggle(settings.ctxWorldInfo);
-            if (settings.ctxWorldInfo) {
-                const _m = settings.ctxWorldInfoMode || 'min_order';
-                jQuery('#et-ctx-wi-sub_panel .et-ctx-wi-mode-btn').removeClass('et-ctx-wi-mode-btn-active');
-                jQuery('#et-ctx-wi-sub_panel .et-ctx-wi-mode-btn[data-mode="' + _m + '"]').addClass('et-ctx-wi-mode-btn-active');
-                toggleWIPanelRows(_m);
-            }
-        });
-
-        // World Info mode buttons (panel)
-        jQuery('#et-ctx-wi-sub_panel').off('click.wi-panel').on('click.wi-panel', '.et-ctx-wi-mode-btn', function () {
-            const mode = jQuery(this).data('mode');
-            settings.ctxWorldInfoMode = mode;
-            saveSettings();
-            jQuery('#et-ctx-wi-sub_panel .et-ctx-wi-mode-btn').removeClass('et-ctx-wi-mode-btn-active');
-            jQuery(this).addClass('et-ctx-wi-mode-btn-active');
-            toggleWIPanelRows(mode);
-        });
-
-        // World Info input fields (panel)
-        jQuery('#et_ctx_wi_min_panel').off('input.wi-panel').on('input.wi-panel', function () {
-            const val = parseInt(jQuery(this).val(), 10);
-            settings.ctxWorldInfoMinOrder = isNaN(val) ? 250 : val;
-            saveSettings();
-        });
-        jQuery('#et_ctx_wi_max_panel').off('input.wi-panel').on('input.wi-panel', function () {
-            const raw = jQuery(this).val().trim();
-            const val = parseInt(raw, 10);
-            settings.ctxWorldInfoMaxOrder = (raw === '' || isNaN(val)) ? null : val;
-            saveSettings();
-        });
-        jQuery('#et_ctx_wi_targeted_panel').off('input.wi-panel').on('input.wi-panel', function () {
-            const raw = jQuery(this).val().trim();
-            settings.ctxWorldInfoTargetedOrders = !raw ? [] : raw.split(',').map(function (v) { return parseInt(v.trim(), 10); }).filter(function (n) { return !isNaN(n); });
-            saveSettings();
-        });
-
-        jQuery('#et_ctx_main_chat_panel').off('change.panel').on('change.panel', function () {
-            settings.ctxMainChat = jQuery(this).is(':checked');
-            saveSettings();
-            jQuery('#et_ctx_main_chat').prop('checked', settings.ctxMainChat);
-        });
-
-        jQuery('#et_ctx_st_messages_panel').off('change.panel').on('change.panel', function () {
-            settings.ctxSTMessages = jQuery(this).is(':checked');
-            saveSettings();
-            // Sync with modal
-            jQuery('#et_ctx_st_messages').prop('checked', settings.ctxSTMessages);
-        });
-
-        // Strip Reasoning Tags toggle
-        jQuery('#et_strip_thinking_enabled_panel').off('change.panel').on('change.panel', function () {
-            settings.stripThinkingTagsEnabled = jQuery(this).is(':checked');
-            saveSettings();
-            jQuery('#et_strip_thinking_enabled').prop('checked', settings.stripThinkingTagsEnabled);
-            updateStripTagsSubsectionVisibility();
-        });
-
-        // Strip tag chip remove
-        jQuery('#et_strip_tag_chips_panel').off('click.panel').on('click.panel', '.et-strip-tag-remove', function () {
-            const idx = parseInt(jQuery(this).data('index'), 10);
-            if (!Array.isArray(settings.stripThinkingTagList)) return;
-            settings.stripThinkingTagList.splice(idx, 1);
-            invalidateStripTagsCache();
-            saveSettings();
-            renderStripTagChips('et_strip_tag_chips_panel');
-            renderStripTagChips('et_strip_tag_chips');
-        });
-
-        // Strip tag add button
-        jQuery('#et_strip_tag_add_panel').off('click.panel').on('click.panel', function () {
-            const input = jQuery('#et_strip_tag_input_panel');
-            const val = (input.val() || '').trim().replace(/^<|>$/g, '');
-            if (!val) return;
-            if (!Array.isArray(settings.stripThinkingTagList)) settings.stripThinkingTagList = [];
-            if (!settings.stripThinkingTagList.includes(val)) {
-                settings.stripThinkingTagList.push(val);
-                invalidateStripTagsCache();
-                saveSettings();
-                renderStripTagChips('et_strip_tag_chips_panel');
-                renderStripTagChips('et_strip_tag_chips');
-            }
-            input.val('');
-        });
-
-        // Strip tag input enter key
-        jQuery('#et_strip_tag_input_panel').off('keydown.panel').on('keydown.panel', function (e) {
-            if (e.key === 'Enter') jQuery('#et_strip_tag_add_panel').trigger('click');
-        });
-
-        // Strip tag reset button
-        jQuery('#et_strip_tag_reset_panel').off('click.panel').on('click.panel', function () {
-            settings.stripThinkingTagList = [...STRIP_TAGS_DEFAULTS];
-            invalidateStripTagsCache();
-            saveSettings();
-            renderStripTagChips('et_strip_tag_chips_panel');
-            renderStripTagChips('et_strip_tag_chips');
-        });
-
-        // Custom pattern remove
-        jQuery('#et_custom_pattern_list_panel').off('click.panel').on('click.panel', '.et-custom-pattern-remove', function () {
-            const idx = parseInt(jQuery(this).data('index'), 10);
-            if (!Array.isArray(settings.stripCustomPatterns)) return;
-            settings.stripCustomPatterns.splice(idx, 1);
-            invalidateStripTagsCache();
-            saveSettings();
-            renderCustomPatternRows('et_custom_pattern_list_panel');
-            renderCustomPatternRows('et_custom_pattern_list');
-        });
-
-        // Custom pattern add
-        jQuery('#et_custom_pattern_add_panel').off('click.panel').on('click.panel', function () {
-            const start = (jQuery('#et_custom_pattern_start_panel').val() || '').trim();
-            const end = (jQuery('#et_custom_pattern_end_panel').val() || '').trim();
-            if (!start || !end) return;
-            if (!Array.isArray(settings.stripCustomPatterns)) settings.stripCustomPatterns = [];
-            settings.stripCustomPatterns.push({ start, end });
-            invalidateStripTagsCache();
-            saveSettings();
-            renderCustomPatternRows('et_custom_pattern_list_panel');
-            renderCustomPatternRows('et_custom_pattern_list');
-            jQuery('#et_custom_pattern_start_panel').val('');
-            jQuery('#et_custom_pattern_end_panel').val('');
-        });
-
-        // Font size
-        jQuery('#et_font_size_panel').off('input.panel').on('input.panel', function () {
-            settings.fontSize = parseInt(jQuery(this).val());
-            jQuery('#et_font_size_val_panel').text(settings.fontSize + 'px');
-            applyAppearanceSettings();
-            saveSettings();
-            // Sync with modal
-            jQuery('#et_font_size').val(settings.fontSize);
-            jQuery('#et_font_size_val').text(settings.fontSize + 'px');
-        });
-
-        // Line spacing
-        jQuery('#et_line_spacing_panel').off('input.panel').on('input.panel', function () {
-            settings.lineSpacing = parseFloat(jQuery(this).val());
-            jQuery('#et_line_spacing_val_panel').text(settings.lineSpacing.toFixed(2));
-            applyAppearanceSettings();
-            saveSettings();
-            jQuery('#et_line_spacing').val(settings.lineSpacing);
-            jQuery('#et_line_spacing_val').text(settings.lineSpacing.toFixed(2));
-        });
-
-        // Message spacing
-        jQuery('#et_paragraph_spacing_panel').off('input.panel').on('input.panel', function () {
-            settings.paragraphSpacing = parseInt(jQuery(this).val());
-            jQuery('#et_paragraph_spacing_val_panel').text(settings.paragraphSpacing + 'px');
-            applyAppearanceSettings();
-            saveSettings();
-            jQuery('#et_paragraph_spacing').val(settings.paragraphSpacing);
-            jQuery('#et_paragraph_spacing_val').text(settings.paragraphSpacing + 'px');
-        });
-
-        // Glass blur
-        jQuery('#et_glass_blur_panel').off('input.panel').on('input.panel', function () {
-            settings.glassBlur = parseInt(jQuery(this).val());
-            jQuery('#et_glass_blur_val_panel').text(settings.glassBlur + 'px');
-            applyAppearanceSettings();
-            saveSettings();
-            // Sync with modal
-            jQuery('#et_glass_blur').val(settings.glassBlur);
-            jQuery('#et_glass_blur_val').text(settings.glassBlur + 'px');
-        });
-
-        // Glass opacity
-        jQuery('#et_glass_opacity_panel').off('input.panel').on('input.panel', function () {
-            settings.glassOpacity = parseInt(jQuery(this).val());
-            jQuery('#et_glass_opacity_val_panel').text(settings.glassOpacity + '%');
-            applyAppearanceSettings();
-            saveSettings();
-            // Sync with modal
-            jQuery('#et_glass_opacity').val(settings.glassOpacity);
-            jQuery('#et_glass_opacity_val').text(settings.glassOpacity + '%');
-        });
-
-
-
-        // FAB Size
-        jQuery('#et_fab_size_panel').off('input.panel').on('input.panel', function () {
-            settings.fabSize = parseInt(jQuery(this).val());
-            jQuery('#et_fab_size_val_panel').text(settings.fabSize + 'px');
-            applyAppearanceSettings();
-            positionFab();
-            saveSettings();
-            // Sync with modal
-            jQuery('#et_fab_size').val(settings.fabSize);
-            jQuery('#et_fab_size_val').text(settings.fabSize + 'px');
-        });
-
-        // FAB Opacity
-        jQuery('#et_fab_opacity_panel').off('input.panel').on('input.panel', function () {
-            settings.fabOpacity = parseInt(jQuery(this).val());
-            jQuery('#et_fab_opacity_val_panel').text(settings.fabOpacity + '%');
-            applyAppearanceSettings();
-            positionFab();
-            saveSettings();
-        });
-
-        // FAB Icon
-        jQuery('#et_fab_icon_panel').off('click.panel', '.et-dd-option').on('click.panel', '#et_fab_icon_panel .et-dd-option', function () {
-            const option = jQuery(this);
-            const dropdown = option.closest('.et-custom-dropdown');
-            const value = option.data('value');
-
-            dropdown.attr('data-value', value);
-            dropdown.find('.et-dd-option').removeClass('et-dd-selected');
-            option.addClass('et-dd-selected');
-
-            // Update display
-            dropdown.find('.et-dd-display').html(option.html());
-            dropdown.removeClass('et-dd-open');
-
-            settings.fabIcon = value;
-            applyAppearanceSettings();
-            saveSettings();
-            // Sync with modal
-            jQuery('.et-icon-option').removeClass('selected');
-            jQuery(`.et-icon-option[data-icon="${settings.fabIcon}"]`).addClass('selected');
-        });
-
-
-        jQuery('#et_proactive_toggle_panel').off('click.panel').on('click.panel', function () {
-            settings.proactiveMessagingEnabled = settings.proactiveMessagingEnabled === false;
-            saveSettings();
-            updateProactiveToggleButtons();
-            startProactiveScheduler();
-            refreshProactiveInsights();
-        });
-
-        jQuery('#et_trigger_message_panel').off('click.panel').on('click.panel', function () {
-            triggerTestProactiveMessage();
-        });
-
-        // Trigger pill click-to-copy (panel accordion)
-        jQuery(document).off('click.pillcopy').on('click.pillcopy', '.et-imagetrig-pill-copyable', function () {
-            const pill = jQuery(this);
-            const text = pill.data('copy');
-            if (!text) return;
-            navigator.clipboard.writeText(text).then(() => {
-                pill.addClass('et-imagetrig-pill-copied');
-                setTimeout(() => pill.removeClass('et-imagetrig-pill-copied'), 1400);
-            }).catch(() => {});
-        });
-
-        // iOS: patch panel sliders for touch. Called here — after the panel
-        // HTML is guaranteed to be in the DOM and all jQuery input.panel
-        // handlers above are already bound — so the touch handler's
-        // dispatched 'input' events will trigger them correctly.
-        if (window.EchoTextSettingsModal && window.EchoTextSettingsModal.patchIOSSliders) {
-            window.EchoTextSettingsModal.patchIOSSliders(document);
-        }
-
-        // Custom theme editor button (panel drawer)
-        jQuery(document).off('click.et-panel-te').on('click.et-panel-te', '#et-te-open-btn-panel', function () {
-            if (themeEditor) themeEditor.openThemeEditor();
-            moveModalToPortal('#et-theme-editor-overlay');
-        });
     }
 
     // ── Background luminance detection for adaptive glassmorphism ──────────────
@@ -2479,12 +1758,6 @@
     function updateStripTagsSubsectionVisibility() {
         const visible = settings.stripThinkingTagsEnabled !== false;
         jQuery('.et-strip-tags-sub').toggle(visible);
-    }
-
-    function toggleWIPanelRows(mode) {
-        jQuery('#et-ctx-wi-row-min_panel').toggle(mode === 'min_order' || mode === 'range' || mode === 'custom');
-        jQuery('#et-ctx-wi-row-max_panel').toggle(mode === 'range' || mode === 'custom');
-        jQuery('#et-ctx-wi-row-targeted_panel').toggle(mode === 'targeted' || mode === 'custom');
     }
 
     // ============================================================
@@ -4147,7 +3420,6 @@
         // The open character changed or their chat loaded: their follow-up round's timer,
         // and a catch-up if one is due
         proactiveMessaging.armRoundTimer();
-        noteTogetherEnded();
         setTimeout(() => maybeCatchUp(), 0);
         keepLifeMemories();
     }
@@ -4168,7 +3440,7 @@
 
     function refreshProactiveInsights() {
         if (proactiveMessaging) proactiveMessaging.refreshProactiveInsights();
-        jQuery('#et_proactive_life, #et_proactive_life_panel').text(scheduleInsight());
+        jQuery('#et_proactive_life').text(scheduleInsight());
     }
 
     async function triggerTestProactiveMessage() {
@@ -4211,30 +3483,6 @@
         }
     }
 
-    function populateConnectionProfilesPanel() {
-        try {
-            const context = SillyTavern.getContext();
-            const connectionManager = context?.extensionSettings?.connectionManager;
-            const select = jQuery('#et_profile_select_panel');
-            const currentValue = settings.preset;
-
-            select.empty();
-            select.append('<option value="">-- Select Profile --</option>');
-
-            if (connectionManager?.profiles?.length) {
-                connectionManager.profiles.forEach(profile => {
-                    const safeName = profile.name.replace(/"/g, '&quot;');
-                    const isSelected = currentValue === profile.name ? ' selected' : '';
-                    select.append(`<option value="${safeName}"${isSelected}>${safeName}</option>`);
-                });
-            } else {
-                select.append('<option value="" disabled>No profiles found</option>');
-            }
-        } catch (err) {
-            warn('Error loading connection profiles for panel:', err);
-        }
-    }
-
     async function fetchOllamaModels() {
         try {
             const baseUrl = (settings.ollama_url || 'http://localhost:11434').replace(/\/$/, '');
@@ -4258,7 +3506,6 @@
 
     async function fetchMultimodalModels() {
         jQuery('#et_multimodal_model_status').text('Model discovery is now managed by the SillyTavern Image Generation plugin.').css('color', '#a8ffaa');
-        jQuery('#et_multimodal_model_status_panel').text('Model discovery is now managed by the SillyTavern Image Generation plugin.').css('color', '#a8ffaa');
     }
 
     // ============================================================
@@ -6105,7 +5352,7 @@
     function setDailyLifeEnabled(on) {
         settings.dailyLifeEnabled = on === true;
         saveSettings();
-        jQuery('#et_daily_life, #et_daily_life_panel').prop('checked', settings.dailyLifeEnabled);
+        jQuery('#et_daily_life').prop('checked', settings.dailyLifeEnabled);
         if (emotionSystem) emotionSystem.refresh();
         refreshProactiveInsights();
     }
@@ -6198,7 +5445,7 @@
             resumePendingReply();
         }
         if (phone === 'together' && proactiveMessaging) proactiveMessaging.dropRound(key);
-        if (before?.phone === 'together' && !before.noted && phone !== 'together') {
+        if (before?.phone === 'together' && phone !== 'together') {
             noteTogether(key, { from: before.from, until: Math.min(before.until, Date.now()) }, { explain: true });
         }
         updatePanelStatusRow();
@@ -6212,8 +5459,8 @@
     function noteTogetherEnded() {
         const key = getCharacterKey();
         const plan = phoneOverride();
-        if (!dailyLifeActive() || plan?.phone !== 'together' || plan.noted || Date.now() < plan.until) return;
-        plan.noted = true;
+        if (!dailyLifeActive() || plan?.phone !== 'together' || Date.now() < plan.until) return;
+        delete settings.phoneOverrides[key];
         saveSettings();
         noteTogether(key, plan);
         updatePanelStatusRow();
@@ -6226,7 +5473,8 @@
      * model's sentence about it takes its place and in Auto mode moves the feelings, with a
      * bar up meanwhile; paused, what's there stays. Today's change goes with it: it was most
      * likely written for this. A text may follow once they've parted. An accidental moment
-     * leaves nothing. With `explain` (you ended it), says so when no sentence is to come.
+     * leaves nothing. A catch-up has no texts to write for it. With `explain` (you ended
+     * it), says so when no sentence is to come.
      */
     async function noteTogether(key, { from, until }, { explain = false } = {}) {
         const char = getCurrentCharacter();
@@ -6234,6 +5482,7 @@
         const userName = getUserName();
         const entry = { id: `with${from.toString(36)}`, date: DailyLife.dateKey(new Date(from)), text: DailyLife.togetherEntry({ userName, from, until }) };
         writeLife(key, { edit: parts => ({ ...DailyLife.withEntry(parts, -1, entry), today: null }) });
+        if (settings.proactiveSeenAt?.[key]) settings.proactiveSeenAt[key] = Math.max(settings.proactiveSeenAt[key], until);
         if (emotionSystem) emotionSystem.refresh();
         if (proactiveMessaging) proactiveMessaging.planParted(key, until);
         const story = getSTStoryContext(char, { from, until, maxMessages: ST_STRETCH_MAX_MESSAGES, maxChars: ST_STRETCH_MAX_CHARS });
@@ -6542,6 +5791,7 @@
      * have sent (lib/catch-up.js planTexts). Nothing to do: they're simply marked seen.
      */
     async function maybeCatchUp() {
+        noteTogetherEnded();
         if (catchingUp || isGenerating || !panelOpen || inGroupSession() || !CatchUp) return;
         // Playing the main chat: once it's been quiet a while (the minute's check picks it up)
         catchUpHeld = storyPauseUntil() > 0;
@@ -6584,7 +5834,6 @@
             const instruction = CatchUp.buildInstruction({
                 charName: char.name || 'Character', userName, from, now, settle, schedule: activeSchedule(),
                 errands: activeLife()?.errands || [], madeUp: settings.dailyLifeMadeUp === true, texts,
-                together: phoneOverride()?.phone === 'together' ? phoneOverride() : null,
             });
             apiMessages.push({ role: 'user', content: `[Instruction for this turn — not a message from ${userName}; never quote or answer it: ${instruction}]` });
             if (texts.length) proactiveMessaging.noteCatchUpRequest(key);
@@ -7343,24 +6592,24 @@
             .map(id => `<option value="${id}">${escapeHtml(Platforms[id].name)}</option>`).join('');
         const charKey = getCharacterKey();
         const charChoice = charKey ? settings.platformByCharacter?.[charKey] : null;
-        jQuery('#et_platform_default, #et_platform_default_panel')
+        jQuery('#et_platform_default')
             .html(options)
             .val(Platforms[settings.defaultPlatform] ? settings.defaultPlatform : 'echotext');
-        jQuery('#et_platform_character, #et_platform_character_panel')
+        jQuery('#et_platform_character')
             .html(`<option value="">Use default</option>${options}`)
             .val(Platforms[charChoice] ? charChoice : '')
             .prop('disabled', !charKey);
-        jQuery('#et_platform_character_label, #et_platform_character_label_panel')
+        jQuery('#et_platform_character_label')
             .text(charKey ? `Platform for ${getCharacterName()}` : 'Platform for this character');
     }
 
     function bindPlatformSelects() {
         jQuery(document).off('change.et-platform')
-            .on('change.et-platform', '#et_platform_default, #et_platform_default_panel', function () {
+            .on('change.et-platform', '#et_platform_default', function () {
                 settings.defaultPlatform = this.value;
                 onPlatformChoiceChanged();
             })
-            .on('change.et-platform', '#et_platform_character, #et_platform_character_panel', function () {
+            .on('change.et-platform', '#et_platform_character', function () {
                 const charKey = getCharacterKey();
                 if (!charKey) return;
                 settings.platformByCharacter = settings.platformByCharacter || {};
@@ -8466,7 +7715,6 @@
     function refreshMemoryLists() {
         if (!settingsModal || typeof settingsModal.renderMemoryListInto !== 'function') return;
         settingsModal.renderMemoryListInto('#et_memory_list', '#et_memory_empty', '#et_memory_list_label');
-        settingsModal.renderMemoryListInto('#et_memory_list_panel', '#et_memory_empty_panel', '#et_memory_list_label_panel');
     }
 
     /** The open chat's summaries for the settings list: { id, text, from, to, recalled } (1-based message numbers). */
@@ -8614,7 +7862,6 @@
             }
             if (settingsModal && typeof settingsModal.renderMemoryListInto === 'function') {
                 settingsModal.renderMemoryListInto('#et_memory_list',       '#et_memory_empty',       '#et_memory_list_label');
-                settingsModal.renderMemoryListInto('#et_memory_list_panel', '#et_memory_empty_panel', '#et_memory_list_label_panel');
             }
             toastr.success('Memory saved!');
             closeModal();
@@ -8705,10 +7952,8 @@
             fetchOllamaModels,
             fetchMultimodalModels,
             initCustomDropdowns,
-            initCustomDropdownPanel,
             toggleEchoTextMaster,
             updateProviderVisibility,
-            updateProviderVisibilityPanel,
             updateImageGenerationVisibility,
             getChatHistory,
             renderMessages,
@@ -8738,9 +7983,6 @@
             // Rebuilds the theme dropdown in all open UI surfaces after custom theme changes.
             refreshThemeDropdown: () => {
                 const current = settings.theme;
-                jQuery('#et_theme_panel_container').html(buildThemeDropdownHtml(current));
-                // Use a scoped selector so we target only the settings modal's dropdown,
-                // not the panel-drawer's #et_theme_custom which was just rebuilt above.
                 const ddModal = jQuery('.et-settings-modal #et_theme_custom');
                 if (ddModal.length) {
                     ddModal.closest('.et-field').html(
@@ -8967,7 +8209,7 @@
         setInterval(resumeHeldCatchUp, 60000);
         // The proactive insights keep up on their own while they're on screen ("in 6m", what's due)
         setInterval(refreshVisibleInsights, 30000);
-        document.addEventListener('visibilitychange', () => { if (!document.hidden) { resumePendingReply(); noteTogetherEnded(); maybeCatchUp(); } });
+        document.addEventListener('visibilitychange', () => { if (!document.hidden) { resumePendingReply(); maybeCatchUp(); } });
         // Catch-up: proactive texts are running for the open character; a first run of this
         // marks every chat seen now, so old chats aren't caught up on all at once
         if (!settings.proactiveSeenAt || typeof settings.proactiveSeenAt !== 'object') {
@@ -8978,10 +8220,9 @@
         setTimeout(() => maybeCatchUp(), 3000);
         jQuery(document).on('click', '[data-et-catchup="pause"]', () => pauseCatchUp());
         jQuery(document).on('click', '[data-et-catchup="pause-together"]', () => pauseTogetherNote());
-        // Settings that depend on another, in both settings views
+        // Settings that depend on another
         const Controls = window.EchoTextSettingsModal;
-        jQuery(document).on('change.et-controls', '#et_daily_life, #et_daily_life_panel, #et_memory_enabled, #et_memory_enabled_panel, '
-            + '#et_image_generation_enabled, #et_image_generation_enabled_panel, #et_ctx_st_messages, #et_ctx_st_messages_panel',
+        jQuery(document).on('change.et-controls', '#et_daily_life, #et_memory_enabled, #et_image_generation_enabled, #et_ctx_st_messages',
         () => setTimeout(() => Controls.syncDependentControls(settings), 0));
         jQuery(document).on('click.et-controls', '.et-field-off', function (e) {
             e.preventDefault();

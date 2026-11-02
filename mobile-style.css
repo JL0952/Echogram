@@ -243,7 +243,6 @@
     animation: et-nav-in-bck 0.25s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards !important;
 }
 
-
 /* ============================================================
    EMOTION POPUP
    Centre in the full-screen panel (= viewport on mobile).
@@ -547,16 +546,6 @@
 }
 
 /* ============================================================
-   PANEL ACCORDION (settings-in-panel) â€” overflow-safe
-   ============================================================ */
-
-.et-accordion-section.open .et-accordion-content {
-    overflow-y: auto !important;
-    -webkit-overflow-scrolling: touch;
-    max-height: 70vh !important;
-}
-
-/* ============================================================
    MEMORY SAVE MODAL â€” keep it within mobile viewport
    ============================================================ */
 
@@ -658,7 +647,6 @@
     flex-basis: 100% !important;
     margin-top: 4px !important;
 }
-
 
 /* ============================================================
    THEME EDITOR â€” mobile layout
@@ -771,7 +759,6 @@
     font-size: 0.9rem !important;
     margin-top: 10px !important;
 }
-
 
 .et-group-bar::-webkit-scrollbar {
     display: none;
