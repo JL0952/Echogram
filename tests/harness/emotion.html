@@ -355,7 +355,9 @@
 
         // The next report moves a feeling 25 at most (Neuroticism mid); the model never sees a <mood> line
         next = '<mood>joy 100, anger 90</mood>\nok wait';
-        await r.generateEchoText([...chat(), { is_user: true, mes: 'same lol', send_date: Date.now() }]);
+        // Your text is in the chat before the reply starts, as postUserMessage puts it
+        r.saveChatHistory([...chat(), { is_user: true, mes: 'same lol', send_date: Date.now() }]);
+        await r.generateEchoText(chat());
         res.capped = val('joy') === 85 && val('anger') === 25;
         res.flashes = flash('anger').text() === '25' && flash('joy').text() === '25' && !flash('anticipation').length;
         res.contextClean = sent.length === 2 && sent.every(text => !text.includes('<mood'));
@@ -387,7 +389,9 @@
         // A locked feeling ignores reports, and the rule says it's fixed
         click('[data-emo-lock="anger"]');
         next = 'grr\n<mood>anger 70</mood>';
-        await r.generateEchoText([...chat(), { is_user: true, mes: '?', send_date: Date.now() }]);
+        // Your text is in the chat before the reply starts, as postUserMessage puts it
+        r.saveChatHistory([...chat(), { is_user: true, mes: '?', send_date: Date.now() }]);
+        await r.generateEchoText(chat());
         res.lockIgnores = val('anger') === 0 && rules().includes('anger 0 (fixed)');
         click('[data-emo-lock="anger"]');
 
@@ -397,7 +401,9 @@
         res.manualKeeps = JSON.stringify(emo.getEmotionState()) === before;
         res.manualNoRule = rules() === '';
         next = 'fine\n<mood>joy 100</mood>';
-        await r.generateEchoText([...chat(), { is_user: true, mes: '!', send_date: Date.now() }]);
+        // Your text is in the chat before the reply starts, as postUserMessage puts it
+        r.saveChatHistory([...chat(), { is_user: true, mes: '!', send_date: Date.now() }]);
+        await r.generateEchoText(chat());
         const last = chat()[chat().length - 1];
         res.manualStrips = last.mes === 'fine' && !('mood' in last) && JSON.stringify(emo.getEmotionState()) === before;
 
@@ -1162,7 +1168,9 @@
 
         // The next one moves it on; the model never sees a <life> line
         next = 'ok\n<life>update 搬家: 打包完了</life>';
-        await r.generateEchoText([...chat(), { is_user: true, mes: '加油', send_date: Date.now() }]);
+        // Your text is in the chat before the reply starts, as postUserMessage puts it
+        r.saveChatHistory([...chat(), { is_user: true, mes: '加油', send_date: Date.now() }]);
+        await r.generateEchoText(chat());
         res.updated = progress() === '打包完了 · 嫌麻烦';
         res.contextClean = sent.length === 2 && sent.every(text => !text.includes('<life'));
 
@@ -1195,7 +1203,9 @@
         settings.dailyLifeEnabled = false;
         env.settings.dailyLifeEnabled = false;
         next = 'sure\n<life>new 体检 (due tomorrow)</life>';
-        await r.generateEchoText([...chat(), { is_user: true, mes: 'hm', send_date: Date.now() }]);
+        // Your text is in the chat before the reply starts, as postUserMessage puts it
+        r.saveChatHistory([...chat(), { is_user: true, mes: 'hm', send_date: Date.now() }]);
+        await r.generateEchoText(chat());
         const off = chat()[chat().length - 1];
         res.offStripped = off.mes === 'sure' && !('life' in off);
 
@@ -2291,6 +2301,191 @@
         return res;
     };
 
+    // A request belongs to the chat it set out from (index.js chatTarget): another chat opened, the chat cleared
+    // or changed meanwhile, through the real generateEchoText, generateEchoTextSwipe, handleDotsAction,
+    // maybeCatchUp and noteTogether, the model stubbed. Group chats aren't set up here.
+    window.runTargetTest = async function () {
+        const res = {};
+        errors.length = 0;
+        const HOUR = 3600000;
+        const Life = window.EchoTextDailyLife;
+        const saved = { getCharacterKey: env.getCharacterKey, getCurrentCharacter: env.getCurrentCharacter, getCharacterByKey: env.getCharacterByKey,
+            requestEchoTextCompletion: env.requestEchoTextCompletion, buildApiMessagesFromHistory: env.buildApiMessagesFromHistory,
+            buildApiMessagesFromHistoryForChar: env.buildApiMessagesFromHistoryForChar, sendCompletionRequest: env.sendCompletionRequest,
+            catchUpInputs: env.catchUpInputs, context: window.SillyTavern.getContext, info: window.toastr.info };
+        // Which chat is open: switched by the stubbed model, as you would meanwhile
+        let open = 'mira.png';
+        const chars = { 'mira.png': { name: 'Mira', avatar: 'mira.png' }, 'other.png': { name: 'Other', avatar: 'other.png' } };
+        env.getCharacterKey = () => open;
+        env.getCurrentCharacter = () => chars[open] || null;
+        env.getCharacterByKey = key => chars[key] || null;
+        const built = { apiMessages: [{ role: 'system', content: 'S' }], rawPrompt: '', systemPrompt: 'S' };
+        env.buildApiMessagesFromHistory = async () => built;
+        env.buildApiMessagesFromHistoryForChar = async () => built;
+        env.panelOpen = true;
+        env.settings.dailyLifeEnabled = false;
+        env.settings.characterSchedules = {};
+        env.settings.pendingReplies = {};
+        let asks = 0;
+        const mes = key => (env.settings.chatHistory[key] || []).map(m => m.mes).join('|');
+        const shown = text => document.getElementById('et-messages').textContent.includes(text);
+        const otherChat = () => [{ is_user: true, mes: 'Other 那边的话', send_date: 1 }, { is_user: false, mes: 'Other 的回复', send_date: 2 }];
+        const OTHER = 'Other 那边的话|Other 的回复';
+        const fresh = () => {
+            open = 'mira.png';
+            env.settings.chatHistory = {
+                'mira.png': [{ is_user: false, mes: 'Mira 之前说的', send_date: Date.now() - 60000 }, { is_user: true, mes: '给 Mira', send_date: Date.now(), meta: { receipt: { state: 'sent' } } }],
+                'other.png': otherChat(),
+            };
+            return env.settings.chatHistory['mira.png'];
+        };
+        // You open Other: the panel shows her chat
+        const openOther = () => { open = 'other.png'; r.renderMessages(env.settings.chatHistory['other.png']); };
+
+        // Nothing changes meanwhile: the reply as ever
+        let h = fresh();
+        env.requestEchoTextCompletion = async () => 'Mira 的回复';
+        await r.generateEchoText(h);
+        res.replyAsEver = mes('mira.png') === 'Mira 之前说的|给 Mira|Mira 的回复' && shown('Mira 的回复');
+
+        // Other opened while it's on its way: it lands in Mira's chat, Other's untouched, not drawn over hers
+        h = fresh();
+        r.renderMessages(h);
+        env.requestEchoTextCompletion = async () => { openOther(); return 'Mira 的回复'; };
+        await r.generateEchoText(h);
+        res.replyToItsChat = mes('mira.png') === 'Mira 之前说的|给 Mira|Mira 的回复' && mes('other.png') === OTHER && !shown('Mira 的回复') && shown('Other 的回复');
+
+        // Other opened while its prompt is put together: not sent; the reply comes when you're back
+        h = fresh();
+        env.buildApiMessagesFromHistory = async () => { open = 'other.png'; return built; };
+        env.requestEchoTextCompletion = async () => { asks++; return 'Mira 的回复'; };
+        await r.generateEchoText(h);
+        res.notSentBuiltElsewhere = asks === 0 && mes('mira.png') === 'Mira 之前说的|给 Mira' && mes('other.png') === OTHER && !!env.settings.pendingReplies['mira.png'];
+        env.buildApiMessagesFromHistory = async () => built;
+        open = 'mira.png';
+        r.resumePendingReply();
+        await sleep(30);
+        res.answeredWhenBack = asks === 1 && mes('mira.png') === 'Mira 之前说的|给 Mira|Mira 的回复' && !env.settings.pendingReplies['mira.png'];
+
+        // Its <life> line is kept for her chat, whatever is open when it lands
+        h = fresh();
+        env.settings.dailyLifeEnabled = true;
+        env.requestEchoTextCompletion = async () => { open = null; return 'Mira 的回复\n<life>happened 下雨了</life>'; };
+        await r.generateEchoText(h);
+        const last = env.settings.chatHistory['mira.png'].at(-1);
+        res.lifeKeptForItsChat = last.mes === 'Mira 的回复' && last.life?.[0]?.op === 'happened';
+        env.settings.dailyLifeEnabled = false;
+
+        // A new version of her reply, Other opened meanwhile: on her message
+        open = 'mira.png';
+        env.settings.chatHistory = { 'mira.png': [{ is_user: true, mes: '问 Mira', send_date: 10 }, { is_user: false, mes: 'Mira 第一版', send_date: 11 }], 'other.png': otherChat() };
+        h = env.settings.chatHistory['mira.png'];
+        env.requestEchoTextCompletion = async () => { openOther(); return 'Mira 第二版'; };
+        await r.generateEchoTextSwipe(h, 1, h.slice(0, 1));
+        res.swipeToItsChat = mes('mira.png') === '问 Mira|Mira 第二版' && env.settings.chatHistory['mira.png'][1].swipes.length === 2 && mes('other.png') === OTHER;
+
+        // The chat cleared while it's on its way: stays cleared
+        h = fresh();
+        env.requestEchoTextCompletion = async () => { env.settings.chatHistory['mira.png'] = []; return 'Mira 的回复'; };
+        await r.generateEchoText(h);
+        res.clearedStaysCleared = mes('mira.png') === '';
+
+        // An earlier message deleted meanwhile (no receipts to keep, so nothing shares its list): stays deleted
+        h = fresh();
+        h[1].meta.receipt.state = 'read';
+        env.requestEchoTextCompletion = async () => { const now = r.getChatHistory(); now.splice(0, 1); r.saveChatHistory(now); return 'Mira 的回复'; };
+        await r.generateEchoText(h);
+        res.deleteKept = mes('mira.png') === '给 Mira|Mira 的回复';
+
+        // Regenerate while a reply is on its way: told to wait, nothing cut back
+        h = fresh();
+        const told = [];
+        window.toastr.info = m => told.push(m);
+        env.requestEchoTextCompletion = async () => { r.handleDotsAction('regen', 0, false, null); return 'Mira 的回复'; };
+        await r.generateEchoText(h);
+        res.regenWaits = told.some(m => m.includes('Wait for the current reply')) && mes('mira.png') === 'Mira 之前说的|给 Mira|Mira 的回复';
+        window.toastr.info = saved.info;
+
+        // A new version on its way, an earlier message deleted meanwhile: stays deleted
+        open = 'mira.png';
+        env.settings.chatHistory = { 'mira.png': [{ is_user: true, mes: 'A 旧消息', send_date: 1 }, { is_user: true, mes: '问 Mira', send_date: 10 }, { is_user: false, mes: 'Mira 第一版', send_date: 11 }] };
+        h = env.settings.chatHistory['mira.png'];
+        env.requestEchoTextCompletion = async () => { const now = r.getChatHistory(); now.splice(0, 1); r.saveChatHistory(now); return 'Mira 第二版'; };
+        await r.generateEchoTextSwipe(h, 2, h.slice(0, 2));
+        res.swipeKeepsDelete = mes('mira.png') === '问 Mira|Mira 第二版';
+
+        // Catching up
+        env.settings.dailyLifeEnabled = true;
+        env.settings.proactiveMessagingEnabled = true;
+        env.settings.catchUpEnabled = true;
+        env.catchUpInputs = () => ({ temperament: 'clingy', baseHours: 4, unanswered: 0, left: 15, roundActive: false });
+        let gapStart = 0;
+        const gap = () => {
+            open = 'mira.png';
+            gapStart = Date.now() - 30 * HOUR;
+            env.settings.chatHistory = { 'mira.png': [{ is_user: true, mes: '晚安', send_date: gapStart - 60000 }, { is_user: false, mes: '晚安~', send_date: gapStart }], 'other.png': otherChat() };
+            env.settings.proactiveSeenAt = { 'mira.png': gapStart };
+            env.settings.lifeState = { 'mira.png': { startAt: gapStart - HOUR, start: { errands: [{ id: 'e1', text: '搬家', progress: '打包了一半', due: Life.dateKey(new Date()) }], log: [], today: null } } };
+        };
+        // Other opened while it's on its way: her texts and her life, settled
+        gap();
+        asks = 0;
+        env.requestEchoTextCompletion = async () => { asks++; openOther(); return '<life>update 搬家: 搬完了</life><text>想你了</text>'; };
+        await r.maybeCatchUp();
+        const life = () => env.settings.lifeState['mira.png'];
+        res.catchUpToItsChat = asks === 1 && mes('mira.png').endsWith('|想你了') && life().start.errands[0].progress === '搬完了' && life().settledAt > gapStart
+            && mes('other.png') === OTHER && !shown('想你了');
+        // Other opened while its prompt is put together: not sent, the gap waits; back on her chat, it comes
+        gap();
+        asks = 0;
+        env.buildApiMessagesFromHistoryForChar = async () => { open = 'other.png'; return built; };
+        env.requestEchoTextCompletion = async () => { asks++; return '<text>想你了</text>'; };
+        await r.maybeCatchUp();
+        res.catchUpWaits = asks === 0 && env.settings.proactiveSeenAt['mira.png'] === gapStart && !life().settledAt && mes('mira.png') === '晚安|晚安~';
+        env.buildApiMessagesFromHistoryForChar = async () => built;
+        open = 'mira.png';
+        await r.maybeCatchUp();
+        res.catchUpWhenBack = asks === 1 && mes('mira.png').endsWith('|想你了');
+        // The chat cleared while it's on its way: nothing lands in the new one
+        gap();
+        env.requestEchoTextCompletion = async () => { env.settings.chatHistory['mira.png'] = []; return '<text>想你了</text>'; };
+        await r.maybeCatchUp();
+        res.catchUpNotIntoCleared = mes('mira.png') === '';
+
+        // What time together comes to, back while you're in no chat of hers: a reply meanwhile that ended an errand
+        // is kept as a Life memory all the same
+        const story = [{ is_user: true, name: '我', mes: '走吧', send_date: Date.now() - 2 * HOUR }];
+        window.SillyTavern.getContext = () => ({ name1: '我', chat: story, characters: [{ name: 'Mira', avatar: 'mira.png' }], characterId: 0 });
+        const together = async leave => {
+            open = 'mira.png';
+            env.settings.ctxMainChat = true;
+            env.settings.chatMemories = {};
+            env.settings.chatHistory = { 'mira.png': [{ is_user: true, mes: '去看电影吧', send_date: Date.now() - 4 * HOUR }, { is_user: false, mes: '好', send_date: Date.now() - 4 * HOUR + 60000 }] };
+            env.settings.lifeState = { 'mira.png': { startAt: 0, start: { errands: [{ id: 'e1', text: '搬家', progress: '', due: Life.dateKey(new Date()) }], log: [], today: null } } };
+            env.sendCompletionRequest = async () => {
+                await sleep(20);
+                env.settings.chatHistory['mira.png'].push({ is_user: false, mes: '搬完了', send_date: Date.now(), life: [{ op: 'done', name: '搬家' }] });
+                await sleep(20);
+                if (leave) open = null;
+                return '和我去看了电影';
+            };
+            await r.noteTogether('mira.png', { from: Date.now() - 3 * HOUR, until: Date.now() - HOUR });
+            return (env.settings.chatMemories['mira.png']?.items || []).some(m => m.category === 'life' && m.content.includes('搬家'));
+        };
+        res.memoryStaying = await together(false);
+        res.memoryLeaving = await together(true);
+
+        Object.assign(env, { getCharacterKey: saved.getCharacterKey, getCurrentCharacter: saved.getCurrentCharacter, getCharacterByKey: saved.getCharacterByKey,
+            requestEchoTextCompletion: saved.requestEchoTextCompletion, buildApiMessagesFromHistory: saved.buildApiMessagesFromHistory,
+            buildApiMessagesFromHistoryForChar: saved.buildApiMessagesFromHistoryForChar, sendCompletionRequest: saved.sendCompletionRequest, catchUpInputs: saved.catchUpInputs });
+        window.SillyTavern.getContext = saved.context;
+        env.settings.dailyLifeEnabled = false;
+        env.settings.pendingReplies = {};
+        res.errors = errors.slice();
+        res.ok = Object.values(res).filter(v => typeof v === 'boolean').every(Boolean) && !errors.length;
+        return res;
+    };
+
     // Reply length on the Personality tab: the character's own, else the default in the settings
     window.runReplyLengthTest = async function () {
         const res = {};
@@ -2480,7 +2675,8 @@
         const controls = await window.runControlsTest();
         const together = await window.runTogetherTest();
         const storyPause = await window.runStoryPauseTest();
-        fetch('/__log', { method: 'POST', body: JSON.stringify({ runChatMemoryTest: chatMemory, runControlsTest: controls, runTogetherTest: together, runStoryPauseTest: storyPause, runReplyLengthTest: replyLength, runLifeReportTest: lifeReport, runUnseenTest: unseen, runCatchUpTest: catchUp, runPlanTest: plan, runLifeMemoryTest: lifeMemory, runRenameTest: rename, runEmotionTest: result, runAutoTest: auto, runReplyTest: reply, runTapbackTest: tapback, runMemoryTest: memory, runSummaryTest: summary, runInstagramTest: instagram, runScheduleTest: schedule, runLifeTest: life }) }).catch(() => {});
+        const target = await window.runTargetTest();
+        fetch('/__log', { method: 'POST', body: JSON.stringify({ runChatMemoryTest: chatMemory, runControlsTest: controls, runTogetherTest: together, runStoryPauseTest: storyPause, runTargetTest: target, runReplyLengthTest: replyLength, runLifeReportTest: lifeReport, runUnseenTest: unseen, runCatchUpTest: catchUp, runPlanTest: plan, runLifeMemoryTest: lifeMemory, runRenameTest: rename, runEmotionTest: result, runAutoTest: auto, runReplyTest: reply, runTapbackTest: tapback, runMemoryTest: memory, runSummaryTest: summary, runInstagramTest: instagram, runScheduleTest: schedule, runLifeTest: life }) }).catch(() => {});
     } else if (params.has('memory')) {
         // Two memories, one pinned, the other in the last prompt; Add Memory open on a bubble
         env.settings.characterMemories = { 'mira.png': [

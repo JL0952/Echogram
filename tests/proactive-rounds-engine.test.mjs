@@ -26,15 +26,20 @@ function setup({ temperament = 'clingy', answer = '?\n---\n人呢\n---\n你去�
     const settings = { enabled: true, proactiveMessagingEnabled: true, chatHistory: { 'mira.png': [] }, proactiveState: {} };
     const asked = [];
     const warnings = [];
-    const env = { temperament, answer, schedule, group };
+    const env = { temperament, answer, schedule, group, open: 'mira.png' };
     const p = window.EchoTextProactiveMessaging.createProactiveMessaging({
         getSettings: () => settings, saveSettings: () => {}, warn: (...a) => warnings.push(a.join(' ')),
-        getCurrentCharacter: () => ({ name: 'Mira', avatar: 'mira.png' }), getCharacterKey: () => 'mira.png',
+        // The chat open now (index.js chatTarget): another one when a test sets env.open
+        getCurrentCharacter: () => ({ name: env.open === 'mira.png' ? 'Mira' : 'Other', avatar: env.open }), getCharacterKey: () => env.open,
+        chatTarget: () => ({ group: null, combine: false, key: env.open }), isViewing: t => !!t && t.key === env.open,
         getChatHistory: () => settings.chatHistory['mira.png'], getUserName: () => 'Qi',
         getTemperament: () => env.temperament, getScheduleNow: () => env.schedule, getDailyLife: () => env.day || null, getStoryPauseUntil: () => env.storyUntil || 0,
         expandTimeDateMacros: t => t, replaceMacros: t => t, getActiveFeatures: () => [], getProactivePace: () => 1,
         isGroupSession: () => env.group, isPanelOpen: () => true, getIsGenerating: () => false, getEmotionState: () => null,
-        buildApiMessagesFromHistoryForChar: async (history, extraSystem) => ({ apiMessages: [{ role: 'system', content: extraSystem.join('\n') }], rawPrompt: '', systemPrompt: '' }),
+        buildApiMessagesFromHistoryForChar: async (history, extraSystem) => {
+            env.onBuild?.();
+            return { apiMessages: [{ role: 'system', content: extraSystem.join('\n') }], rawPrompt: '', systemPrompt: '' };
+        },
         requestEchoTextCompletion: async ({ apiMessages }) => { asked.push(apiMessages); return env.answer; },
         readReply: t => ({ mes: String(t).trim(), mood: null, life: null }),
         renderMessages: () => {}, setTypingIndicatorVisible: () => {}, setFabUnreadIndicator: () => {}, noteMoodReport: () => {},
@@ -285,4 +290,40 @@ test('a follow-up waits while you play the main chat, the rest moved along with 
     await p.runDueRound();
     assert.equal(asked.length, 1);
     assert.equal(chat().at(-1).mes, '?');
+});
+
+test('a round is written for its own chat: another one open by then, nothing is sent till it\'s back', async () => {
+    clock = T0;
+    const { p, env, asked, chat, state, talk } = setup({ temperament: 'clingy' });
+    talk();
+    const round = state().round;
+    clock = round.times[0];
+    // You open another chat while its prompt is put together
+    env.onBuild = () => { env.open = 'other.png'; };
+    assert.equal(await p.runDueRound(), true);
+    assert.equal(asked.length, 0);
+    assert.equal(state().round, round);
+    assert.equal(round.texts, null);
+    assert.equal(chat().length, 2);
+    // Back on her chat: written and let out then
+    env.onBuild = null;
+    env.open = 'mira.png';
+    await p.runDueRound();
+    assert.equal(asked.length, 1);
+    assert.equal(chat().at(-1).mes, '?');
+});
+
+test('the chat a round followed cleared: the round ends and nothing lands in the new chat', async () => {
+    clock = T0;
+    const { p, settings, chat, state, talk } = setup({ temperament: 'clingy' });
+    talk();
+    const round = state().round;
+    clock = round.times[0];
+    await p.runDueRound();
+    assert.equal(chat().at(-1).mes, '?');
+    settings.chatHistory['mira.png'] = [];
+    clock = round.times[1];
+    assert.equal(await p.runDueRound(), false);
+    assert.equal(state().round, null);
+    assert.deepEqual(chat(), []);
 });

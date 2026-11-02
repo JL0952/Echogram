@@ -1764,23 +1764,58 @@
     // CHAT HISTORY MANAGEMENT
     // ============================================================
 
-    function getChatHistory() {
-        // ── Group session: use group-scoped, independent storage ──────────
+    // A request belongs to the chat open when it started (its target), whatever is open
+    // when it answers: it reads and writes that chat, draws only while it's on screen, and
+    // writes only while the last message it saw is still there (not cleared, replaced or
+    // cut back meanwhile).
+
+    /** The chat open now: a character's own { key }, or a group's { group, combine, key } (no key when combined); null without one. */
+    function chatTarget() {
         if (groupManager && groupManager.isGroupSession()) {
             const group = groupManager.getCurrentGroup();
-            const groupId = group ? String(group.id) : null;
-            if (!groupId) return [];
+            if (!group) return null;
+            const combine = !!groupManager.isCombineMode();
+            const char = combine ? null : getCurrentCharacter();
+            return { group: String(group.id), combine, key: char ? (char.avatar || char.name || 'unknown') : null };
+        }
+        const key = getCharacterKey();
+        return key ? { group: null, combine: false, key } : null;
+    }
 
+    /** A character's own chat as a target. */
+    function soloTarget(key) {
+        return { group: null, combine: false, key };
+    }
+
+    /** Whether a target is the chat open now. */
+    function isViewing(target) {
+        const now = chatTarget();
+        return !!target && !!now && now.group === target.group && now.combine === target.combine && now.key === target.key;
+    }
+
+    /** A target's chat as it is now with `reply` after it, while `anchor` (the last message the request saw) is in it; else null. */
+    function withReply(target, anchor, reply) {
+        const latest = getChatHistory(target);
+        if (anchor && !latest.includes(anchor)) return null;
+        return [...latest, reply];
+    }
+
+    function getChatHistory(target = chatTarget()) {
+        if (!target || (target.group && !target.combine && !target.key)) return [];
+        // The character whose greeting is left out: the one on screen, as ever, or the target's own
+        const char = isViewing(target) ? getCurrentCharacter()
+            : target.group ? (target.key ? groupManager.getGroupMemberByKey(target.key) : null) : getCharacterByKey(target.key);
+
+        // ── Group session: use group-scoped, independent storage ──────────
+        if (target.group) {
             // Combine mode: single shared history for the whole group
-            if (groupManager.isCombineMode()) {
-                return groupManager.getCombineHistory(groupId);
+            if (target.combine) {
+                return groupManager.getCombineHistory(target.group);
             }
 
             // Per-character history, scoped to this groupId
-            const char = getCurrentCharacter();
             if (!char) return [];
-            const charKey = char.avatar || char.name || 'unknown';
-            const history = groupManager.getGroupChatHistory(groupId, charKey);
+            const history = groupManager.getGroupChatHistory(target.group, target.key);
 
             // Filter out the character's first_mes
             const firstMes = char.first_mes ? char.first_mes.trim() : null;
@@ -1791,13 +1826,9 @@
         }
 
         // ── Solo session: original logic ──────────────────────────────────
-        const key = getCharacterKey();
-        if (!key) return [];
-
-        let history = settings.chatHistory[key] || [];
+        let history = settings.chatHistory[target.key] || [];
 
         // Filter out the character's first_mes to prevent it from appearing in EchoText
-        const char = getCurrentCharacter();
         const firstMes = (char && char.first_mes) ? char.first_mes.trim() : null;
         if (firstMes && history.length > 0) {
             history = history.filter(msg =>
@@ -1808,31 +1839,24 @@
         return history;
     }
 
-    function saveChatHistory(history) {
+    function saveChatHistory(history, target = chatTarget()) {
+        if (!target) return;
         // ── Group session: write to group-scoped storage ──────────────────
-        if (groupManager && groupManager.isGroupSession()) {
-            const group = groupManager.getCurrentGroup();
-            const groupId = group ? String(group.id) : null;
-            if (!groupId) return;
-
-            if (groupManager.isCombineMode()) {
-                groupManager.saveCombineHistory(groupId, history);
+        if (target.group) {
+            if (target.combine) {
+                groupManager.saveCombineHistory(target.group, history);
                 return;
             }
 
-            const char = getCurrentCharacter();
-            if (!char) return;
-            const charKey = char.avatar || char.name || 'unknown';
-            groupManager.saveGroupChatHistory(groupId, charKey, history);
-            syncProactiveStateWithHistory(charKey, history);
+            if (!target.key) return;
+            groupManager.saveGroupChatHistory(target.group, target.key, history);
+            syncProactiveStateWithHistory(target.key, history);
             return;
         }
 
         // ── Solo session: original logic ──────────────────────────────────
-        const key = getCharacterKey();
-        if (!key) return;
-        settings.chatHistory[key] = history;
-        syncProactiveStateWithHistory(key, history);
+        settings.chatHistory[target.key] = history;
+        syncProactiveStateWithHistory(target.key, history);
         saveSettings();
         refreshAutoEmotions();
     }
@@ -2272,9 +2296,20 @@
         abortController = new AbortController();
         updateSendButton(true);
 
+        // The chat this reply is for, and the last message it answers
+        const target = chatTarget();
         let workingHistory = Array.isArray(history) ? [...history] : [];
+        const anchor = workingHistory[workingHistory.length - 1] || null;
         const unreadIdx = getUnreadUserMessageIndices(workingHistory);
-        const markUnread = (state, note) => unreadIdx.forEach(i => setUserMessageReceiptState(workingHistory, i, state, note));
+        // The receipts are on the messages themselves: the chat as it is now keeps them
+        const markUnread = (state, note) => {
+            unreadIdx.forEach(i => setUserMessageReceiptState(workingHistory, i, state, note, false));
+            if (panelOpen && isViewing(target)) refreshMessages(getChatHistory(target));
+        };
+        const keepReceipts = () => {
+            const latest = getChatHistory(target);
+            if (!anchor || latest.includes(anchor)) saveChatHistory(latest, target);
+        };
         const timing = getEmotionReplyTimingModel();
         const latestUserMessage = Array.isArray(history) && history.length ? history[history.length - 1] : null;
 
@@ -2291,30 +2326,41 @@
             }
         }
 
-        const { apiMessages, rawPrompt, systemPrompt } = await buildApiMessagesFromHistory(apiHistory);
-
         let result = '';
 
         try {
+            const { apiMessages, rawPrompt, systemPrompt } = await buildApiMessagesFromHistory(apiHistory);
+            // Built from what's open now: another chat by then (World Info is fetched on the way),
+            // it isn't sent. Your texts wait for the reply when you're back (resumePendingReply).
+            if (!isViewing(target)) {
+                if (target && !target.group && unreadIdx.length) {
+                    settings.pendingReplies = settings.pendingReplies || {};
+                    settings.pendingReplies[target.key] = Date.now();
+                    saveSettings();
+                }
+                return;
+            }
+
             if (unreadIdx.length) {
                 await sleepWithAbort(timing.deliveredDelayMs, abortController.signal);
                 markUnread('delivered', 'Delivered to character');
-                saveChatHistory(workingHistory);
+                keepReceipts();
 
                 // Daily Life: busy or asleep, the texts may wait unseen; the reply is parked
-                // until they look (resumePendingReply), or until another text gets through
-                if (!noticed && parkUnseenReply(unreadIdx.length)) return;
+                // until they look (resumePendingReply), or until another text gets through.
+                // Their day is read from what's open, so only while it's still them.
+                if (!noticed && isViewing(target) && parkUnseenReply(unreadIdx.length)) return;
 
                 await sleepWithAbort(timing.readDelayMs, abortController.signal);
                 markUnread('read', 'Read by character');
-                saveChatHistory(workingHistory);
+                keepReceipts();
 
                 if (timing.ghostDelayMs > 0) {
                     markUnread('ghosted', 'Read — paused before replying');
-                    saveChatHistory(workingHistory);
+                    keepReceipts();
                     await sleepWithAbort(timing.ghostDelayMs, abortController.signal);
                     markUnread('read', 'Read by character');
-                    saveChatHistory(workingHistory);
+                    keepReceipts();
                 }
             }
 
@@ -2329,7 +2375,8 @@
             }
 
             let imageReply = null;
-            if (imageGeneration && settings.imageGenerationEnabled === true && latestUserMessage?.is_user) {
+            // The picture is drawn from the character open now: only while that's still them
+            if (imageGeneration && settings.imageGenerationEnabled === true && latestUserMessage?.is_user && isViewing(target)) {
                 // Reuse the pre-detection result — no need to call detectImageRequest again
                 if (pendingImageDetection?.triggered) {
                     // Replace typing indicator with the dedicated image-generating indicator
@@ -2340,7 +2387,7 @@
                 setImageGeneratingIndicatorVisible(false);
             }
 
-            const reply = readReply(result);
+            const reply = readReply(result, target);
             const hasTextResponse = !!reply.mes;
             if (hasTextResponse || imageReply?.triggered) {
                 const charReply = {
@@ -2371,9 +2418,9 @@
                     if (imageReply.result?.ok && gallery) {
                         try {
                             gallery.addImage({
-                                charKey: getCharacterKey(),
-                                charName: getCharacterName(),
-                                avatarUrl: getAvatarUrlForCharacter(getCurrentCharacter()),
+                                charKey: target.key,
+                                charName: char.name || 'Character',
+                                avatarUrl: getAvatarUrlForCharacter(char),
                                 url: imageReply.result.url,
                                 mimeType: imageReply.result.mimeType || 'image/png',
                                 prompt: imageReply.result.prompt || imageReply.promptPayload?.prompt || '',
@@ -2390,29 +2437,32 @@
                     }
                 }
 
-                const newHistory = [...withMessagesSentSince(workingHistory), charReply];
+                // Cleared, replaced or cut back meanwhile: the reply is to a chat that's gone
+                const newHistory = withReply(target, anchor, charReply);
+                if (!newHistory) return;
                 pruneSwipesOnPrevLastChar(newHistory);
-                saveChatHistory(newHistory);
-                markProactiveCharacterActivity(getCharacterKey(), false, 'reply');
-                renderMessages(newHistory);
-                setFabUnreadIndicator(panelOpen ? false : true);
-                if (charReply.mood || charReply.life) noteMoodReport();
+                saveChatHistory(newHistory, target);
+                markProactiveCharacterActivity(target.key, false, 'reply');
+                if (isViewing(target)) {
+                    renderMessages(newHistory);
+                    setFabUnreadIndicator(panelOpen ? false : true);
+                    if (charReply.mood || charReply.life) noteMoodReport();
+                } else {
+                    setFabUnreadIndicator(true);
+                }
             }
 
         } catch (err) {
-            if (err.name === 'AbortError' || (abortController && abortController.signal.aborted)) {
-                log('Generation cancelled');
-                if (backupHistory) {
-                    saveChatHistory(backupHistory);
-                    renderMessages(backupHistory);
-                }
-            } else {
+            const aborted = err.name === 'AbortError' || (abortController && abortController.signal.aborted);
+            if (aborted) log('Generation cancelled');
+            else {
                 error('Generation failed:', err);
                 toastr.error(`Echogram: ${err.message}`);
-                if (backupHistory) {
-                    saveChatHistory(backupHistory);
-                    renderMessages(backupHistory);
-                }
+            }
+            // Back to the chat as it was, while it's still the one this started from
+            if (backupHistory && (!anchor || getChatHistory(target).includes(anchor))) {
+                saveChatHistory(backupHistory, target);
+                if (isViewing(target)) renderMessages(backupHistory);
             }
         } finally {
             setTypingIndicatorVisible(false);
@@ -2563,6 +2613,8 @@
         // Work on a shallow copy so we don't mutate callers' array references
         const workingHistory = [...history];
         const msg = workingHistory[msgIndex];
+        // The chat it's for; the new version goes on `msg` while that's still in it
+        const target = chatTarget();
         if (!msg) {
             isGenerating = false;
             abortController = null;
@@ -2592,6 +2644,8 @@
 
         try {
             const { apiMessages, rawPrompt, systemPrompt } = await buildApiMessagesFromHistory(apiHistory);
+            // Built from what's open now: another chat by then, it isn't sent
+            if (!isViewing(target)) return;
             await sleepWithAbort(Math.min(timing.replyDelayMs, 1500), abortController.signal);
 
             const bypassTextGeneration = (imageGeneration && lastContextMsg?.is_user && pendingImageDetection?.triggered && settings.imageGenerationIncludeTextReply === false);
@@ -2601,7 +2655,7 @@
             }
 
             let imageReply = null;
-            if (imageGeneration && settings.imageGenerationEnabled === true && lastContextMsg?.is_user) {
+            if (imageGeneration && settings.imageGenerationEnabled === true && lastContextMsg?.is_user && isViewing(target)) {
                 if (pendingImageDetection?.triggered) {
                     setTypingIndicatorVisible(false);
                     setImageGeneratingIndicatorVisible(true);
@@ -2610,7 +2664,7 @@
                 setImageGeneratingIndicatorVisible(false);
             }
 
-            const reply = readReply(result);
+            const reply = readReply(result, target);
             const hasTextResponse = !!reply.mes;
             if (hasTextResponse || imageReply?.triggered) {
                 const newSwipe = {
@@ -2640,9 +2694,9 @@
                     if (imageReply.result?.ok && gallery) {
                         try {
                             gallery.addImage({
-                                charKey: getCharacterKey(),
-                                charName: getCharacterName(),
-                                avatarUrl: getAvatarUrlForCharacter(getCurrentCharacter()),
+                                charKey: target.key,
+                                charName: char.name || 'Character',
+                                avatarUrl: getAvatarUrlForCharacter(char),
                                 url: imageReply.result.url,
                                 mimeType: imageReply.result.mimeType || 'image/png',
                                 prompt: imageReply.result.prompt || imageReply.promptPayload?.prompt || '',
@@ -2659,16 +2713,24 @@
                     }
                 }
 
+                // The message deleted, or the chat cleared or replaced meanwhile: nothing to add it to
+                const latest = getChatHistory(target);
+                if (!latest.includes(msg)) return;
+
                 // Append as a new swipe and navigate to it
                 msg.swipes.push(newSwipe);
                 msg.swipeIndex = msg.swipes.length - 1;
                 syncMsgFromSwipe(msg);
 
-                saveChatHistory(workingHistory);
-                markProactiveCharacterActivity(getCharacterKey(), false, 'reply');
-                renderMessages(workingHistory);
-                setFabUnreadIndicator(panelOpen ? false : true);
-                if (newSwipe.mood || newSwipe.life) noteMoodReport();
+                saveChatHistory(latest, target);
+                markProactiveCharacterActivity(target.key, false, 'reply');
+                if (isViewing(target)) {
+                    renderMessages(latest);
+                    setFabUnreadIndicator(panelOpen ? false : true);
+                    if (newSwipe.mood || newSwipe.life) noteMoodReport();
+                } else {
+                    setFabUnreadIndicator(true);
+                }
             }
 
         } catch (err) {
@@ -2678,9 +2740,9 @@
                 error('Swipe generation failed:', err);
                 toastr.error(`Echogram: ${err.message}`);
             }
-            // On any failure or cancel, re-render with the unmodified original history
+            // On any failure or cancel, re-render the chat as it is
             // (the new swipe was never pushed since we only push on success)
-            renderMessages(history);
+            if (isViewing(target)) renderMessages(getChatHistory(target));
         } finally {
             setTypingIndicatorVisible(false);
             setImageGeneratingIndicatorVisible(false);
@@ -3011,6 +3073,9 @@
 
         const history = getChatHistory();
         const charName = targetChar.name || 'Character';
+        // The group chat it's for, and the last message it saw
+        const target = chatTarget();
+        const anchor = history[history.length - 1] || null;
 
         // Pick a random stance to guide the character's response.
         // Each hint references the full conversation — the model has the complete
@@ -3049,6 +3114,8 @@
             // silently drop those post-user-message turns.
             const { apiMessages, rawPrompt, systemPrompt } =
                 await buildManualNudgeApiMessages(history, targetChar, stanceHint);
+            // Built from what's open now: another chat by then, it isn't sent
+            if (!isViewing(target)) return;
 
             const result = await requestEchoTextCompletion({
                 apiMessages, rawPrompt, systemPrompt,
@@ -3065,10 +3132,12 @@
                     charKey: charKey,
                     send_date: Date.now()
                 };
-                const newHistory = [...history, charReply];
-                groupManager.saveCombineHistory(groupId, newHistory);
-                renderMessages(newHistory);
-                setFabUnreadIndicator(panelOpen ? false : true);
+                // Cleared or replaced meanwhile: left that way
+                const newHistory = withReply(target, anchor, charReply);
+                if (!newHistory) return;
+                saveChatHistory(newHistory, target);
+                if (isViewing(target)) renderMessages(newHistory);
+                setFabUnreadIndicator(panelOpen && isViewing(target) ? false : true);
             }
         } catch (err) {
             if (err.name === 'AbortError' || (abortController && abortController.signal.aborted)) {
@@ -3109,21 +3178,32 @@
         updateSendButton(true);
 
         let workingHistory = Array.isArray(history) ? [...history] : [];
+        // The group chat it's for, and the last message it answers
+        const target = chatTarget();
+        const anchor = workingHistory[workingHistory.length - 1] || null;
 
         // Mark the latest user message as delivered / read
         const unreadIdx = getUnreadUserMessageIndices(workingHistory);
-        const markUnread = (state, note) => unreadIdx.forEach(i => setUserMessageReceiptState(workingHistory, i, state, note));
+        // The receipts are on the messages themselves: the chat as it is now keeps them
+        const markUnread = (state, note) => {
+            unreadIdx.forEach(i => setUserMessageReceiptState(workingHistory, i, state, note, false));
+            if (panelOpen && isViewing(target)) refreshMessages(getChatHistory(target));
+        };
+        const keepReceipts = () => {
+            const latest = getChatHistory(target);
+            if (!anchor || latest.includes(anchor)) saveChatHistory(latest, target);
+        };
         const timing = { deliveredDelayMs: 350, readDelayMs: 850, ghostDelayMs: 0, typingLeadMs: 250, replyDelayMs: 450 };
 
         try {
             if (unreadIdx.length) {
                 await sleepWithAbort(timing.deliveredDelayMs, abortController.signal);
                 markUnread('delivered', 'Delivered to group');
-                groupManager.saveCombineHistory(groupId, workingHistory);
+                keepReceipts();
 
                 await sleepWithAbort(timing.readDelayMs, abortController.signal);
                 markUnread('read', 'Read by group');
-                groupManager.saveCombineHistory(groupId, workingHistory);
+                keepReceipts();
             }
 
             // Generate a reply from each group member in order
@@ -3143,6 +3223,8 @@
 
                     const { apiMessages, rawPrompt, systemPrompt } =
                         await buildApiMessagesFromHistoryForChar(workingHistory, [], char);
+                    // Built from what's open now: away from this group, the rest don't answer
+                    if (!isViewing(target)) break;
 
                     const result = await requestEchoTextCompletion({
                         apiMessages, rawPrompt, systemPrompt,
@@ -3159,10 +3241,13 @@
                             charKey: charKey,
                             send_date: Date.now()
                         };
-                        workingHistory = [...withMessagesSentSince(workingHistory), charReply];
-                        groupManager.saveCombineHistory(groupId, workingHistory);
-                        renderMessages(workingHistory);
-                        setFabUnreadIndicator(panelOpen ? false : true);
+                        // Cleared or replaced meanwhile: no more replies to it
+                        const next = withReply(target, anchor, charReply);
+                        if (!next) break;
+                        workingHistory = next;
+                        saveChatHistory(workingHistory, target);
+                        if (isViewing(target)) renderMessages(workingHistory);
+                        setFabUnreadIndicator(panelOpen && isViewing(target) ? false : true);
                     }
                 } finally {
                     setTypingIndicatorVisible(false);
@@ -3228,6 +3313,11 @@
         abortController = new AbortController();
         updateSendButton(true);
 
+        // The group chat it's for; the reply goes back right after the message it follows, while that's there
+        const target = chatTarget();
+        const anchor = historyBefore[historyBefore.length - 1] || null;
+        const stillThere = () => !anchor || getChatHistory(target).includes(anchor);
+
         const prevActiveKey = groupManager.getActiveCharKey();
         // Temporarily point active key at the target so verbosity/system prompt are scoped correctly
         groupManager.setActiveCharKey(targetCharKey);
@@ -3242,6 +3332,8 @@
             // Build the API messages using only the pre-target history as context
             const { apiMessages, rawPrompt, systemPrompt } =
                 await buildApiMessagesFromHistoryForChar(historyBefore, [], targetChar);
+            // Built from what's open now: another chat by then, it isn't sent
+            if (!isViewing(target)) return;
 
             const result = await requestEchoTextCompletion({
                 apiMessages, rawPrompt, systemPrompt,
@@ -3258,27 +3350,27 @@
                     charKey: targetCharKey,
                     send_date: Date.now()
                 };
-                // Stitch: preserve everything before, insert new reply, preserve everything after
-                const finalHistory = [...historyBefore, charReply, ...historyAfter];
+                // Stitch into the chat as it is now: the new reply right after the message it follows
+                const latest = getChatHistory(target);
+                const at = anchor ? latest.indexOf(anchor) : -1;
+                if (anchor && at === -1) return;
+                const finalHistory = [...latest.slice(0, at + 1), charReply, ...latest.slice(at + 1)];
                 pruneSwipesOnPrevLastChar(finalHistory);
-                groupManager.saveCombineHistory(groupId, finalHistory);
-                renderMessages(finalHistory);
-                setFabUnreadIndicator(panelOpen ? false : true);
+                saveChatHistory(finalHistory, target);
+                if (isViewing(target)) renderMessages(finalHistory);
+                setFabUnreadIndicator(panelOpen && isViewing(target) ? false : true);
             }
         } catch (err) {
             if (err.name === 'AbortError' || (abortController && abortController.signal.aborted)) {
                 log('Combined single-char regen cancelled');
-                if (backupHistory) {
-                    saveChatHistory(backupHistory);
-                    renderMessages(backupHistory);
-                }
             } else {
                 error('Combined single-char regen failed:', err);
                 toastr.error(`Echogram: ${err.message}`);
-                if (backupHistory) {
-                    saveChatHistory(backupHistory);
-                    renderMessages(backupHistory);
-                }
+            }
+            // Back to the chat as it was, while it's still the one this started from
+            if (backupHistory && stillThere()) {
+                saveChatHistory(backupHistory, target);
+                if (isViewing(target)) renderMessages(backupHistory);
             }
         } finally {
             setTypingIndicatorVisible(false);
@@ -3389,7 +3481,7 @@
         fab.attr('title', hasUnreadCharacterMessage ? 'Open Echogram (new message)' : 'Open Echogram');
     }
 
-    function setUserMessageReceiptState(history, msgIndex, state, note = '') {
+    function setUserMessageReceiptState(history, msgIndex, state, note = '', render = true) {
         if (!Array.isArray(history) || msgIndex < 0 || !history[msgIndex] || !history[msgIndex].is_user) return history;
         history[msgIndex].meta = history[msgIndex].meta || {};
         history[msgIndex].meta.receipt = {
@@ -3399,7 +3491,7 @@
         };
 
         // Re-render just that message rather than the whole chat
-        if (panelOpen) refreshMessages(history);
+        if (render && panelOpen) refreshMessages(history);
 
         return history;
     }
@@ -4726,19 +4818,6 @@
     }
 
     /**
-     * `snapshot` plus any messages appended to the stored history since it was
-     * taken. The user can keep texting while a reply is generated, so a generation
-     * must save on top of those messages rather than over them.
-     */
-    function withMessagesSentSince(snapshot) {
-        const latest = getChatHistory();
-        if (latest.length <= snapshot.length) return snapshot;
-        const anchor = snapshot[snapshot.length - 1];
-        if (anchor && latest[snapshot.length - 1]?.send_date !== anchor.send_date) return snapshot;
-        return [...snapshot, ...latest.slice(snapshot.length)];
-    }
-
-    /**
      * Indices of the user's messages the character hasn't read yet, newest first —
      * after a burst of texts, all of them get delivered/read together.
      */
@@ -5181,8 +5260,9 @@
     // ============================================================
 
     // Emotion and reaction logic moved to lib/emotion-system.js
-    function getEmotionState() {
-        return emotionSystem ? emotionSystem.getEmotionState() : null;
+    /** A character's current values (the open one's without `key`), or null while emotions are off. */
+    function getEmotionState(key) {
+        return emotionSystem ? emotionSystem.getEmotionState(key ?? undefined) : null;
     }
 
     function clearEmotionState() {
@@ -5235,12 +5315,13 @@
      * and <life> lines, in Auto mode the feelings the first reports (stored as msg.mood),
      * and with Daily Life the changes the second reports (msg.life).
      */
-    function readReply(text) {
+    function readReply(text, target = chatTarget()) {
         const cleaned = cleanGeneratedResponse(text);
         const reply = emotionSystem ? emotionSystem.readReply(cleaned) : { mes: cleaned, mood: null };
         const { text: mes, life } = DailyLife.parseLifeTag(reply.mes, new Date());
-        if (inGroupSession()) return { mes, mood: null, life: null };
-        return { mes, mood: reply.mood, life: dailyLifeActive() ? life : null };
+        // Whether the chat it's for keeps them, not whichever is open when it answers
+        if (target?.group) return { mes, mood: null, life: null };
+        return { mes, mood: reply.mood, life: settings.dailyLifeEnabled === true && target ? life : null };
     }
 
     /** After a reply with a <mood> line for the open character: the values redrawn, the change shown. */
@@ -5503,7 +5584,7 @@
                 rawPrompt: request.prompt, systemPrompt, signal: controller.signal,
             });
             if (controller.signal.aborted) return;
-            const reply = readReply(stripThinkingTags(String(raw ?? '')));
+            const reply = readReply(stripThinkingTags(String(raw ?? '')), soloTarget(key));
             const text = DailyLife.cleanTogetherEntry(reply.mes);
             if (!text || ChatSummaries.looksLikeRefusal(text)) return;
             // Deleted meanwhile, or the chat cleared: left that way
@@ -5538,10 +5619,15 @@
      * `settledBefore` moves that), and what happened once it's older than the week the life
      * keeps, a memory a week, added to as more of that week goes. Each only once
      * (marked with the chat's memories), even when you delete the memory. A catch-up's
-     * `changes` are kept as it settles them.
+     * `changes` are kept as it settles them. Without `key`, the open chat's while Daily
+     * Life applies to it; with one (its life being written), whatever is open.
      */
-    function keepLifeMemories({ key = getCharacterKey(), settledBefore = null, changes = null } = {}) {
-        if (!dailyLifeActive() || !memorySystem) return;
+    function keepLifeMemories({ key = null, settledBefore = null, changes = null } = {}) {
+        if (settings.dailyLifeEnabled !== true || !memorySystem) return;
+        if (!key) {
+            if (!dailyLifeActive()) return;
+            key = getCharacterKey();
+        }
         const history = getEmotionHistory(key);
         const lastUser = [...history].reverse().find(m => m?.is_user);
         const before = settledBefore ?? (lastUser ? Number(lastUser.send_date) || Date.parse(lastUser.send_date) || 0 : 0);
@@ -5828,10 +5914,16 @@
         // Holds the proactive timers and your next reply until it's done (onGenerationSettled)
         isGenerating = true;
         setCatchUpBar(true);
+        // Its chat, whatever's open when it answers; written while its last message is still there
+        const target = soloTarget(key);
+        let notSent = false;
         try {
-            const history = getChatHistory();
+            const history = getChatHistory(target);
+            const anchor = history[history.length - 1] || null;
             const userName = getUserName();
             const { apiMessages, rawPrompt, systemPrompt } = await buildApiMessagesFromHistoryForChar(history, [], char);
+            // Built from what's open now: another chat by then, it isn't sent and the gap waits
+            if (!isViewing(target)) { notSent = true; return; }
             const instruction = CatchUp.buildInstruction({
                 charName: char.name || 'Character', userName, from, now, settle, schedule: activeSchedule(),
                 errands: activeLife()?.errands || [], madeUp: settings.dailyLifeMadeUp === true, texts,
@@ -5839,21 +5931,22 @@
             apiMessages.push({ role: 'user', content: `[Instruction for this turn — not a message from ${userName}; never quote or answer it: ${instruction}]` });
             if (texts.length) proactiveMessaging.noteCatchUpRequest(key);
             const raw = await requestEchoTextCompletion({ apiMessages, rawPrompt, systemPrompt, signal: controller.signal });
-            // Paused, or another character now: left as it is
-            if (controller.signal.aborted || getCharacterKey() !== key) return;
+            // Paused: left as it is. The chat cleared or replaced meanwhile: the gap was another chat's
+            if (controller.signal.aborted) return;
+            const chat = getChatHistory(target);
+            if (anchor && !chat.includes(anchor)) return;
             const answer = CatchUp.readAnswer(stripThinkingTags(String(raw ?? '')), { from, now, planned: texts });
             if (settle) writeLife(key, { changes: answer.life });
             if (answer.texts.length) {
-                const chat = getChatHistory();
                 for (const text of answer.texts) {
-                    const reply = readReply(text.mes);
+                    const reply = readReply(text.mes, target);
                     if (!reply.mes) continue;
                     chat.push({ is_user: false, mes: reply.mes, send_date: text.at, meta: { proactive: true, proactiveType: 'catch_up' },
                         ...(reply.mood ? { mood: reply.mood } : {}) });
                     markProactiveCharacterActivity(key, true, 'catch_up', text.at);
                 }
-                saveChatHistory(chat);
-                renderMessages(chat);
+                saveChatHistory(chat, target);
+                if (isViewing(target)) renderMessages(chat);
             }
         } catch (err) {
             if (!controller.signal.aborted) {
@@ -5861,10 +5954,12 @@
                 toastr.error(`Could not catch up: ${err.message}`, 'Echogram');
             }
         } finally {
-            // Done, paused or failed: the gap isn't tried again
-            if (settle) settings.lifeState[key] = { ...DailyLife.normalizeLife(settings.lifeState[key]), settledAt: now };
-            if (getCharacterKey() === key) markSeen(true);
-            else settings.proactiveSeenAt[key] = Date.now();
+            // Done, paused or failed: the gap isn't tried again (not sent for another chat: it is)
+            if (!notSent) {
+                if (settle) settings.lifeState[key] = { ...DailyLife.normalizeLife(settings.lifeState[key]), settledAt: now };
+                if (getCharacterKey() === key) markSeen(true);
+                else settings.proactiveSeenAt[key] = Date.now();
+            }
             catchingUp = null;
             isGenerating = false;
             setCatchUpBar(false);
@@ -6259,6 +6354,10 @@
         const currentIdx = msg.swipeIndex ?? 0;
         // If no swipes array yet, or we're at the last swipe → generate a new one
         if (!msg.swipes || currentIdx >= msg.swipes.length - 1) {
+            if (isGenerating) {
+                toastr.info('Wait for the current reply to finish.');
+                return;
+            }
             const contextHistory = h.slice(0, msgIndex);
             generateEchoTextSwipe(h, msgIndex, contextHistory);
             return;
@@ -7263,6 +7362,11 @@
 
         if (action === 'regen') {
             closeAllDotMenus();
+            // Not over a reply on its way: cutting the chat back now would be undone when it lands
+            if (isGenerating) {
+                toastr.info('Wait for the current reply to finish.');
+                return;
+            }
 
             const inCombineMode = !!(groupManager && groupManager.isGroupSession() && groupManager.isCombineMode());
 
@@ -8144,6 +8248,8 @@
                 return now ? { phone: now.phone, endsAt: phoneEndsNow() } : null;
             },
             readReply,
+            chatTarget,
+            isViewing,
             noteMoodReport,
             findLastUserMessageIndex,
             requestEchoTextCompletion,
