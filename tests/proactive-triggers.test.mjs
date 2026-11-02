@@ -157,3 +157,69 @@ test('the insights panel names the new conditions, the cold shoulder and the str
     // With the temperament by the name
     assert.equal(calm.character, 'Mira · Normal');
 });
+
+test('the cold shoulder counts down to one end, drawn once: checks, the insights and a reload never draw it again', () => {
+    const MIN = 60000;
+    const realNow = Date.now, realRandom = Math.random;
+    let clock = new Date(2026, 9, 12, 17, 0).getTime();
+    const rolls = [0.9, 0.1, 0.5, 0.3, 0.7];
+    let rolled = 0;
+    Date.now = () => clock;
+    Math.random = () => rolls[rolled++ % rolls.length];
+    try {
+        const settings = { proactiveMessagingEnabled: true };
+        let values = { anger: 90 };
+        const history = [{ is_user: true, mes: 'whatever', send_date: clock - 3 * MIN }, { is_user: false, mes: 'fine', send_date: clock }];
+        const engine = () => window.EchoTextProactiveMessaging.createProactiveMessaging({
+            getSettings: () => settings, saveSettings: () => {}, getUserName: () => 'Me', getActiveFeatures: () => [],
+            expandTimeDateMacros: t => t, replaceMacros: t => t,
+            getCurrentCharacter: () => ({ name: 'Mira', avatar: 'mira.png' }), getCharacterKey: () => 'mira.png',
+            getChatHistory: () => history, getEmotionState: () => ({ ...Model.zeroValues(), ...values }), getProactivePace: () => 1,
+            findLastUserMessageIndex: h => h.map(m => m.is_user).lastIndexOf(true),
+        });
+        const p = engine();
+        const ghost = () => p.getProactiveInsightsSnapshot().ghostWindow;
+        const kept = () => settings.proactiveState['mira.png'].ghost;
+        const since = history[0].send_date;
+
+        // Anger 85 and up: 7–10 hours from your last message, drawn once
+        const first = ghost();
+        assert.ok(first.until - since >= 7 * 60 * MIN && first.until - since <= 10 * 60 * MIN);
+        assert.deepEqual(kept(), { since, level: 3, until: first.until });
+        // Minutes later, every check counts down to the same end
+        for (const minutes of [1, 4, 5]) {
+            clock += minutes * MIN;
+            const now = ghost();
+            assert.equal(now.until, first.until);
+            assert.equal(Math.round(now.remainingHours * 60), Math.round((first.until - clock) / MIN));
+        }
+        // The triggers' own check holds them back to the same end
+        const config = { ...p.getDefaultProactiveConfigForCharacter({}), temperament: 'normal' };
+        assert.equal(p.evaluateProactiveTrigger({ history, state: settings.proactiveState['mira.png'], config, now: new Date(clock) }), null);
+        assert.equal(kept().until, first.until);
+        // A reload: the same end
+        assert.equal(engine().getProactiveInsightsSnapshot().ghostWindow.until, first.until);
+        // Anger down to 75: drawn again once, for 3–6 hours, from the same message
+        values = { anger: 75 };
+        const lower = ghost();
+        assert.ok(lower.until - since >= 3 * 60 * MIN && lower.until - since <= 6 * 60 * MIN);
+        clock += 10 * MIN;
+        assert.equal(ghost().until, lower.until);
+        // A new message of yours: from there
+        history.push({ is_user: true, mes: 'sorry', send_date: clock });
+        const fresh = ghost();
+        assert.equal(kept().since, clock);
+        assert.ok(fresh.until - clock >= 3 * 60 * MIN);
+        // Past its end: over, not drawn again
+        clock = fresh.until;
+        assert.equal(ghost(), null);
+        assert.equal(kept().until, fresh.until);
+        // Below 50: none
+        clock -= 60 * MIN;
+        values = { anger: 40 };
+        assert.equal(ghost(), null);
+    } finally {
+        Date.now = realNow;
+        Math.random = realRandom;
+    }
+});
