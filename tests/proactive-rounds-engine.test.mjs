@@ -81,9 +81,9 @@ test('you go quiet mid-conversation: a round, written in one request, let out on
     await p.runDueRound();
     assert.equal(asked.length, 1);
     const turn = asked[0].at(-1).content;
-    assert.match(asked[0][0].content, /^FOLLOW-UP MODE: Qi stopped answering/);
-    assert.match(turn, /Write the 4 texts Mira sends while still getting no answer/);
-    assert.match(turn, /a little more needy with each one/);
+    assert.match(asked[0][0].content, /^FOLLOW-UP MODE: Qi hasn't answered yet; you are texting again meanwhile\.\n<proactive_situation>\nIt is currently [^\n]+\.\n<\/proactive_situation>$/);
+    assert.match(turn, /Write the 4 texts Mira sends meanwhile, one line each/);
+    assert.match(turn, /As Mira would: the waiting shows, but they talk about their own day too\./);
     assert.deepEqual(chat().slice(-1).map(m => [m.mes, m.meta.proactiveType, m.send_date]), [['?', 'follow_up', round.times[0]]]);
     assert.equal(state().round.sent, 1);
     // The page slept through the rest: they go in with their own times, no new request
@@ -146,8 +146,8 @@ test('obsessed: another round hours later, more insistent; until the day\'s requ
     assert.ok(second.times[0] - first.times[9] >= 2 * HOUR && second.times[0] - first.times[9] <= 4 * HOUR);
     clock = second.times[0];
     await p.runDueRound();
-    assert.match(asked[1].at(-1).content, /hasn't answered Mira's earlier follow-ups for hours either/);
-    assert.match(asked[1].at(-1).content, /more anxious and insistent/);
+    assert.match(asked[1].at(-1).content, /Nor the ones Mira sent after it\./);
+    assert.match(asked[1].at(-1).content, /they keep coming back to not hearing back/);
     // 30 requests a day: the 31st doesn't go
     state().requests = { day: p.getDateKeyLocal(new Date(clock)), count: 30 };
     state().round = { number: 3, startedAt: clock, times: [clock + MIN], texts: null, sent: 0 };
@@ -405,7 +405,7 @@ test('away during a round: the rest of it, then an obsessed character\'s next ro
     const r2 = R.planRound({ temperament: 'obsessed', startAt: r1.at(-1), firstHours: [2, 4], random: () => 0.5 });
     const r3 = R.planRound({ temperament: 'obsessed', startAt: r2.at(-1), firstHours: [2, 4], random: () => 0.5 });
     assert.deepEqual(sim.events.map(e => e.at), [...r1, ...r2].filter(t => t <= to));
-    assert.ok(sim.events.every(e => e.kind === 'follow_up' && e.note.includes('as Mira would: more anxious and insistent')));
+    assert.ok(sim.events.every(e => e.kind === 'follow_up' && e.note.includes('as Mira would: they keep coming back to not hearing back')));
     assert.deepEqual([...new Set(sim.events.map(e => e.round))], [1, 2]);
     assert.equal(sim.events[0].note.startsWith('follow-up 1:'), true);
     assert.equal(sim.events[10].note.startsWith('follow-up 1 of round 2:'), true);

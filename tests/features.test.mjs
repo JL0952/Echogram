@@ -18,7 +18,7 @@ const REACTIONS = ['heart', 'haha', 'wow', 'sad', 'fire', 'like', 'star', 'bolt'
 // and the language are said once, in index.js's MESSAGES line
 const FORMAT_RULES = [
     "PHOTOS: Mira can send photos as <photo>what the photo shows</photo> — a short, concrete description of the picture — and Me sees it as an actual picture. Write the description as a neutral caption of what is visible, with no first- or second-person pronouns: refer to people by name (Mira, Me) instead of I/me/my/you. Send one whenever Mira naturally would, such as when asked for a picture, but never use it to describe Mira's own actions. A <photo> from Me is a picture they sent: react to what it shows.",
-    "REACTIONS: Mira can react to Me's latest message with a tapback as <react>name</react>, where name is one of: heart, haha, wow, sad, fire, like, star, bolt. To react to an earlier message of Me's instead — a photo they sent, say — put a <reply> quoting it right before the <react> (for a photo: <reply>Me: [Photo: what it shows]</reply>). Use one only now and then, when a quick reaction genuinely fits — most replies need none. A reaction usually comes with text messages, but occasionally it can be the whole reply. A <react> from Me is their tapback on Mira's message just before it, or on the text a <reply> right before the <react> quotes — Mira may notice it, but it doesn't need an answer of its own.",
+    "REACTIONS: Mira can react to a message of Me's with a tapback: a <reply> quoting that message, then <react>name</react> right after it, where name is one of: heart, haha, wow, sad, fire, like, star, bolt — always both, even for Me's latest message: <reply>Me: the quoted words</reply> (a photo by its note: <reply>Me: [Photo: what it shows]</reply>), then <react>heart</react>. Use one only now and then, when a quick reaction genuinely fits — most replies need none. A <react> from Me is their tapback on the message the <reply> right before it quotes.",
     "TRANSFERS: Mira can send Me money as <transfer>amount</transfer>, with the amount as a plain number. When Me sends Mira a <transfer>, Mira can accept it with <transfer_accept/> or decline it with <transfer_decline/>, or leave it pending for now. A <transfer_accept> or <transfer_decline> from Me means they accepted or declined Mira's transfer. Only send or answer transfers when it fits the story.",
 ];
 
@@ -36,7 +36,7 @@ test('format rules list only the enabled features, in a fixed order', () => {
     const ctx = { charName: 'Mira', userName: 'Me', reactionIds: ['heart', 'like'] };
     assert.deepEqual(buildFeaturePrompts(NO_REACT, ctx).map(p => p.split(':')[0]), ['PHOTOS', 'TRANSFERS']);
     assert.deepEqual(buildFeaturePrompts(['transfer', 'photo'], ctx).map(p => p.split(':')[0]), ['PHOTOS', 'TRANSFERS']);
-    assert.match(buildFeaturePrompts(['react'], ctx)[0], /one of: heart, like\./);
+    assert.match(buildFeaturePrompts(['react'], ctx)[0], /one of: heart, like —/);
     assert.deepEqual(buildFeaturePrompts(NONE, ctx), []);
     assert.deepEqual(buildFeaturePrompts(['music', 'link', 'file', 'transfer', 'location', 'voice', 'reply', 'react', 'photo'], ctx).map(p => p.split(':')[0]),
         ['PHOTOS', 'VOICE MESSAGES', 'LOCATIONS', 'REACTIONS', 'REPLIES', 'TRANSFERS', 'FILES AND LINKS', 'MUSIC']);
@@ -211,4 +211,18 @@ test('the reply rule names the tag, who the name is, and that most replies need 
     assert.match(rule, /whoever sent it \(Me or Mira\)/);
     assert.match(rule, /quoted by its note in square brackets, as \[Photo: what it shows\], never with its tag/);
     assert.match(rule, /most replies need none/);
+});
+
+test('a reply is cut to its most bubbles; tapbacks are not bubbles and stay', () => {
+    const { capTexts } = window.EchoTextRichMessages;
+    assert.equal(capTexts('a\nb\n<reply>Me: hi</reply>\n<react>heart</react>\nc\n<photo>cat</photo>\nd', 3), 'a\nb\n<reply>Me: hi</reply>\n<react>heart</react>\nc');
+    assert.equal(capTexts('a\n<photo>cat</photo>\nb\nc', 2), 'a\n<photo>cat</photo>');
+    // Within it: as it was
+    assert.equal(capTexts('a\n\nb', 2), 'a\n\nb');
+});
+
+test('a follow-up written over several lines is one bubble; a card keeps its own', () => {
+    const { oneText } = window.EchoTextRichMessages;
+    assert.equal(oneText("Josie.\nI'll stop after this.\n<photo>phone</photo>\nok"), "Josie. I'll stop after this.\n<photo>phone</photo>\nok");
+    assert.equal(oneText('就一句'), '就一句');
 });

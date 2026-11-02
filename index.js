@@ -1149,6 +1149,9 @@
             : (cfg.promptVerbosityMedium || 'VERBOSITY: Keep your reply to 2-4 sentences, natural text-message length.');
     }
 
+    // The most texts a reply keeps, by its length: the prompt's range, two more at most
+    const MAX_TEXTS = { short: 4, medium: 6, long: 9 };
+
     /** @param {Array} [history] - the chat the reply follows (the stored one when left out), for the memories */
     async function buildSystemPrompt(targetCharOverride = null, history = null) {
         const { stable, live } = await buildPromptParts(targetCharOverride, history);
@@ -1159,10 +1162,11 @@
      * The system prompt in two parts: what stays the same from one reply to the next, and
      * what doesn't (`live`). A provider's prompt cache only matches from the start of the
      * request up to the first thing that differs, so with what changes up front the chat
-     * after it is never cached (see placeLiveContext).
-     * @returns {Promise<{ stable: string, live: string }>}
+     * after it is never cached (see placeLiveContext). Without `verbosity` (a proactive text,
+     * whose own instruction says how many) the reply length is left out.
+     * @returns {Promise<{ stable: string, live: string, maxTexts?: number }>} maxTexts: the most the reply keeps
      */
-    async function buildPromptParts(targetCharOverride = null, history = null) {
+    async function buildPromptParts(targetCharOverride = null, history = null, { verbosity = true } = {}) {
         if (isCombinedGroupMode()) {
             const groupId = groupManager ? groupManager.getCurrentGroupId() : null;
             const combinedHistory = groupId ? groupManager.getCombineHistory(groupId) : [];
@@ -1170,7 +1174,7 @@
         }
 
         const char = targetCharOverride || getCurrentCharacter();
-        if (!char) return { stable: 'You are a helpful assistant. Reply concisely like in a text message. You may use Markdown formatting like **bold**, *italic*, and `code`.', live: '' };
+        if (!char) return { stable: 'You are a helpful assistant. Reply concisely like in a text message.', live: '' };
 
         const name = char.name || 'Character';
         const context = SillyTavern.getContext();
@@ -1338,7 +1342,7 @@
         // How the Big Five and current feelings make them text (lib/texting-behavior.js),
         // which also moves the reply length a step.
         live += behavior.text;
-        live += '\n\n' + getVerbosityPrompt(behavior.verbosity);
+        if (verbosity) live += '\n\n' + getVerbosityPrompt(behavior.verbosity);
 
         // ── 9. MOOD ──────────────────────────────────────────────────────────────
         // Auto mode: the hidden <mood> line the model reports changed feelings in, with
@@ -1346,7 +1350,7 @@
         live += buildMoodRules(char);
         live += buildLifeDate();
 
-        return { stable: prompt, live };
+        return { stable: prompt, live, maxTexts: MAX_TEXTS[behavior.verbosity] || MAX_TEXTS.medium };
     }
 
     /**
@@ -1414,7 +1418,7 @@
         const rules = Features.buildFeaturePrompts(getActiveFeatures(), { charName, userName, reactionIds: getReactionIds() });
         // What every tag below shares, said once
         const tags = rules.length ? ' Each tag below goes on a line of its own too, as one of the texts. Write the texts and what goes inside the tags in the language of the conversation.' : '';
-        return [`MESSAGES: Put each text on its own line — every line reaches ${userName} as a separate message bubble. Hard limit: 10 texts per reply at most, however eager or worked up ${charName} is. Only what ${charName} would actually send: never their unspoken thoughts.${tags}`, ...rules].join('\n');
+        return [`MESSAGES: Put each text on its own line — every line reaches ${userName} as a separate message bubble. Only what ${charName} would actually send: never their unspoken thoughts.${tags}`, ...rules].join('\n');
     }
 
     async function getActiveWorldInfoEntries() {
@@ -2142,24 +2146,19 @@
 
     /**
      * The user's tapbacks on a character message as the model sees them: a user
-     * turn right after that message, using the same <react> tag the character
-     * reacts with. Those on the last bubble come first, as they are; one on an
-     * earlier bubble follows the <reply> that quotes it, so it's clear which.
-     * '' when the user hasn't reacted.
+     * turn right after that message, in the form the character reacts with: each
+     * tapback after the <reply> quoting its bubble. '' when the user hasn't reacted.
      */
     function buildUserReactionText(msg) {
         if (!platformHas('react') || !msg || msg.is_user) return '';
         const partCount = getMessageDisplayParts(msg).length;
         const tapbacks = ChatViewModel.getUserTapbacks(msg, partCount, getReactionIds());
         const tags = ids => ids.map(id => `<react>${id}</react>`);
-        const earlier = Object.keys(tapbacks).map(Number).filter(j => j !== partCount - 1).sort((a, b) => a - b);
-        return [
-            ...tags(tapbacks[partCount - 1] || []),
-            ...earlier.flatMap(j => {
-                const quote = `<reply>${RichMessages.replyContent(quoteForBubble(msg, j))}</reply>`;
-                return [platformHas('reply') ? quote : RichMessages.toPlainText(quote), ...tags(tapbacks[j])];
-            }),
-        ].join('\n');
+        // Each with the bubble it's on quoted, the last one too: the one form the character writes
+        return Object.keys(tapbacks).map(Number).sort((a, b) => a - b).flatMap(j => {
+            const quote = `<reply>${RichMessages.replyContent(quoteForBubble(msg, j))}</reply>`;
+            return [platformHas('reply') ? quote : RichMessages.toPlainText(quote), ...tags(tapbacks[j])];
+        }).join('\n');
     }
 
     /**
@@ -2190,8 +2189,8 @@
         return rawText;
     }
 
-    async function buildApiMessagesFromHistory(history, extraSystemMessages = [], targetCharOverride = null) {
-        const { stable, live } = await buildPromptParts(targetCharOverride, history);
+    async function buildApiMessagesFromHistory(history, extraSystemMessages = [], targetCharOverride = null, options = {}) {
+        const { stable, live, maxTexts } = await buildPromptParts(targetCharOverride, history, options);
         const systemPrompt = stable + live;
         const apart = splitsLiveContext();
         const apiMessages = [{ role: 'system', content: apart ? stable : systemPrompt }];
@@ -2226,7 +2225,7 @@
         });
         rawPrompt += `${getCharacterName()}:`;
 
-        return { apiMessages, rawPrompt, systemPrompt, prefillPrefix };
+        return { apiMessages, rawPrompt, systemPrompt, prefillPrefix, maxTexts };
     }
 
     /**
@@ -2237,7 +2236,7 @@
      * which separates group framing, attributed history, and character-card injection
      * into distinct, correctly-ordered message slots instead of one system-prompt blob.
      */
-    async function buildApiMessagesFromHistoryForChar(history, extraSystemMessages = [], char) {
+    async function buildApiMessagesFromHistoryForChar(history, extraSystemMessages = [], char, options = {}) {
         // ── Combined group mode: use the dedicated structured builder ─────────
         if (isCombinedGroupMode()) {
             const result = await buildCombinedGroupApiMessages(history, char);
@@ -2252,7 +2251,7 @@
         }
 
         // ── Solo / individual group-member mode ───────────────────────────────
-        const { stable, live } = await buildPromptParts(char, history);
+        const { stable, live, maxTexts } = await buildPromptParts(char, history, options);
         const systemPrompt = stable + live;
         const apart = splitsLiveContext();
         const apiMessages = [{ role: 'system', content: apart ? stable : systemPrompt }];
@@ -2279,7 +2278,7 @@
         });
         rawPrompt += `${charName}:`;
 
-        return { apiMessages, rawPrompt, systemPrompt };
+        return { apiMessages, rawPrompt, systemPrompt, maxTexts };
     }
 
     /**
@@ -2334,7 +2333,7 @@
         let result = '';
 
         try {
-            const { apiMessages, rawPrompt, systemPrompt } = await buildApiMessagesFromHistory(apiHistory);
+            const { apiMessages, rawPrompt, systemPrompt, maxTexts } = await buildApiMessagesFromHistory(apiHistory);
             // Built from what's open now: another chat by then (World Info is fetched on the way),
             // it isn't sent. Your texts wait for the reply when you're back (resumePendingReply).
             if (!isViewing(target)) {
@@ -2392,7 +2391,7 @@
                 setImageGeneratingIndicatorVisible(false);
             }
 
-            const reply = readReply(result, target);
+            const reply = readReply(result, target, { maxTexts });
             const hasTextResponse = !!reply.mes;
             if (hasTextResponse || imageReply?.triggered) {
                 const charReply = {
@@ -2649,7 +2648,7 @@
         let result = '';
 
         try {
-            const { apiMessages, rawPrompt, systemPrompt } = await buildApiMessagesFromHistory(apiHistory);
+            const { apiMessages, rawPrompt, systemPrompt, maxTexts } = await buildApiMessagesFromHistory(apiHistory);
             // Built from what's open now: another chat by then, it isn't sent
             if (!isViewing(target)) return;
             await sleepWithAbort(Math.min(timing.replyDelayMs, 1500), abortController.signal);
@@ -2670,7 +2669,7 @@
                 setImageGeneratingIndicatorVisible(false);
             }
 
-            const reply = readReply(result, target);
+            const reply = readReply(result, target, { maxTexts });
             const hasTextResponse = !!reply.mes;
             if (hasTextResponse || imageReply?.triggered) {
                 const newSwipe = {
@@ -3229,7 +3228,7 @@
                     await sleepWithAbort(timing.typingLeadMs, abortController.signal);
                     await sleepWithAbort(timing.replyDelayMs, abortController.signal);
 
-                    const { apiMessages, rawPrompt, systemPrompt } =
+                    const { apiMessages, rawPrompt, systemPrompt, maxTexts } =
                         await buildApiMessagesFromHistoryForChar(workingHistory, [], char);
                     // Built from what's open now: away from this group, the rest don't answer
                     if (!isViewing(target)) break;
@@ -3244,7 +3243,7 @@
                     if (result && result.trim()) {
                         const charReply = {
                             is_user: false,
-                            mes: cleanGeneratedResponse(result),
+                            mes: RichMessages.capTexts(cleanGeneratedResponse(result), maxTexts || MAX_TEXTS.medium),
                             charName: char.name,
                             charKey: charKey,
                             send_date: Date.now()
@@ -3339,7 +3338,7 @@
             await sleepWithAbort(timing.replyDelayMs, abortController.signal);
 
             // Build the API messages using only the pre-target history as context
-            const { apiMessages, rawPrompt, systemPrompt } =
+            const { apiMessages, rawPrompt, systemPrompt, maxTexts } =
                 await buildApiMessagesFromHistoryForChar(historyBefore, [], targetChar);
             // Built from what's open now: another chat by then, it isn't sent
             if (!isViewing(target)) return;
@@ -3354,7 +3353,7 @@
             if (result && result.trim()) {
                 const charReply = {
                     is_user: false,
-                    mes: cleanGeneratedResponse(result),
+                    mes: RichMessages.capTexts(cleanGeneratedResponse(result), maxTexts || MAX_TEXTS.medium),
                     charName: targetChar.name,
                     charKey: targetCharKey,
                     send_date: Date.now()
@@ -5342,12 +5341,14 @@
     /**
      * A generated reply as it is kept: { mes, mood, life } — the text without its <mood>
      * and <life> lines, in Auto mode the feelings the first reports (stored as msg.mood),
-     * and with Daily Life the changes the second reports (msg.life).
+     * and with Daily Life the changes the second reports (msg.life). Cut to `maxTexts`
+     * bubbles, or with `oneText` its lines made one (a follow-up).
      */
-    function readReply(text, target = chatTarget()) {
+    function readReply(text, target = chatTarget(), { maxTexts = null, oneText = false } = {}) {
         const cleaned = cleanGeneratedResponse(text);
         const reply = emotionSystem ? emotionSystem.readReply(cleaned) : { mes: cleaned, mood: null };
-        const { text: mes, life } = DailyLife.parseLifeTag(reply.mes, new Date());
+        const { text: lifeless, life } = DailyLife.parseLifeTag(reply.mes, new Date());
+        const mes = oneText ? RichMessages.oneText(lifeless) : maxTexts ? RichMessages.capTexts(lifeless, maxTexts) : lifeless;
         // Whether the chat it's for keeps them, not whichever is open when it answers
         if (target?.group) return { mes, mood: null, life: null };
         return { mes, mood: reply.mood, life: settings.dailyLifeEnabled === true && target ? life : null };
@@ -5989,7 +5990,7 @@
         let added = 0;
         events.forEach((e, i) => {
             const mes = written.find(w => w.n === i + 1)?.mes;
-            const reply = e.text || (mes ? readReply(mes, target) : null);
+            const reply = e.text || (mes ? readReply(mes, target, e.kind === 'follow_up' ? { oneText: true } : { maxTexts: window.EchoTextProactiveRounds.TOPIC_MAX_TEXTS }) : null);
             if (!reply?.mes) return;
             chat.push({
                 is_user: false, mes: reply.mes, send_date: e.at,
@@ -6018,7 +6019,7 @@
             const history = getChatHistory(target);
             const anchor = history[history.length - 1] || null;
             const userName = getUserName();
-            const { apiMessages, rawPrompt, systemPrompt } = await buildApiMessagesFromHistoryForChar(history, [], char);
+            const { apiMessages, rawPrompt, systemPrompt } = await buildApiMessagesFromHistoryForChar(history, [], char, { verbosity: false });
             // Built from what's open now: another chat by then, it isn't sent and the gap waits
             if (!isViewing(target)) { notSent = true; return; }
             const instruction = CatchUp.buildInstruction({
@@ -6163,30 +6164,9 @@
         // Convert text emoticons to visual emojis
         raw = convertEmoticonsToEmojis(raw);
 
-        // Step 1: Apply inline markdown on raw text (before any HTML sanitization)
-        // so that \n characters are still intact for paragraph splitting.
-        let formatted = raw
-            .replace(/\*\*\*(.*?)\*\*\*/gs, '<strong><em>$1</em></strong>')
-            .replace(/\*\*(.*?)\*\*/gs, '<strong>$1</strong>')
-            .replace(/\*(.*?)\*/gs, '<em>$1</em>')
-            // Underscores inside a word (snake_case, file names, links) stay as they are
-            .replace(/(?<![\p{L}\p{N}_])__(?!\s)(.+?)(?<!\s)__(?![\p{L}\p{N}_])/gsu, '<u>$1</u>')
-            .replace(/(?<![\p{L}\p{N}_])_(?!\s)(.+?)(?<!\s)_(?![\p{L}\p{N}_])/gsu, '<em>$1</em>')
-            .replace(/~~(.*?)~~/gs, '<del>$1</del>')
-            .replace(/`(.+?)`/g, '<code>$1</code>');
-
-        // Step 2: Split into paragraphs. LLMs use single \n for paragraph breaks
-        // in chat contexts, so treat every \n as a paragraph separator.
-        const lines = formatted.split(/\n/);
-        const html = lines
-            .map(line => `<p>${line}</p>`)
-            .join('');
-
-        // Step 3: Sanitize the final HTML (now allowing <p> so paragraph tags survive)
-        return DOMPurify.sanitize(html, {
-            ALLOWED_TAGS: ['p', 'strong', 'em', 'del', 'code', 'br', 'u'],
-            ALLOWED_ATTR: []
-        });
+        // Plain text, as a messaging app shows it: no Markdown. Every \n is a line of its own
+        const html = escapeHtml(raw).split(/\n/).map(line => `<p>${line}</p>`).join('');
+        return DOMPurify.sanitize(html, { ALLOWED_TAGS: ['p'], ALLOWED_ATTR: [] });
     }
 
     /** Display parts for a message, one per bubble (see ChatViewModel.getMessageDisplayParts). */

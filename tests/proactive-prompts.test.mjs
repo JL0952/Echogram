@@ -57,9 +57,9 @@ test('templates read well once exact times are taken out', () => {
 test('a trigger turn offers its media when the platform has them', () => {
     assert.equal(turn(WECHAT, 'commute_ping'),
         '[Instruction for this turn — not a message from Me; never quote or answer it: '
-        + 'It is {{time}} on {{weekday}} — morning or evening commute time. It has been {{timeSinceLast}} since {{user}} last messaged. Text them from the commute — traffic, transit, people-watching, or just boredom.'
+        + 'It is {{time}} on {{weekday}} — morning or evening commute time. Text {{user}} from the commute — traffic, transit, people-watching, or just boredom.'
         + ' If it feels natural, send a <photo> of the view on the way with it, or instead of text.'
-        + ' Reply only with what Mira sends now, in the usual format: text messages, plus a photo, a voice message, a location, a file, a link or a song when one fits.]');
+        + ' Reply only with what Mira sends now, 3 texts at most, in the usual format: text messages, plus a photo, a voice message, a location, a file, a link or a song when one fits.]');
     assert.match(turn(ECHOTEXT, 'song_stuck'), /send a <voice> message humming or singing a bit of it or the song as <music> with it/);
     assert.match(turn(['voice'], 'song_stuck'), /send a <voice> message humming or singing a bit of it with it/);
     assert.match(turn(WECHAT, 'random_thought'), /send a <photo> of what sparked it or a <link> with it/);
@@ -69,9 +69,9 @@ test('a trigger turn offers its media when the platform has them', () => {
 test('media the platform lacks are never offered', () => {
     const plain = turn(['transfer'], 'commute_ping');
     assert.doesNotMatch(plain, /photo|voice|location|link|file|music|song/);
-    assert.match(plain, /Reply only with the text message\(s\) Mira sends now, in the usual format\.\]$/);
+    assert.match(plain, /Reply only with the text message\(s\) Mira sends now, 3 at most, in the usual format\.\]$/);
     assert.doesNotMatch(turn(['photo'], 'song_stuck'), /voice/);
-    assert.match(turn(['photo'], 'random_thought'), /send a <photo> of what sparked it with it, or instead of text\. Reply only with what Mira sends now, in the usual format: text messages, plus a photo when one fits\.\]$/);
+    assert.match(turn(['photo'], 'random_thought'), /send a <photo> of what sparked it with it, or instead of text\. Reply only with what Mira sends now, 3 texts at most, in the usual format: text messages, plus a photo when one fits\.\]$/);
 });
 
 test('triggers without a media idea still allow any media', () => {

@@ -73,7 +73,7 @@ test('just got free: a topic about it, and the wait is halved', () => {
     const c = candidates({ day: free });
     const topic = c.find(x => x.type === 'block_change');
     // (How long since you texted is worded from the real clock)
-    assert.match(topic.prompt, /^Mira just got free: 开会 is over; now: 吃早饭\. It has been [^.]+ since Qi last texted\. Text Qi about what Mira just did or what's next\.$/);
+    assert.match(topic.prompt, /^Mira just got free: 开会 is over; now: 吃早饭\. Text Qi about what Mira just did or what's next\.$/);
     // Obsessed waits 1–2 hours: 0.99 hours since the last topic is too soon, unless just got free
     assert.equal(candidates({ temperament: 'obsessed', day: day(), proactiveHours: 0.99 }), null);
     assert.ok(candidates({ temperament: 'obsessed', day: free, proactiveHours: 0.99 }));
@@ -85,7 +85,7 @@ test('just got free: a topic about it, and the wait is halved', () => {
 test('an errand due by tomorrow, and today\'s news', () => {
     const life = { errands: [{ text: '交论文', progress: '还差结论', due: '2026-10-27' }, { text: '搬家', due: '2026-11-07' }], log: [{ date: '2026-10-26', text: '早上摔了一跤' }], today: null };
     const c = candidates({ day: day({ life }) });
-    assert.match(c.find(x => x.type === 'errand').prompt, /^On Mira's mind: 交论文 \(还差结论\), due tomorrow\. It has been [^.]+ since Qi last texted\. Tell Qi about it, the way Mira would\.$/);
+    assert.match(c.find(x => x.type === 'errand').prompt, /^On Mira's mind: 交论文 \(还差结论\), due tomorrow\. Tell Qi about it, the way Mira would\.$/);
     assert.match(c.find(x => x.type === 'life_event').prompt, /^Something from Mira's day: 早上摔了一跤\./);
     // Nothing due soon, nothing today: neither
     const quiet = types(candidates({ day: day({ life: { errands: [{ text: '搬家', due: '2026-11-07' }], log: [], today: null } }) }));

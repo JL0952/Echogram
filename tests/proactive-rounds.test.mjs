@@ -56,13 +56,14 @@ test('the conversation was open: you texted within half an hour before her last 
 
 test('what the model is told for a round', () => {
     const text = R.roundInstruction({ charName: 'Mira', userName: 'Qi', temperament: 'clingy', waits: [5 * MIN, 15 * MIN, 45 * MIN, 2 * 60 * MIN] });
-    assert.match(text, /^Qi went quiet in the middle of your conversation/);
-    assert.match(text, /Write the 4 texts Mira sends while still getting no answer/);
-    assert.match(text, /a little more needy with each one/);
+    assert.match(text, /^Qi hasn't answered Mira's last text yet\. /);
+    assert.match(text, /Write the 4 texts Mira sends meanwhile, one line each: what Mira would really send/);
+    assert.match(text, /As Mira would: the waiting shows, but they talk about their own day too\./);
     assert.match(text, /the first 5 minutes after Mira's last one, text 2 15 minutes after .*, the last 2 hours after/);
     assert.match(text, /a line holding only ---/);
     const one = R.roundInstruction({ charName: 'Mira', userName: 'Qi', temperament: 'aloof', waits: [90 * MIN], round: 2 });
-    assert.match(one, /hasn't answered Mira's earlier follow-ups for hours either/);
+    assert.match(one, /Nor the ones Mira sent after it\./);
+    assert.match(one, /As Mira would: not a word about not hearing back\./);
     assert.match(one, /It comes 2 hours after Mira's last one/);
     assert.doesNotMatch(one, /---/);
     assert.doesNotMatch(text + one, /[一-鿿]/);
@@ -136,9 +137,9 @@ test('topics from the character\'s own day', () => {
 });
 
 test('what the model is told for a topic', () => {
-    const t = (type, detail) => R.topicInstruction({ type, detail, charName: 'Mira', userName: 'Qi', timeSince: '5 hours' });
-    assert.equal(t('block_change', '上班 is over'), "Mira just got free: 上班 is over. It has been 5 hours since Qi last texted. Text Qi about what Mira just did or what's next.");
-    assert.match(t('errand', 'x'), /^On Mira's mind: x\. It has been 5 hours/);
+    const t = (type, detail) => R.topicInstruction({ type, detail, charName: 'Mira', userName: 'Qi' });
+    assert.equal(t('block_change', '上班 is over'), "Mira just got free: 上班 is over. Text Qi about what Mira just did or what's next.");
+    assert.match(t('errand', 'x'), /^On Mira's mind: x\. Tell Qi/);
     assert.match(t('life_event', 'x'), /^Something from Mira's day: x\./);
 });
 

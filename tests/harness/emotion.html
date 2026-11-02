@@ -528,11 +528,11 @@
         res.bubbleKeptInPlace = Math.abs(bubbles()[0].getBoundingClientRect().top - topBefore) <= 1;
         res.aboveSlidUp = msgEl().previousElementSibling.getBoundingClientRect().top < aboveBefore - 5;
 
-        // The picker marks it; the model gets it with a quote of that bubble
+        // The picker marks it; the model gets each with a quote of its bubble, the last one too
         res.pickerMarks = await pick(0, 'heart') === true && !chat()[idx].bubbleReactions;
         await pick(0, 'heart');
         await pick(2, 'fire');
-        res.modelText = r.buildUserReactionText(chat()[idx]) === '<react>fire</react>\n<reply>Mira: one</reply>\n<react>heart</react>';
+        res.modelText = r.buildUserReactionText(chat()[idx]) === '<reply>Mira: one</reply>\n<react>heart</react>\n<reply>Mira: three</reply>\n<react>fire</react>';
 
         // Three at most on a bubble
         await pick(2, 'haha');
@@ -2376,6 +2376,14 @@
         env.requestEchoTextCompletion = async () => 'Mira 的回复';
         await r.generateEchoText(h);
         res.replyAsEver = mes('mira.png') === 'Mira 之前说的|给 Mira|Mira 的回复' && shown('Mira 的回复');
+
+        // More texts than its length allows: the rest are dropped
+        h = fresh();
+        env.buildApiMessagesFromHistory = async () => ({ ...built, maxTexts: 3 });
+        env.requestEchoTextCompletion = async () => '一\n二\n三\n四\n五';
+        await r.generateEchoText(h);
+        res.replyCapped = env.settings.chatHistory['mira.png'].at(-1).mes === '一\n二\n三';
+        env.buildApiMessagesFromHistory = async () => built;
 
         // Other opened while it's on its way: it lands in Mira's chat, Other's untouched, not drawn over hers.
         // Her "typing" shows only in her chat: gone in Other's, back on hers

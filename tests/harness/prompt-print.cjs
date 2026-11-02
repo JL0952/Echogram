@@ -52,6 +52,8 @@ const char = { ...(card.data || card), avatar, data: card.data || card };
 
 const st = JSON.parse(fs.readFileSync(`${DATA}/settings.json`, 'utf8'));
 const settings = JSON.parse(JSON.stringify({ ...window.EchoTextConfig.defaultSettings, ...st.extension_settings.EchoText }));
+// As index.js loads them: a prompt still equal to an earlier default is the current one
+for (const [key, old] of Object.entries(window.EchoTextConfig.LEGACY_PROMPT_DEFAULTS)) if (old.includes(settings[key])) settings[key] = window.EchoTextConfig.defaultSettings[key];
 const userName = st.power_user?.personas?.[st.user_avatar] || 'User';
 const personaDescription = st.power_user?.persona_descriptions?.[st.user_avatar]?.description || st.power_user?.persona_description || '';
 
@@ -90,7 +92,7 @@ if (opt('big5') || opt('morality')) {
 
 // ── index.js's prompt builder ───────────────────────────────────────────────
 
-const NAMES = ['buildSystemPrompt', 'buildPromptParts', 'buildLifeDate', 'getVerbosityPrompt', 'getCharacterVerbosity', 'getEchoTextFirstMessage', 'getSTStoryContext', 'findSTOpeningIndex',
+const NAMES = ['buildSystemPrompt', 'MAX_TEXTS', 'splitsLiveContext', 'getSTStoryMessages', 'buildPromptParts', 'buildLifeDate', 'getVerbosityPrompt', 'getCharacterVerbosity', 'getEchoTextFirstMessage', 'getSTStoryContext', 'findSTOpeningIndex',
     'isCharInCurrentSTChat', 'cleanSTMessageText', 'ST_STORY_MAX_MESSAGES', 'ST_STORY_MAX_CHARS', 'replaceMacros', 'buildMessageFormatPrompt',
     'RichMessages', 'Features', 'Platforms', 'activePlatformMemo', 'getActivePlatform', 'getActiveFeatures', 'platformHas', 'getReactionIds',
     'getActiveWorldInfoEntries', 'buildMemoryContext', 'summariesOn', 'ChatSummaries', 'resolveHistoryMessageText', 'getContextMessageText', 'buildTextingStyleContext', 'buildBehaviorContext', 'buildMoodRules', 'inGroupSession',

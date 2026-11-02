@@ -16,7 +16,7 @@
     ];
 
     const main = () => [
-        { is_user: true, mes: 'hey :) are you **free** tonight?', send_date: m(0), meta: { receipt: { state: 'read' } } },
+        { is_user: true, mes: 'hey :) are you free tonight?', send_date: m(0), meta: { receipt: { state: 'read' } } },
         { is_user: false, mes: 'Mira: sure!\nMira：what\'s up\n<photo>a cat on the windowsill</photo>', send_date: m(1) },
         { is_user: true, mes: '<transfer>$20</transfer>', send_date: m(2), meta: { receipt: { state: 'delivered' } } },
         { is_user: true, mes: 'for the pizza 🍕 <b>bold</b> & "quotes"', send_date: m(3), meta: { receipt: { state: 'ghosted', note: 'seen <i>5m</i> ago' } },
@@ -34,7 +34,7 @@
         { is_user: true, mes: '<transfer>¥8.8</transfer>', send_date: m(42), charReaction: 'unknown-legacy' },
         { is_user: false, mes: '<transfer_accept>8.8</transfer_accept>', send_date: m(43) },
         { is_user: true, mes: 'next day', send_date: m(60 * 24) },
-        { is_user: false, mes: '```js\nconst a = 1;\n\nconst b = 2;\n```\n*smiles* ~~no~~ `code` __u__ :D\n<transfer>€5</transfer>', send_date: m(60 * 24 + 1),
+        { is_user: false, mes: 'see you there :D\n<transfer>€5</transfer>', send_date: m(60 * 24 + 1),
             swipes: [{ mes: 'a', send_date: m(1440) }, { mes: 'b', send_date: m(1441) }, { mes: 'c', send_date: m(1442) }], swipeIndex: 1,
             imageAttachment: { type: 'image', status: 'ready', url: IMG, prompt: 'a blue rectangle' },
             reactions: { heart: { count: 2, mine: false } } },

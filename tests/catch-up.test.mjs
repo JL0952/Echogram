@@ -31,7 +31,7 @@ test('the schedule over the last days, a line a day', () => {
 });
 
 test('what the model is told', () => {
-    const texts = [{ n: 1, at: at(30, 19), note: 'follow-up 1: Qi still hasn\'t answered Mira\'s last text; Mira texts again' },
+    const texts = [{ n: 1, at: at(30, 19), note: 'follow-up 1: no answer from Qi yet; one line Mira sends meanwhile' },
         { n: 3, at: at(31, 12), note: 'You feel like texting Qi.' }];
     const text = C.buildInstruction({ charName: 'Mira', userName: 'Qi', from: NOW - 6 * DAY, now: NOW, settle: true, schedule: WEEK,
         errands: [{ text: '周六搬家', progress: '打包了一半', due: '2026-10-31' }], madeUp: false, texts });
@@ -43,8 +43,8 @@ test('what the model is told', () => {
     assert.doesNotMatch(text, /new <errand>/);
     assert.match(text, /Sum up the days before in one happened entry/);
     // Each text with its number, its time, what she was doing and what it's about; the times and order the engine's
-    assert.match(text, /Then the texts Mira sent Qi meanwhile, none of them answered, in this order:\n- n=1 · 2026-10-30 19:00 · follow-up 1: Qi still hasn't answered Mira's last text; Mira texts again\n- n=3 · 2026-10-31 12:00 \(逛街\) · You feel like texting Qi\./);
-    assert.match(text, /Write each as <text n="…">…<\/text> with its number, .*One for every number and no others: the times and the order are fixed\./);
+    assert.match(text, /Then the texts Mira sent Qi meanwhile, in this order:\n- n=1 · 2026-10-30 19:00 · follow-up 1: no answer from Qi yet; one line Mira sends meanwhile\n- n=3 · 2026-10-31 12:00 \(逛街\) · You feel like texting Qi\./);
+    assert.match(text, /Write each as <text n="…">…<\/text> with its number, .*a follow-up one line, any other one to three\. One for every number and no others: the times and the order are fixed\./);
     assert.doesNotMatch(text, /at="/);
     assert.match(C.buildInstruction({ from: NOW - DAY, now: NOW, settle: true, madeUp: true }), /; new <errand> \(due YYYY-MM-DD\) for something that comes up/);
     // Only texts (no Daily Life)
