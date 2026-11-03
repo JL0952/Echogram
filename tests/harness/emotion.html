@@ -823,6 +823,68 @@
         await sleep(100);
         res.voiceOpens = css(msg(2).querySelector('.ig-transcript'), 'display') !== 'none' && !msg(2).querySelector('.ig-voice-unread')
             && JSON.stringify(chat()[2].voiceHeard) === '[0]';
+        // A photo given its own image: drawn in its shape, the description still a tap away and back
+        const shotCanvas = document.createElement('canvas');
+        shotCanvas.width = 200;
+        shotCanvas.height = 100;
+        shotCanvas.getContext('2d').fillRect(0, 0, 200, 100);
+        chat()[2].photoImages = { 1: { path: shotCanvas.toDataURL('image/jpeg'), width: 200, height: 100 } };
+        r.renderMessages(chat());
+        await sleep(50);
+        const shot = msg(2).querySelector('.ig-photo');
+        // (still open from the tap above: a redraw keeps it so)
+        if (shot.getAttribute('aria-expanded') === 'true') shot.click();
+        const shotImg = shot.querySelector('.ig-photo-img');
+        const shotBox = shot.getBoundingClientRect();
+        res.photoImage = !!shotImg && Math.abs(shotBox.width / shotBox.height - 2) < 0.05 && css(shot.querySelector('svg'), 'display') === 'none';
+        shot.click();
+        res.photoImageCaption = css(shot.querySelector('.ig-photo-caption'), 'display') === 'flex' && css(shotImg, 'opacity') === '0.2';
+        shot.click();
+        res.photoImageBack = css(shot.querySelector('.ig-photo-caption'), 'display') === 'none' && css(shotImg, 'opacity') === '1';
+        delete chat()[2].photoImages;
+        r.renderMessages(chat());
+        // Its ⋯ menu: Add Photo picks one, shrinks it (1600px on its longest side) and uploads it;
+        // then Change Photo and Remove Photo, which deletes the file
+        const realFetch = window.fetch;
+        const imageCalls = [];
+        window.fetch = async (url, init) => {
+            if (!String(url).startsWith('/api/images/')) return realFetch(url, init);
+            imageCalls.push([url, JSON.parse(init.body)]);
+            return new Response(JSON.stringify({ path: shotCanvas.toDataURL('image/jpeg') }), { status: 200 });
+        };
+        const big = document.createElement('canvas');
+        big.width = 3200;
+        big.height = 1600;
+        big.getContext('2d').fillRect(0, 0, 3200, 1600);
+        const bigFile = new File([await new Promise(res => big.toBlob(res, 'image/png'))], 'shot.png', { type: 'image/png' });
+        env.pickImageFile = () => Promise.resolve(bigFile);
+        const contextBefore = window.SillyTavern.getContext;
+        window.SillyTavern.getContext = () => ({ getRequestHeaders: () => ({ 'Content-Type': 'application/json' }) });
+        const photoMenu = () => {
+            // (a menu still open, or still closing, from before would take the click)
+            document.querySelectorAll('.et-dots-menu').forEach(m => m.remove());
+            msg(2).querySelectorAll('.ig-row')[1].querySelector('[data-et-action="part-menu"]').click();
+            return [...document.querySelectorAll('.et-dots-menu .et-dots-item')];
+        };
+        const pick = (items, action) => items.find(b => b.dataset.action === action);
+        let items = photoMenu();
+        res.photoMenuAdd = pick(items, 'photo_add')?.textContent.trim() === 'Add Photo' && !pick(items, 'photo_remove');
+        pick(items, 'photo_add')?.click();
+        for (let i = 0; i < 40 && !chat()[2].photoImages; i++) await sleep(50);
+        const added = chat()[2].photoImages?.[1];
+        res.photoAdded = !!added && added.width === 1600 && added.height === 800 && imageCalls[0]?.[0] === '/api/images/upload'
+            && imageCalls[0][1].ch_name === 'Mira' && imageCalls[0][1].filename.startsWith('echotext-photo-')
+            && !!msg(2).querySelector('.ig-photo-img');
+        document.querySelectorAll('.et-dots-menu').forEach(m => m.remove());
+        items = photoMenu();
+        res.photoMenuChange = pick(items, 'photo_add')?.textContent.trim() === 'Change Photo' && pick(items, 'photo_remove')?.textContent.trim() === 'Remove Photo';
+        pick(items, 'photo_remove')?.click();
+        res.photoRemoved = !chat()[2].photoImages && !msg(2).querySelector('.ig-photo-img')
+            && imageCalls.some(([url, body]) => url === '/api/images/delete' && body.path === added?.path);
+        document.querySelectorAll('.et-dots-menu').forEach(m => m.remove());
+        window.fetch = realFetch;
+        delete env.pickImageFile;
+        window.SillyTavern.getContext = contextBefore;
 
         // The controls show once a bubble is tapped; the menu starts with Reply
         const row = rows(2)[0];
@@ -880,7 +942,7 @@
         res.headerOrder = box('#et-close-btn').right <= box('#et-char-avatar-wrap').left && box('#et-char-avatar-wrap').right <= box('#et-char-name').left
             && box('#et-char-name').right <= box('#et-overflow-btn').left && Math.abs(box('#et-close-btn').top - box('#et-overflow-btn').top) < 4;
         const avatarWrap = panel.querySelector('#et-char-avatar-wrap');
-        res.ring = box('#et-char-avatar-wrap').width === 44 && getComputedStyle(avatarWrap, '::after').backgroundImage.includes('linear-gradient')
+        res.ring = box('#et-char-avatar-wrap').width === 36 && getComputedStyle(avatarWrap, '::after').backgroundImage.includes('linear-gradient')
             && getComputedStyle(header, '::before').content === '""' && getComputedStyle(header, '::after').content === '""';
         // The grey line under the name is the status row: the strongest feeling, plain, and it opens the popup
         const trigger = panel.querySelector('#et-panel-status-trigger');
@@ -903,7 +965,18 @@
         r.renderMessages([]);
         const card = panel.querySelector('.ig-profile');
         res.emptyProfile = !!card && card.querySelector('.ig-profile-name')?.textContent === 'Mira'
-            && card.querySelector('.ig-profile-line')?.textContent === 'You follow each other on Instagram' && card.querySelector('.ig-profile-avatar').getBoundingClientRect().width === 96;
+            && card.querySelector('.ig-profile-line')?.textContent === 'You follow each other on Instagram' && card.querySelector('.ig-profile-avatar').getBoundingClientRect().width === 84;
+        r.renderMessages(chat());
+        // The profile stays above the first message, through a message added in place too
+        const listEl = panel.querySelector('#et-messages-inner');
+        const profileFirst = () => listEl.firstElementChild?.matches('.ig-profile') && listEl.querySelectorAll('.ig-profile').length === 1;
+        const firstBefore = profileFirst();
+        chat().push({ is_user: true, mes: 'one more', send_date: Date.now() });
+        const kept = listEl.querySelector('[data-et-role~="message"]');
+        r.renderMessages(chat());
+        res.profileKept = firstBefore && profileFirst() && listEl.querySelector('[data-et-role~="message"]') === kept
+            && listEl.lastElementChild.textContent.includes('one more');
+        chat().pop();
         r.renderMessages(chat());
 
         // The input bar: the blue camera ("+") on the left, the round field with the mic in it

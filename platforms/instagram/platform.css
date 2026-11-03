@@ -35,11 +35,16 @@
     --ig-map-park: #233528;
     --ig-map-water: #1b2a3b;
     --ig-view: #363636;
+    /* The header's round buttons, glass over the chat, and its height (measured on the
+       app's at 393pt wide: 40pt circles, the header no taller than they need) */
+    --ig-glass: rgba(255, 255, 255, 0.06);
+    --ig-glass-border: rgba(255, 255, 255, 0.14);
+    --ig-header-h: 54px;
     /* A bubble's corners: 22px, the ones toward the next or previous bubble of the run tighter */
     --ig-round: 22px;
     --ig-joined: 5px;
     /* lucide icons (as MockSocial's skin uses), as masks painted in the text colour */
-    --ig-icon-back: url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22none%22 stroke=%22%23000%22 stroke-width=%222%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22%3E%3Cpath d=%22m12 19-7-7 7-7%22/%3E%3Cpath d=%22M19 12H5%22/%3E%3C/svg%3E");
+    --ig-icon-back: url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22none%22 stroke=%22%23000%22 stroke-width=%222%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22%3E%3Cpath d=%22m15 4-8 8 8 8%22/%3E%3C/svg%3E");
     --ig-icon-phone: url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22none%22 stroke=%22%23000%22 stroke-width=%221.5%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22%3E%3Cpath d=%22M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z%22/%3E%3C/svg%3E");
     --ig-icon-video: url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22none%22 stroke=%22%23000%22 stroke-width=%221.5%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22%3E%3Cpath d=%22m22 8-6 4 6 4V8Z%22/%3E%3Crect width=%2214%22 height=%2212%22 x=%222%22 y=%226%22 rx=%222%22 ry=%222%22/%3E%3C/svg%3E");
     --ig-icon-more: url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22none%22 stroke=%22%23000%22 stroke-width=%222%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22%3E%3Ccircle cx=%2212%22 cy=%2212%22 r=%221%22/%3E%3Ccircle cx=%2219%22 cy=%2212%22 r=%221%22/%3E%3Ccircle cx=%225%22 cy=%2212%22 r=%221%22/%3E%3C/svg%3E");
@@ -68,6 +73,8 @@
     --ig-map-park: #e2efda;
     --ig-map-water: #b6daf2;
     --ig-view: #ffffff;
+    --ig-glass: rgba(0, 0, 0, 0.04);
+    --ig-glass-border: rgba(0, 0, 0, 0.1);
 }
 
 /* Menus, popups and dialogs (style.css's --et-surface tokens) in Instagram's sheet colours, wherever they
@@ -86,36 +93,64 @@
 
 /* ── Panel surfaces ─────────────────────────────────────────── */
 
+/* The list runs up under the header, which sits over it */
 [data-platform="instagram"] [data-et-role~="messages"] {
-    padding: 6px 0 14px;
+    padding: calc(var(--ig-header-h) + 6px) 0 14px;
     background: var(--ig-bg);
+}
+
+[data-platform="instagram"] .et-catchup-bar {
+    top: var(--ig-header-h);
 }
 
 [data-platform="instagram"] [data-et-role~="message-list"] {
     gap: 0;
 }
 
-/* ── Header (MockSocial InstagramSkin): back · avatar in its story ring · name
-   over a line of grey · call · video · more ────────────────────
+/* ── Header (MockSocial InstagramSkin, redrawn after the app's): back · avatar in
+   its story ring · name › over a line · more · call · video ─────────
    EchoText's own header elements, laid out as Instagram's: the close button is
-   the back arrow, the character's avatar and name stay (tap the name to switch
-   chats), the overflow button the last icon. The grey line under the name is
-   EchoText's status row, the strongest feeling (tap it for the emotion popup);
-   "Active now" while emotions are off. Call and video are drawn, not buttons. */
+   the back chevron, the character's avatar and name stay (tap the name to switch
+   chats), the overflow button the first of the round buttons on the right. The
+   line under the name is EchoText's status row, the strongest feeling (tap it for
+   the emotion popup); "Active now" while emotions are off. Call and video are
+   drawn, not buttons. The header lies over the chat, which shows through it
+   darkened and blurred, fading out at its foot. */
 
 [data-platform="instagram"] [data-et-role~="header"] {
-    position: relative;
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 6;
     display: grid;
-    grid-template-columns: 26px 44px minmax(0, 1fr) 26px 26px 26px;
+    grid-template-columns: 40px 36px minmax(0, 1fr) 40px 40px 40px;
     align-items: center;
-    gap: 12px;
-    height: 66px;
-    padding: 0 14px;
+    gap: 10px;
+    height: var(--ig-header-h);
+    padding: 0 15px 0 18px;
     box-sizing: border-box;
-    border-bottom: 0.5px solid var(--ig-border);
+    border-bottom: 0;
     color: var(--ig-text);
-    background: var(--ig-bg);
+    background: linear-gradient(to bottom,
+        color-mix(in srgb, var(--ig-bg) 88%, transparent),
+        color-mix(in srgb, var(--ig-bg) 60%, transparent) 70%,
+        transparent);
     font-family: var(--ig-font);
+}
+
+/* The blur behind it, thinning out toward its foot (.et-header-left's own box is
+   display: contents, so this lies in the header) */
+[data-platform="instagram"] .et-header-left::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    -webkit-backdrop-filter: blur(12px);
+    backdrop-filter: blur(12px);
+    -webkit-mask: linear-gradient(#000 45%, transparent);
+    mask: linear-gradient(#000 45%, transparent);
 }
 
 [data-platform="instagram"] .et-header-left,
@@ -129,12 +164,14 @@
 }
 
 /* The avatar in Instagram's story ring (fakechat-studio's gradient): the photo
-   inset 4px, a 2px gap in the background colour, the 2px ring outside it */
+   inset 4px (28px, the app's 29pt), a 2px gap in the background colour, the 2px
+   ring outside it */
 [data-platform="instagram"] #et-char-avatar-wrap {
     grid-column: 2;
     grid-row: 1;
-    width: 44px;
-    height: 44px;
+    width: 36px;
+    height: 36px;
+    min-width: 36px;
     box-shadow: none;
 }
 
@@ -213,7 +250,7 @@
     border-radius: 0;
     background: none;
     color: var(--ig-muted);
-    font-size: 12px;
+    font-size: 11px;
     line-height: 1.3;
 }
 
@@ -244,7 +281,7 @@
 [data-platform="instagram"] .et-status-placeholder::after {
     content: "Active now";
     color: var(--ig-muted);
-    font-size: 12px;
+    font-size: 11px;
     line-height: 1.3;
 }
 
@@ -262,7 +299,7 @@
     border-radius: 0;
     background: none;
     color: var(--ig-text);
-    font-size: 16px;
+    font-size: 13px;
     font-weight: 600;
     line-height: 1.25;
     white-space: nowrap;
@@ -276,26 +313,40 @@
     color: var(--ig-text);
 }
 
+/* Instagram's "›" after the name, not the down caret */
 [data-platform="instagram"] .et-char-name-caret {
-    color: var(--ig-muted);
-    font-size: 10px;
+    color: var(--ig-text);
+    font-size: 9px;
 }
 
-/* Back, call, video and more: icons in the text colour. Centred in their
-   columns: a phone's 44px tap target (mobile-style.css) spills evenly into the
-   gaps instead of pushing the icon off its column. */
+[data-platform="instagram"] .et-char-name-caret::before {
+    content: "\f054";
+}
+
+/* Back, more, call and video: icons in the text colour, each in a glass circle.
+   Centred in their columns: a phone's 44px tap target (mobile-style.css) spills
+   evenly into the gaps instead of pushing the circle off its column. */
 [data-platform="instagram"] #et-close-btn,
-[data-platform="instagram"] #et-overflow-btn {
+[data-platform="instagram"] #et-overflow-btn,
+[data-platform="instagram"] .et-header-right::before,
+[data-platform="instagram"] .et-header-right::after {
     grid-row: 1;
     justify-self: center;
     display: grid;
     place-items: center;
-    width: 26px;
-    height: 26px;
+    width: 40px;
+    height: 40px;
+    /* Not a phone's 44px tap target (mobile-style.css): the app's circles are 40pt */
+    min-width: 0 !important;
+    min-height: 0 !important;
     padding: 0;
-    border-radius: 0;
-    background: none;
+    box-sizing: border-box;
+    border: 1px solid var(--ig-glass-border);
+    border-radius: 50%;
+    background: var(--ig-glass);
     color: var(--ig-text);
+    -webkit-backdrop-filter: blur(12px);
+    backdrop-filter: blur(12px);
 }
 
 [data-platform="instagram"] #et-close-btn {
@@ -303,12 +354,28 @@
 }
 
 [data-platform="instagram"] #et-overflow-btn {
-    grid-column: 6;
+    grid-column: 4;
+}
+
+/* Call's and video's circles (.et-header-right's own box is display: contents, so
+   these lie in the header's grid), under their icons */
+[data-platform="instagram"] .et-header-right::before,
+[data-platform="instagram"] .et-header-right::after {
+    content: "";
+    pointer-events: none;
+}
+
+[data-platform="instagram"] .et-header-right::before { grid-column: 5; }
+[data-platform="instagram"] .et-header-right::after { grid-column: 6; }
+
+[data-platform="instagram"].et-panel-no-char .et-header-right::before,
+[data-platform="instagram"].et-panel-no-char .et-header-right::after {
+    visibility: hidden;
 }
 
 [data-platform="instagram"] #et-close-btn:hover,
 [data-platform="instagram"] #et-overflow-btn:hover {
-    background: none;
+    background: var(--ig-glass);
     color: var(--ig-text);
     opacity: 0.6;
 }
@@ -324,8 +391,8 @@
 [data-platform="instagram"] [data-et-role~="header"]::after {
     content: "";
     display: block;
-    width: 26px;
-    height: 26px;
+    width: 24px;
+    height: 24px;
     background: currentColor;
     -webkit-mask: var(--ig-glyph) center / contain no-repeat;
     mask: var(--ig-glyph) center / contain no-repeat;
@@ -334,19 +401,33 @@
 [data-platform="instagram"] #et-close-btn::before { --ig-glyph: var(--ig-icon-back); }
 [data-platform="instagram"] #et-overflow-btn::before { --ig-glyph: var(--ig-icon-more); }
 
+/* Icon boxes sized so the drawn lines match the app's (lucide draws inside 20 of 24) */
+[data-platform="instagram"] #et-close-btn::before {
+    width: 26px;
+    height: 26px;
+}
+
+[data-platform="instagram"] #et-overflow-btn::before {
+    width: 22px;
+    height: 22px;
+}
+
 [data-platform="instagram"] [data-et-role~="header"]::before {
     --ig-glyph: var(--ig-icon-phone);
-    grid-column: 4;
+    grid-column: 5;
     grid-row: 1;
+    justify-self: center;
+    z-index: 1;
 }
 
 [data-platform="instagram"] [data-et-role~="header"]::after {
     --ig-glyph: var(--ig-icon-video);
-    grid-column: 5;
+    grid-column: 6;
     grid-row: 1;
     justify-self: center;
-    width: 28px;
-    height: 28px;
+    z-index: 1;
+    width: 26px;
+    height: 26px;
 }
 
 [data-platform="instagram"].et-panel-no-char [data-et-role~="header"]::before,
@@ -624,7 +705,7 @@
     content: none;
 }
 
-/* ── An empty chat: the other side's profile ───────────────── */
+/* ── The other side's profile, above the first message ──────── */
 
 /* At the top, though the list keeps messages to the bottom */
 [data-platform="instagram"] .ig-profile {
@@ -642,12 +723,12 @@
     position: relative;
     display: grid;
     place-items: center;
-    width: 96px;
-    height: 96px;
+    width: 84px;
+    height: 84px;
     overflow: hidden;
     border-radius: 50%;
     color: #ffffff;
-    font-size: 36px;
+    font-size: 32px;
     font-weight: 600;
 }
 
@@ -659,22 +740,23 @@
     object-fit: cover;
 }
 
+/* Sizes as the app's at 393pt wide */
 [data-platform="instagram"] .ig-profile-name {
-    margin-top: 12px;
-    font-size: 20px;
+    margin-top: 10px;
+    font-size: 17px;
     font-weight: 700;
 }
 
 [data-platform="instagram"] .ig-profile-handle {
-    margin-top: 2px;
+    margin-top: 3px;
     color: var(--ig-muted);
-    font-size: 14px;
+    font-size: 13px;
 }
 
 [data-platform="instagram"] .ig-profile-line {
-    margin-top: 6px;
+    margin-top: 4px;
     color: var(--ig-muted);
-    font-size: 14px;
+    font-size: 13px;
 }
 
 /* ── Messages ───────────────────────────────────────────────── */
@@ -751,6 +833,11 @@
 
 [data-platform="instagram"] .ig-time + .ig-row {
     margin-top: 0;
+}
+
+/* A bubble with a reaction keeps the next one further off, below its pill */
+[data-platform="instagram"] .ig-row-reacted {
+    margin-bottom: 10px;
 }
 
 /* The corners toward the sender's other bubbles go tight (on the sender's side) */
@@ -918,6 +1005,23 @@
 
 [data-platform="instagram"] .ig-photo[aria-expanded="true"] svg {
     display: none;
+}
+
+/* An image added to the photo fills the frame, in its shape; tapped, it dims under the description */
+[data-platform="instagram"] .ig-photo-img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+[data-platform="instagram"] .ig-photo:has(> .ig-photo-img) svg {
+    display: none;
+}
+
+[data-platform="instagram"] .ig-photo[aria-expanded="true"] .ig-photo-img {
+    opacity: 0.2;
 }
 
 [data-platform="instagram"] .ig-photo[aria-expanded="true"] .ig-photo-caption {

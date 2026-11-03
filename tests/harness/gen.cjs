@@ -31,7 +31,7 @@ const WANT = [
     // rendering and actions
     'renderMessages', 'showPrevSwipe', 'showNextSwipe', 'openImageAttachment', 'MESSAGE_ACTIONS', 'onMessageAction', 'bindMessageActions', 'onBubbleTap',
     'renderedViews', 'renderedFrame', 'getRenderFrame', 'updateMessageList', 'replaceMessageElement', 'scrollMessagesToEnd',
-    'getChatViewOptions', 'getMessageRenderContext', 'findMessageElement', 'decorateMessage', 'refreshMessages',
+    'getChatViewOptions', 'getMessageRenderContext', 'getCharacterUsername', 'findMessageElement', 'decorateMessage', 'refreshMessages',
     'renderedEntry', 'tapbackMarks', 'keepInPlace',
     'toggleVoiceTranscript', 'toggleExpanded', 'syncRenderedView',
     // the "+" panel (syncPlatformChrome closes it)
@@ -50,12 +50,12 @@ const FUNC_STUBS = [
     'openTransferResponseMenu', 'openGeneratedImageLightbox', 'bindBubbleTouchSwipe',
     'showMemorySaveModal', 'showMemoryRemoveModal', 'setComposeMode', 'saveSettings',
     'getAvatarUrlForCharacter', 'isCombinedGroupMode', 'getUserAvatarUrl', 'pickImageFile', 'error', 'warn', 'getCustomCharAvatarUrl',
-    'drawStatusBars', 'syncSendButton',
+    'drawStatusBars', 'syncSendButton', 'updatePanelStatusRow',
 ];
 
 for (const name of (process.env.EXTRA || '').split(',').filter(Boolean)) WANT.push(name);
 for (const name of (process.env.VALUES || '').split(',').filter(Boolean)) VALUE_STUBS.push(name);
-for (const name of (process.env.STUBS || '').split(',').filter(Boolean)) FUNC_STUBS.push(name);
+for (const name of (process.env.STUBS || '').split(',').filter(Boolean)) if (!FUNC_STUBS.includes(name)) FUNC_STUBS.push(name);
 
 const found = new Map();
 const functions = [];

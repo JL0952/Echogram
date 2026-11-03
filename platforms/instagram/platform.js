@@ -70,9 +70,14 @@
         return bars;
     }
 
-    /** A photo is a picture frame; tapping it shows the description inside the frame. */
+    /**
+     * A photo is a picture frame, or the image added to it in its shape; tapping it
+     * shows the description inside the frame.
+     */
     function photo(p, ctx) {
-        return `<div class="ig-photo" role="button" tabindex="0" aria-expanded="false" title="Tap to view" data-et-action="photo-toggle">${PHOTO_GLYPH}<div class="ig-photo-caption" data-et-role="caption"><span>${ctx.escapeHtml(p.desc) || 'Photo'}</span></div></div>`;
+        const shape = p.image ? ` style="aspect-ratio:${p.image.ratio}"` : '';
+        const img = p.image ? `<img class="ig-photo-img" src="${ctx.escapeHtml(p.image.url)}" alt="" draggable="false" onerror="this.remove()">` : '';
+        return `<div class="ig-photo" role="button" tabindex="0" aria-expanded="false" title="Tap to view" data-et-action="photo-toggle"${shape}>${img}${PHOTO_GLYPH}<div class="ig-photo-caption" data-et-role="caption"><span>${ctx.escapeHtml(p.desc) || 'Photo'}</span></div></div>`;
     }
 
     /**
@@ -254,15 +259,16 @@
     }
 
     /**
-     * An empty chat shows the other side's profile, as Instagram opens a new
-     * conversation: the avatar large, the name, the username when one is set
-     * ("teresalai_ · Instagram"), "You follow each other on Instagram".
+     * The other side's profile at the top of the chat, as Instagram keeps it above
+     * the first message (and alone in an empty chat): the avatar large, the name, the
+     * username when one is set ("teresalai_ · Instagram"), "You follow each other on
+     * Instagram".
      */
-    function emptyChat(ctx) {
+    function chatHead(ctx) {
         const m = { isUser: false, senderName: ctx.charName };
         const a = ctx.avatar(m);
         const img = a.url ? `<img src="${a.url}" alt="" onerror="this.remove()">` : '';
-        return `<div class="ig-profile"><div class="ig-profile-avatar" style="background:${a.color}"><span>${ctx.escapeHtml(a.initial)}</span>${img}</div><div class="ig-profile-name">${ctx.escapeHtml(ctx.charName)}</div>${ctx.username ? `<div class="ig-profile-handle">${ctx.escapeHtml(ctx.username)} · Instagram</div>` : ''}<div class="ig-profile-line">You follow each other on Instagram</div></div>`;
+        return `<div class="ig-profile" data-et-role="chat-head"><div class="ig-profile-avatar" style="background:${a.color}"><span>${ctx.escapeHtml(a.initial)}</span>${img}</div><div class="ig-profile-name">${ctx.escapeHtml(ctx.charName)}</div>${ctx.username ? `<div class="ig-profile-handle">${ctx.escapeHtml(ctx.username)} · Instagram</div>` : ''}<div class="ig-profile-line">You follow each other on Instagram</div></div>`;
     }
 
     /** The character is typing: three dots in a received bubble beside the avatar (fakechat-studio TypingIndicator). */
@@ -304,7 +310,8 @@
         templates: {
             message,
             part,
-            emptyChat,
+            emptyChat: chatHead,
+            chatHead,
             typing,
             imageGenerating,
             bubbleTyping,

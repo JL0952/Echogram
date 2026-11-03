@@ -10654,6 +10654,24 @@ textarea.et-mem-save-snippet-edit::placeholder {
     display: none;
 }
 
+/* An image added to the photo fills the frame, in its shape (index.js sets the ratio);
+   tapped, it dims under the description */
+.et-photo-card-img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.et-photo-card-frame:has(> .et-photo-card-img) .et-photo-card-icon {
+    display: none;
+}
+
+.et-photo-card[aria-expanded="true"] .et-photo-card-img {
+    opacity: 0.25;
+}
+
 /* A voice message, as iMessage draws one: play button, waveform and length, then
    the words inside the bubble once tapped. The dot marks one of the character's
    the user hasn't opened yet */

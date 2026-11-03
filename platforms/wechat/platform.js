@@ -107,10 +107,15 @@
         return `<div class="wx-pay${stateClass}" data-side="${side}"${actionAttrs}><span class="wx-pay-tail"></span><div class="wx-pay-body">${glyph}<div class="wx-pay-text"><div class="wx-pay-title">${ctx.escapeHtml(p.displayAmount || '¥')}</div><div class="wx-pay-note">${note}</div></div></div><div class="wx-pay-footer">转账</div></div>`;
     }
 
-    /** A photo is a picture frame; tapping it shows the description inside the frame. */
+    /**
+     * A photo is a picture frame, or the image added to it in its shape; tapping it
+     * shows the description inside the frame.
+     */
     function photo(p, ctx) {
         const desc = ctx.escapeHtml(p.desc);
-        return `<div class="wx-photo" role="button" tabindex="0" aria-expanded="false" title="点击查看" data-et-action="photo-toggle">${PHOTO_GLYPH}<div class="wx-photo-caption" data-et-role="caption"><span>${desc || '图片'}</span></div></div>`;
+        const shape = p.image ? ` style="aspect-ratio:${p.image.ratio}"` : '';
+        const img = p.image ? `<img class="wx-photo-img" src="${ctx.escapeHtml(p.image.url)}" alt="" draggable="false" onerror="this.remove()">` : '';
+        return `<div class="wx-photo" role="button" tabindex="0" aria-expanded="false" title="点击查看" data-et-action="photo-toggle"${shape}>${img}${PHOTO_GLYPH}<div class="wx-photo-caption" data-et-role="caption"><span>${desc || '图片'}</span></div></div>`;
     }
 
     /**

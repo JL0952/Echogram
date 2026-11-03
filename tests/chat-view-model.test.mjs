@@ -467,3 +467,19 @@ test('a quoted reply keeps its quote on the bubble; a platform without replies s
     const [u2] = build(history, { features: [] });
     assert.deepEqual(u2.parts, [{ type: 'text', text: '[Replying to Mira: hi]' }, { type: 'text', text: 'hello' }]);
 });
+
+test("a photo shows the image added to it, its shape kept between 1:2 and 2:1, and nothing else does", () => {
+    const [c, u] = build([
+        char('look\n<photo>the sky</photo>\n<photo>a long scroll</photo>\nok', 0, { photoImages: {
+            1: { path: 'user/images/Mira/echotext-photo-1.jpg', width: 1600, height: 900 },
+            2: { path: '/user/images/Mira/echotext-photo-2.jpg', width: 300, height: 1600 },
+            3: { path: 'user/images/Mira/stray.jpg', width: 10, height: 10 },
+        } }),
+        user('<photo>my desk</photo>', 1, { photoImages: { 0: { width: 4, height: 3 } } }),
+    ]);
+    assert.deepEqual(c.parts[1], { type: 'photo', desc: 'the sky', image: { url: '/user/images/Mira/echotext-photo-1.jpg', ratio: 1.778 } });
+    assert.deepEqual(c.parts[2].image, { url: '/user/images/Mira/echotext-photo-2.jpg', ratio: 0.5 });
+    // Not a photo, and an entry without a file
+    assert.equal(c.parts[3].image, undefined);
+    assert.deepEqual(u.parts, [{ type: 'photo', desc: 'my desk' }]);
+});

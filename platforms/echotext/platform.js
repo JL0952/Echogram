@@ -20,6 +20,8 @@
      *                         avatar data-et-action="avatar" to open the avatar menu (view / change)
      *   groupChat             a group chat in combine mode (show who sent what)
      * emptyChat gets ctx too (a character is always chosen by then).
+     * An optional chatHead(ctx) is drawn above the first message (Instagram's profile),
+     * carrying data-et-role="chat-head".
      *
      * No event code: clickable elements carry data-et-action, and the elements
      * core code looks up carry data-et-role (see docs/platform-plan.md).
@@ -44,10 +46,15 @@
         return `<div class="et-reaction-note">${icon}<span>Reacted to your message</span></div>`;
     }
 
-    /** A photo shows only its frame; tapping it reveals the description inside. */
-    function photoCard(desc, ctx) {
-        const safeDesc = ctx.escapeHtml(desc);
-        return `<div class="et-photo-card" role="button" tabindex="0" aria-expanded="false" title="Tap to view" data-et-action="photo-toggle"><div class="et-photo-card-frame"><i class="fa-regular fa-image et-photo-card-icon"></i><div class="et-photo-card-caption" data-et-role="caption"><span>${safeDesc || 'Photo'}</span></div></div></div>`;
+    /**
+     * A photo shows its frame, or the image added to it in its shape; tapping it
+     * reveals the description inside.
+     */
+    function photoCard(p, ctx) {
+        const safeDesc = ctx.escapeHtml(p.desc);
+        const shape = p.image ? ` style="aspect-ratio:${p.image.ratio}"` : '';
+        const img = p.image ? `<img class="et-photo-card-img" src="${ctx.escapeHtml(p.image.url)}" alt="" draggable="false" onerror="this.remove()">` : '';
+        return `<div class="et-photo-card" role="button" tabindex="0" aria-expanded="false" title="Tap to view" data-et-action="photo-toggle"><div class="et-photo-card-frame"${shape}>${img}<i class="fa-regular fa-image et-photo-card-icon"></i><div class="et-photo-card-caption" data-et-role="caption"><span>${safeDesc || 'Photo'}</span></div></div></div>`;
     }
 
     /** Bar heights (%) for a voice message's waveform, drawn from its words so each one looks its own. */
@@ -166,7 +173,7 @@
 
     /** Inner content of one bubble: formatted text, a photo card, a voice message, a place, a file, link or song card, or a transfer card. */
     function part(p, ctx) {
-        if (p.type === 'photo') return photoCard(p.desc, ctx);
+        if (p.type === 'photo') return photoCard(p, ctx);
         if (p.type === 'voice') return voiceNote(p, ctx);
         if (p.type === 'location') return locationCard(p, ctx);
         if (p.type === 'file') return fileCard(p, ctx);

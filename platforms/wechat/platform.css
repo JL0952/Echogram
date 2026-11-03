@@ -1289,6 +1289,23 @@
     display: none;
 }
 
+/* An image added to the photo fills the frame, in its shape; tapped, it dims under the description */
+[data-platform="wechat"] .wx-photo-img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+[data-platform="wechat"] .wx-photo:has(> .wx-photo-img) svg {
+    display: none;
+}
+
+[data-platform="wechat"] .wx-photo[aria-expanded="true"] .wx-photo-img {
+    opacity: 0.2;
+}
+
 [data-platform="wechat"] .wx-photo[aria-expanded="true"] .wx-photo-caption {
     display: flex;
 }

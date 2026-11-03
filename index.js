@@ -2524,13 +2524,14 @@
             ...(msg.mood ? { mood: msg.mood } : {}),
             ...(msg.life ? { life: msg.life } : {}),
             ...(msg.bubbleReactions ? { bubbleReactions: { ...msg.bubbleReactions } } : {}),
+            ...(msg.photoImages ? { photoImages: { ...msg.photoImages } } : {}),
         }];
         msg.swipeIndex = 0;
     }
 
     /**
      * Syncs the parent message's top-level fields (mes, send_date, imageAttachment,
-     * Auto mode's mood, Daily Life's changes, the user's per-bubble tapbacks) from the swipe slot at
+     * Auto mode's mood, Daily Life's changes, the user's per-bubble tapbacks, the photos' images) from the swipe slot at
      * `msg.swipeIndex`. The former whole-message reactions stay with the message.
      */
     function syncMsgFromSwipe(msg) {
@@ -2555,6 +2556,9 @@
         // The user's tapbacks are on this version's bubbles
         if (swipe.bubbleReactions) msg.bubbleReactions = swipe.bubbleReactions;
         else delete msg.bubbleReactions;
+        // and the photos' images
+        if (swipe.photoImages) msg.photoImages = swipe.photoImages;
+        else delete msg.photoImages;
     }
 
     /**
@@ -4535,20 +4539,7 @@
                 { cropAspect: 1, cropImage: await readFileAsDataUrl(file) });
             if (!cropped) return;
             const image = await shrinkImageDataUrl(cropped, AVATAR_SIZE);
-            const response = await fetch('/api/images/upload', {
-                method: 'POST',
-                headers: context.getRequestHeaders(),
-                body: JSON.stringify({
-                    image: image.split(',')[1],
-                    format: 'jpeg',
-                    ch_name: char.name,
-                    filename: `echotext-avatar-${Date.now()}`,
-                }),
-            });
-            if (!response.ok) throw new Error(`upload failed (${response.status})`);
-            const { path } = await response.json();
-            if (!path) throw new Error('no path returned');
-            setCustomCharAvatar(charKey, path);
+            setCustomCharAvatar(charKey, await uploadUserImage(image, char.name, 'echotext-avatar'));
         } catch (err) {
             error('Could not change the avatar:', err);
             toastr.error(`Could not change the avatar: ${err.message}`, 'Echogram');
@@ -4609,12 +4600,104 @@
         if (panelOpen) updatePanelStatusRow();
     }
 
+    /** Saves a JPEG data URL to the user's images, in the character's folder; resolves with its path (user/images/Mira/…). */
+    async function uploadUserImage(dataUrl, charName, prefix) {
+        const response = await fetch('/api/images/upload', {
+            method: 'POST',
+            headers: SillyTavern.getContext().getRequestHeaders(),
+            body: JSON.stringify({
+                image: dataUrl.split(',')[1],
+                format: 'jpeg',
+                ch_name: charName,
+                filename: `${prefix}-${Date.now()}`,
+            }),
+        });
+        if (!response.ok) throw new Error(`upload failed (${response.status})`);
+        const { path } = await response.json();
+        if (!path) throw new Error('no path returned');
+        return path;
+    }
+
     function deleteUserImage(path) {
         fetch('/api/images/delete', {
             method: 'POST',
             headers: SillyTavern.getContext().getRequestHeaders(),
             body: JSON.stringify({ path }),
-        }).catch(err => warn('Could not delete the old avatar:', err));
+        }).catch(err => warn('Could not delete an image:', err));
+    }
+
+    // ── A photo's own image ──────────────────────────────────────────────────
+    // Any photo bubble, the character's or the user's, can be given a real image from
+    // its ⋯ menu. It's saved to the user's images and kept on the message by bubble,
+    // per version as the tapbacks are (msg.photoImages: { [bubble]: { path, width,
+    // height } }). The model still gets only the description, which a tap still shows.
+    // Apart from a generated image (msg.imageAttachment), which a reply can carry too.
+
+    // A photo's longest side, in px
+    const PHOTO_SIZE = 1600;
+
+    function getPhotoImages(msg) {
+        return msg?.photoImages && typeof msg.photoImages === 'object' ? msg.photoImages : {};
+    }
+
+    /** Sets the message's photo images, on its current version too. */
+    function setPhotoImages(msg, store) {
+        const swipe = Array.isArray(msg.swipes) ? msg.swipes[msg.swipeIndex ?? 0] : null;
+        if (Object.keys(store).length) {
+            msg.photoImages = store;
+            if (swipe) swipe.photoImages = { ...store };
+        } else {
+            delete msg.photoImages;
+            if (swipe) delete swipe.photoImages;
+        }
+    }
+
+    /** Every image a message's photos have, in all its versions (to delete with it). */
+    function allPhotoImagePaths(msg) {
+        const stores = [getPhotoImages(msg), ...(Array.isArray(msg?.swipes) ? msg.swipes.map(getPhotoImages) : [])];
+        return [...new Set(stores.flatMap(store => Object.values(store).map(image => image?.path).filter(Boolean)))];
+    }
+
+    /** Picks an image for a photo bubble (replacing any it has) and saves it. */
+    async function addPhotoImage(msgIndex, partIndex) {
+        const charKey = getCharacterKey();
+        const msg = getChatHistory()[msgIndex];
+        const char = getCurrentCharacter();
+        if (!msg || !char) return;
+        // Before any await: a file dialog must open within the tap
+        const file = await pickImageFile();
+        if (!file) return;
+        try {
+            const image = await fitImageDataUrl(await readFileAsDataUrl(file), PHOTO_SIZE);
+            const path = await uploadUserImage(image.dataUrl, char.name, 'echotext-photo');
+            const history = getChatHistory();
+            // The chat changed meanwhile: the image has nowhere to go
+            if (getCharacterKey() !== charKey || history[msgIndex] !== msg) {
+                deleteUserImage(path);
+                return;
+            }
+            const previous = getPhotoImages(msg)[partIndex]?.path;
+            setPhotoImages(msg, { ...getPhotoImages(msg), [partIndex]: { path, width: image.width, height: image.height } });
+            saveChatHistory(history);
+            if (previous && previous !== path) deleteUserImage(previous);
+            if (panelOpen) renderMessages(history, true);
+        } catch (err) {
+            error('Could not add the photo:', err);
+            toastr.error(`Could not add the photo: ${err.message}`, 'Echogram');
+        }
+    }
+
+    function removePhotoImage(msgIndex, partIndex) {
+        const history = getChatHistory();
+        const msg = history[msgIndex];
+        const previous = getPhotoImages(msg)[partIndex]?.path;
+        if (!previous) return;
+        const store = { ...getPhotoImages(msg) };
+        delete store[partIndex];
+        setPhotoImages(msg, store);
+        saveChatHistory(history);
+        deleteUserImage(previous);
+        if (panelOpen) renderMessages(history, true);
     }
 
     /** Opens the file dialog for one image; resolves with it, or null if cancelled. */
@@ -4648,6 +4731,29 @@
                 canvas.width = canvas.height = side;
                 canvas.getContext('2d').drawImage(img, 0, 0, side, side);
                 resolve(canvas.toDataURL('image/jpeg', 0.9));
+            };
+            img.onerror = () => reject(new Error('could not read the image'));
+            img.src = dataUrl;
+        });
+    }
+
+    /** An image no larger than `size` px on its longest side, its shape kept, as a JPEG data URL with its size. */
+    function fitImageDataUrl(dataUrl, size) {
+        return new Promise((resolve, reject) => {
+            const img = new Image();
+            img.onload = () => {
+                const scale = Math.min(1, size / Math.max(img.naturalWidth, img.naturalHeight));
+                const width = Math.max(1, Math.round(img.naturalWidth * scale));
+                const height = Math.max(1, Math.round(img.naturalHeight * scale));
+                const canvas = document.createElement('canvas');
+                canvas.width = width;
+                canvas.height = height;
+                const g = canvas.getContext('2d');
+                // A transparent PNG goes on white, not JPEG's black
+                g.fillStyle = '#ffffff';
+                g.fillRect(0, 0, width, height);
+                g.drawImage(img, 0, 0, width, height);
+                resolve({ dataUrl: canvas.toDataURL('image/jpeg', 0.88), width, height });
             };
             img.onerror = () => reject(new Error('could not read the image'));
             img.src = dataUrl;
@@ -7043,7 +7149,7 @@
 
     function getRenderFrame(platform, ctx) {
         return JSON.stringify([platform.id, platform.features, getCharacterKey(), ctx.charName, ctx.groupChat,
-            getUserAvatarUrl(), getCharAvatarUrl()]);
+            getUserAvatarUrl(), getCharAvatarUrl(), ctx.username]);
     }
 
     /**
@@ -7058,7 +7164,7 @@
         const children = inner.children();
         const messageEls = children.filter('[data-et-role~="message"]');
         const onlyMessages = children.toArray().every(el =>
-            /(^|\s)(message|typing|image-generating)(\s|$)/.test(el.getAttribute('data-et-role') || ''));
+            /(^|\s)(message|typing|image-generating|chat-head)(\s|$)/.test(el.getAttribute('data-et-role') || ''));
         if (!onlyMessages || !messageEls.length) return false;
 
         const platform = getActivePlatform();
@@ -7077,7 +7183,9 @@
                 rebuilt.add(m.index);
             } else {
                 msgEl = jQuery(platform.templates.message(m, ctx).trim());
+                const head = children.filter('[data-et-role~="chat-head"]');
                 if (prevEl) prevEl.after(msgEl);
+                else if (head.length) head.after(msgEl);
                 else inner.prepend(msgEl);
                 decorateMessage(msgEl, m);
                 rebuilt.add(m.index);
@@ -7152,6 +7260,7 @@
         inner.empty();
         renderedViews = new Map();
         renderedFrame = frame;
+        if (platform.templates.chatHead) inner.append(platform.templates.chatHead(ctx));
         view.messages.forEach((m) => {
             inner.append(platform.templates.message(m, ctx));
             decorateMessage(inner.children().last(), m);
@@ -7233,6 +7342,16 @@
         const items = [{ id: 'copy_part', icon: 'fa-copy', label: 'Copy', cls: '' }];
         if (platformHas('reply')) items.unshift({ id: 'reply', icon: 'fa-reply', label: 'Reply', cls: '' });
         if (memorySystem && settings.memoryEnabled) items.push({ id: 'add_memory', icon: 'fa-brain', label: 'Add Memory', cls: '' });
+        // A photo bubble takes a real image (the footer menu's is the last bubble's)
+        const bubble = partIndex !== null ? partIndex : partCount - 1;
+        if (msg && platformHas('photo') && getMessageDisplayParts(msg)[bubble]?.type === 'photo') {
+            if (getPhotoImages(msg)[bubble]) {
+                items.push({ id: 'photo_add', icon: 'fa-image', label: 'Change Photo', cls: '' });
+                items.push({ id: 'photo_remove', icon: 'fa-image', label: 'Remove Photo', cls: '' });
+            } else {
+                items.push({ id: 'photo_add', icon: 'fa-image', label: 'Add Photo', cls: '' });
+            }
+        }
         if (partIndex === null) {
             items.push({ id: 'edit', icon: 'fa-pen', label: 'Edit', cls: '' });
             items.push({ id: 'regen', icon: 'fa-rotate-right', label: 'Regenerate', cls: '' });
@@ -7311,11 +7430,20 @@
                 .filter(([j]) => Number(j) !== partIndex)
                 .map(([j, ids]) => [Number(j) > partIndex ? Number(j) - 1 : Number(j), ids])));
         }
+        // So do the photos' images; the deleted bubble's goes
+        const images = getPhotoImages(msg);
+        if (Object.keys(images).length) {
+            if (images[partIndex]?.path) deleteUserImage(images[partIndex].path);
+            setPhotoImages(msg, Object.fromEntries(Object.entries(images)
+                .filter(([j]) => Number(j) !== partIndex)
+                .map(([j, image]) => [Number(j) > partIndex ? Number(j) - 1 : Number(j), image])));
+        }
         const remaining = parts.filter((part, j) => j !== partIndex
             && part.type !== 'reaction_note' && (part.type !== 'text' || part.text));
         // <react> tags aren't bubbles, so they survive deleting one
         const reactions = RichMessages.parseMessageParts(msg.mes).filter(part => part.type === 'react');
         if (!remaining.length && !reactions.length && !msg.imageAttachment) {
+            allPhotoImagePaths(msg).forEach(deleteUserImage);
             history.splice(msgIndex, 1);
             return;
         }
@@ -7458,6 +7586,14 @@
             return;
         }
 
+        if (action === 'photo_add' || action === 'photo_remove') {
+            closeAllDotMenus();
+            const bubble = partIndex !== null ? partIndex : 0;
+            if (action === 'photo_add') addPhotoImage(msgIndex, bubble);
+            else removePhotoImage(msgIndex, bubble);
+            return;
+        }
+
         if (action === 'copy_part') {
             try { navigator.clipboard.writeText(bubbleText(msg, partIndex)); } catch (e) { /* noop */ }
             closeAllDotMenus();
@@ -7474,8 +7610,10 @@
                 deleteConfirmTimer = null;
                 deleteConfirmIndex = -1;
 
-                if (wholeMessage) history.splice(msgIndex, 1);
-                else deleteMessagePart(history, msgIndex, partIndex);
+                if (wholeMessage) {
+                    allPhotoImagePaths(msg).forEach(deleteUserImage);
+                    history.splice(msgIndex, 1);
+                } else deleteMessagePart(history, msgIndex, partIndex);
 
                 saveChatHistory(history);
                 closeAllDotMenus();
