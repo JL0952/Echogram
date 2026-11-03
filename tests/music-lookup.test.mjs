@@ -7,7 +7,7 @@ globalThis.window = {};
 for (const file of ['music-lookup.js', 'rich-messages.js', 'features.js', 'chat-view-model.js']) {
     new Function(readFileSync(new URL(`../lib/${file}`, import.meta.url), 'utf8'))();
 }
-const { createMusicLookup, coverColors, songKey, matchingSong } = window.EchoTextMusicLookup;
+const { createMusicLookup, coverColors, songKey, matchingSong, namedArtists } = window.EchoTextMusicLookup;
 
 const ART = 'https://is1-ssl.mzstatic.com/image/thumb/Music/v4/aa/cover.jpg/100x100bb.jpg';
 const song = (trackName, artistName = 'x') => ({ trackName, artistName, artworkUrl100: ART, previewUrl: 'https://audio-ssl.itunes.apple.com/preview.m4a' });
@@ -15,10 +15,11 @@ const song = (trackName, artistName = 'x') => ({ trackName, artistName, artworkU
 const hit = term => [song(term.split(' ')[0])];
 
 /**
- * A lookup on a fake network and clock. `answers` maps a store ('hk', 'us') to what it
- * answers: results (an array, or a function of the search term), 'fail' (the request
- * errors) or 'hang' (no answer until the timeout aborts it). Sleeping moves the clock
- * instead of waiting.
+ * A lookup on a fake network and clock. `answers` maps a store ('hk', 'us') to what its
+ * song search answers, and 'hk:musicArtist' or 'us:lookup' to what its artist search or
+ * artist lookup answers (nothing by default): results (an array, or a function of the
+ * search term or artist id), 'fail' (the request errors) or 'hang' (no answer until the
+ * timeout aborts it). Sleeping moves the clock instead of waiting.
  */
 function setup(answers = {}, { cache = {}, timeoutMs = 20 } = {}) {
     const calls = [];
@@ -33,14 +34,17 @@ function setup(answers = {}, { cache = {}, timeoutMs = 20 } = {}) {
         gapMs: 3000,
         measureCover: async () => ({ r: 150, g: 138, b: 126 }),
         fetch: (url, { signal }) => {
-            const country = new URL(url).searchParams.get('country');
-            calls.push({ country, term: new URL(url).searchParams.get('term'), at: clock });
-            const answer = answers[country] ?? [];
+            const params = new URL(url).searchParams;
+            const country = params.get('country');
+            const kind = new URL(url).pathname === '/lookup' ? 'lookup' : params.get('entity');
+            const term = params.get('term') ?? params.get('id');
+            calls.push({ country, kind, term, at: clock });
+            const answer = answers[`${country}:${kind}`] ?? (kind === 'song' ? answers[country] : null) ?? [];
             if (answer === 'fail') return Promise.reject(new TypeError('Failed to fetch'));
             if (answer === 'hang') {
                 return new Promise((resolve, reject) => signal.addEventListener('abort', () => reject(new Error('aborted'))));
             }
-            const results = typeof answer === 'function' ? answer(new URL(url).searchParams.get('term')) : answer;
+            const results = typeof answer === 'function' ? answer(term) : answer;
             return Promise.resolve({ ok: true, json: async () => ({ results }) });
         },
     });
@@ -73,14 +77,15 @@ test('the US store is asked only when Hong Kong has no match', async () => {
 test('a song neither store has is kept as missing and asked again after a week', async () => {
     const { lookup, calls, cache, advance } = setup({ hk: [], us: [] });
     assert.equal(await lookup.request('Made Up Song', 'Nobody'), false);
-    assert.equal(calls.length, 2);
+    // Both stores' song search, then their artist search, which finds no artist
+    assert.deepEqual(calls.map(c => [c.country, c.kind]), [['hk', 'song'], ['us', 'song'], ['hk', 'musicArtist'], ['us', 'musicArtist']]);
     assert.equal(lookup.cached('Made Up Song', 'Nobody'), null);
     assert.ok(cache[songKey('Made Up Song', 'Nobody')]);
     assert.equal(await lookup.request('Made Up Song', 'Nobody'), false);
-    assert.equal(calls.length, 2);
+    assert.equal(calls.length, 4);
     advance(8 * 24 * 60 * 60 * 1000);
     await lookup.request('Made Up Song', 'Nobody');
-    assert.equal(calls.length, 4);
+    assert.equal(calls.length, 8);
 });
 
 test('a failed request keeps nothing and waits longer before each next try', async () => {
@@ -202,8 +207,48 @@ test('a made-up song finds no cover in either store and is kept as missing', asy
     const unrelated = () => [song('Something Else', 'Someone')];
     const { lookup, calls, cache } = setup({ hk: unrelated, us: unrelated });
     assert.equal(await lookup.request('Song A', 'Band B'), false);
-    assert.deepEqual(calls.map(c => c.country), ['hk', 'us']);
+    assert.deepEqual(calls.map(c => c.country), ['hk', 'us', 'hk', 'us']);
     assert.deepEqual(Object.keys(cache[songKey('Song A', 'Band B')]), ['at']);
+});
+
+test('a song the search leaves out is found among its artist\'s songs', async () => {
+    const bones = { artistId: 1300793014, artistName: 'BONES' };
+    const lyson = { artistId: 979934616, artistName: 'Lyson' };
+    const { lookup, calls } = setup({
+        hk: [song('Greatness in My Bones', 'Cali Dubb')],
+        us: [],
+        'hk:musicArtist': term => (term === 'BONES' ? [{ artistId: 1527334044, artistName: 'Gentle Bones' }, bones] : [lyson]),
+        // Hong Kong's 200 don't hold it, the US store's do; Tonic is only among Lyson's
+        'hk:lookup': id => (id === '1300793014' ? [bones, song('AirplaneMode', 'BONES')] : [lyson, song('Tonic', 'BONES & Lyson')]),
+        'us:lookup': id => (id === '1300793014' ? [bones, song('Jansport', 'BONES')] : []),
+    });
+    assert.equal(await lookup.request('Jansport', 'BONES and Lyson'), true);
+    assert.deepEqual(calls.map(c => [c.country, c.kind, c.term]), [
+        ['hk', 'song', 'Jansport BONES and Lyson'], ['us', 'song', 'Jansport BONES and Lyson'],
+        ['hk', 'musicArtist', 'BONES'], ['hk', 'lookup', '1300793014'], ['us', 'lookup', '1300793014'],
+    ]);
+    assert.ok(lookup.cached('Jansport', 'BONES and Lyson').cover);
+    // Then Lyson, when BONES' songs don't hold it
+    calls.length = 0;
+    assert.equal(await lookup.request('Tonic', 'BONES and Lyson'), true);
+    assert.deepEqual(calls.slice(2).map(c => [c.country, c.kind, c.term]), [
+        ['hk', 'musicArtist', 'BONES'], ['hk', 'lookup', '1300793014'], ['us', 'lookup', '1300793014'],
+        ['hk', 'musicArtist', 'Lyson'], ['hk', 'lookup', '979934616'],
+    ]);
+    // The artist's other songs aren't taken for one they don't have
+    assert.equal(await lookup.request('Not Theirs', 'BONES'), false);
+});
+
+test('the artists named, at most three, and none without an artist', async () => {
+    assert.deepEqual(namedArtists('BONES and Lyson'), ['BONES', 'Lyson']);
+    assert.deepEqual(namedArtists('Full Tac, Lil Mariko & Rico Nasty'), ['Full Tac', 'Lil Mariko', 'Rico Nasty']);
+    assert.deepEqual(namedArtists('Lil Mariko feat. Zheani'), ['Lil Mariko', 'Zheani']);
+    assert.deepEqual(namedArtists('Lil Nas X'), ['Lil Nas X']);
+    assert.deepEqual(namedArtists('周杰伦、费玉清'), ['周杰伦', '费玉清']);
+    assert.deepEqual(namedArtists('A, B, C, D'), ['A', 'B', 'C']);
+    const { lookup, calls } = setup({ hk: [], us: [] });
+    assert.equal(await lookup.request('Lemon', ''), false);
+    assert.deepEqual(calls.map(c => c.kind), ['song', 'song']);
 });
 
 test('the view model gives a song its cover and colours once found', () => {

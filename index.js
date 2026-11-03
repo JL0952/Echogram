@@ -7368,9 +7368,10 @@
             refreshMessages(history);
         });
 
-        // Also save on Enter (without shift), cancel on Escape
+        // Also save on Enter (without shift), cancel on Escape. A phone's keyboard has
+        // no Shift+Enter, so there Enter makes a new line and only Save saves
         textEl.on('keydown.edit', (e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
+            if (e.key === 'Enter' && !e.shiftKey && !isMobileDevice()) {
                 e.preventDefault();
                 toolbar.find('[data-et-role="edit-save"]').trigger('click');
             } else if (e.key === 'Escape') {
