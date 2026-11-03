@@ -13,13 +13,14 @@
     --ig-text: #ffffff;
     --ig-muted: #8e8e93;
     --ig-in: #262626;
-    /* Your bubbles share one gradient over the visible list, pink at the top through
-       purple to violet at the bottom: each
-       shows its own slice, and they shift as the chat scrolls (as Instagram's do; sized
-       and placed from --et-fill-h / --et-fill-y, which index.js keeps up to date;
-       without them each bubble shows the whole gradient) */
-    --ig-out: linear-gradient(to bottom, #ec4899 0%, #a855f7 55%, #7c3aed 100%);
-    --ig-accent: linear-gradient(135deg, #a855f7 0%, #ec4899 100%);
+    /* Your bubbles share one gradient over the visible list, Instagram's violet at the
+       top turning blue-violet by the middle and staying so to the bottom (stops measured
+       on the app's own bubbles): each shows its own slice, and they shift as the chat
+       scrolls (as Instagram's do; sized and placed from --et-fill-h / --et-fill-y, which
+       index.js keeps up to date; without them each bubble shows the whole gradient) */
+    --ig-out: linear-gradient(to bottom, #a307ff 0%, #9013ff 24%, #6a2fff 58%, #5f38ff 72%, #5a3cff 100%);
+    /* The camera button's flat violet, also the map pin's and a coverless song's */
+    --ig-accent: #743bf2;
     --ig-pill: #1c1c1e;
     --ig-pill-border: #2c2c2e;
     --ig-quote: #1a1a1a;
@@ -216,7 +217,8 @@
     line-height: 1.3;
 }
 
-[data-platform="instagram"] .et-status-chip-emotion .et-status-main {
+[data-platform="instagram"] .et-status-chip-emotion .et-status-main,
+[data-platform="instagram"] .et-status-chip-username .et-status-main {
     color: var(--ig-muted);
     font-weight: 400;
     text-shadow: none;
@@ -663,6 +665,12 @@
     font-weight: 700;
 }
 
+[data-platform="instagram"] .ig-profile-handle {
+    margin-top: 2px;
+    color: var(--ig-muted);
+    font-size: 14px;
+}
+
 [data-platform="instagram"] .ig-profile-line {
     margin-top: 6px;
     color: var(--ig-muted);
@@ -835,7 +843,7 @@
 
 [data-platform="instagram"] .ig-row-me .ig-bubble {
     color: #ffffff;
-    background: var(--ig-out) no-repeat #a855f7;
+    background: var(--ig-out) no-repeat #6a2fff;
     background-size: 100% var(--et-fill-h, 100%);
     background-position: 0 calc(-1 * var(--et-fill-y, 0px));
 }

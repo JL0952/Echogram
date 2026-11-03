@@ -927,7 +927,11 @@
 
         row.addClass('et-panel-status-clickable');
         row.attr('title', 'Open emotion details');
-        content.html(emotionSystem ? emotionSystem.buildStatusRowHtml() : '');
+        // The username in the mood's place (still opening the emotion details)
+        const username = settings.showUsername && getActivePlatform().username ? getCharacterUsername() : '';
+        content.html(username
+            ? `<span class="et-status-chip et-status-chip-username"><span class="et-status-main">${escapeHtml(username)}</span></span>`
+            : emotionSystem ? emotionSystem.buildStatusRowHtml() : '');
         if (emotionSystem) emotionSystem.refreshEmotionPopup();
     }
 
@@ -4476,6 +4480,12 @@
         if (getCharAvatarUrl()) items.push(['view', 'fa-expand', 'View Avatar']);
         items.push(['change', 'fa-image', 'Change Avatar']);
         if (getCustomCharAvatarUrl()) items.push(['reset', 'fa-rotate-left', 'Use Card Avatar']);
+        if (getActivePlatform().username) {
+            items.push(['username', 'fa-at', 'Set Username']);
+            if (getCharacterUsername()) {
+                items.push(settings.showUsername ? ['show-mood', 'fa-face-smile', 'Show Mood'] : ['show-username', 'fa-id-badge', 'Show Username']);
+            }
+        }
         const menu = jQuery(`<div class="et-dots-menu et-avatar-menu">${items.map(([id, icon, label]) =>
             `<button class="et-dots-item" data-avatar="${id}"><i class="fa-solid ${icon}"></i><span>${label}</span></button>`).join('')}</div>`);
         jQuery('#et-panel').append(menu);
@@ -4502,6 +4512,8 @@
             closeAllDotMenus();
             if (choice === 'view') openAvatarLightbox();
             else if (choice === 'change') changeCharacterAvatar();
+            else if (choice === 'username') editCharacterUsername();
+            else if (choice === 'show-username' || choice === 'show-mood') setShowUsername(choice === 'show-username');
             else setCustomCharAvatar(getCharacterKey(), null);
         });
     }
@@ -4555,6 +4567,46 @@
         if (!panelOpen) return;
         jQuery('#et-char-avatar-wrap').replaceWith(buildAvatarHtml(getCharacterName(), '', 'et-char-avatar-wrap'));
         renderMessages(getChatHistory(), true);
+    }
+
+    // ── Usernames ────────────────────────────────────────────────────────────
+    // On a platform that shows one (Instagram), a character's username is set from the
+    // avatar menu and kept in settings.usernameByCharacter; one switch for all
+    // characters (settings.showUsername) puts it under the header's name in the mood's
+    // place. The profile of an empty chat shows it either way.
+
+    /** The current character's username, '' when none is set. */
+    function getCharacterUsername() {
+        const key = getCharacterKey();
+        return (key && settings.usernameByCharacter?.[key]) || '';
+    }
+
+    /** A username as Instagram takes one: no @, no spaces, at most 30 characters. */
+    function cleanUsername(value) {
+        return String(value ?? '').trim().replace(/^@+/, '').replace(/\s+/g, '').slice(0, 30);
+    }
+
+    async function editCharacterUsername() {
+        const charKey = getCharacterKey();
+        if (!charKey) return;
+        const context = SillyTavern.getContext();
+        const value = await context.callGenericPopup('Username', context.POPUP_TYPE.INPUT, getCharacterUsername());
+        // false or null: cancelled
+        if (typeof value !== 'string') return;
+        const username = cleanUsername(value);
+        settings.usernameByCharacter = settings.usernameByCharacter || {};
+        if (username) settings.usernameByCharacter[charKey] = username;
+        else delete settings.usernameByCharacter[charKey];
+        saveSettings();
+        if (!panelOpen) return;
+        updatePanelStatusRow();
+        renderMessages(getChatHistory(), true);
+    }
+
+    function setShowUsername(show) {
+        settings.showUsername = show;
+        saveSettings();
+        if (panelOpen) updatePanelStatusRow();
     }
 
     function deleteUserImage(path) {
@@ -6818,7 +6870,10 @@
         if (input.data('et-text-placeholder') !== undefined && input.data('et-compose-placeholder') === undefined) {
             setInputPlaceholder(input.data('et-text-placeholder'));
         }
-        if (panelOpen) renderMessages(getChatHistory(), true);
+        if (panelOpen) {
+            updatePanelStatusRow();
+            renderMessages(getChatHistory(), true);
+        }
     }
 
     // The view of each message on screen, by index, so refreshMessages() replaces only what changed
@@ -6883,6 +6938,7 @@
         const { DOMPurify } = SillyTavern.libs;
         return {
             charName: getCharacterName(),
+            username: getActivePlatform().username ? getCharacterUsername() : '',
             // Bubbles whose tapback is new: they make room for it and it pops in (replaceMessageElement)
             arrivingTapbacks: [],
             has: platformHas,

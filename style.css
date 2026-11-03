@@ -2805,6 +2805,12 @@ html.et-bg-light {
     pointer-events: none;
 }
 
+/* The avatar's menu widens to its longest label ("Show Username") rather than wrapping it */
+.et-avatar-menu {
+    width: max-content;
+    min-width: 160px;
+}
+
 .et-dots-menu.et-dots-menu-open {
     opacity: 1;
     transform: scale(1) translateY(0);

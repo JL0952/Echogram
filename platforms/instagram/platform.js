@@ -255,13 +255,14 @@
 
     /**
      * An empty chat shows the other side's profile, as Instagram opens a new
-     * conversation: the avatar large, the name, "You follow each other on Instagram".
+     * conversation: the avatar large, the name, the username when one is set
+     * ("teresalai_ · Instagram"), "You follow each other on Instagram".
      */
     function emptyChat(ctx) {
         const m = { isUser: false, senderName: ctx.charName };
         const a = ctx.avatar(m);
         const img = a.url ? `<img src="${a.url}" alt="" onerror="this.remove()">` : '';
-        return `<div class="ig-profile"><div class="ig-profile-avatar" style="background:${a.color}"><span>${ctx.escapeHtml(a.initial)}</span>${img}</div><div class="ig-profile-name">${ctx.escapeHtml(ctx.charName)}</div><div class="ig-profile-line">You follow each other on Instagram</div></div>`;
+        return `<div class="ig-profile"><div class="ig-profile-avatar" style="background:${a.color}"><span>${ctx.escapeHtml(a.initial)}</span>${img}</div><div class="ig-profile-name">${ctx.escapeHtml(ctx.charName)}</div>${ctx.username ? `<div class="ig-profile-handle">${ctx.escapeHtml(ctx.username)} · Instagram</div>` : ''}<div class="ig-profile-line">You follow each other on Instagram</div></div>`;
     }
 
     /** The character is typing: three dots in a received bubble beside the avatar (fakechat-studio TypingIndicator). */
@@ -298,6 +299,8 @@
         voiceButton: { placeholder: 'Voice message…' },
         // The input says this, whoever you're texting
         inputPlaceholder: 'Message...',
+        // A character can have a username (set from the avatar menu), shown under the header's name and on the profile
+        username: true,
         templates: {
             message,
             part,
