@@ -88,6 +88,13 @@ test('a song neither store has is kept as missing and asked again after a week',
     assert.equal(calls.length, 8);
 });
 
+test('a song kept as missing by an older search is asked again at once', async () => {
+    const cache = { [songKey('Jansport', 'BONES')]: { at: 1_000_000 } };
+    const { lookup, calls } = setup({ hk: hit }, { cache });
+    assert.equal(await lookup.request('Jansport', 'BONES'), true);
+    assert.equal(calls.length, 1);
+});
+
 test('a failed request keeps nothing and waits longer before each next try', async () => {
     const { lookup, calls, cache, advance } = setup({ hk: 'fail' });
     assert.equal(await lookup.request('晴天', '周杰伦'), false);
@@ -208,7 +215,7 @@ test('a made-up song finds no cover in either store and is kept as missing', asy
     const { lookup, calls, cache } = setup({ hk: unrelated, us: unrelated });
     assert.equal(await lookup.request('Song A', 'Band B'), false);
     assert.deepEqual(calls.map(c => c.country), ['hk', 'us', 'hk', 'us']);
-    assert.deepEqual(Object.keys(cache[songKey('Song A', 'Band B')]), ['at']);
+    assert.deepEqual(Object.keys(cache[songKey('Song A', 'Band B')]), ['at', 'v']);
 });
 
 test('a song the search leaves out is found among its artist\'s songs', async () => {
