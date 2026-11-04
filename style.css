@@ -4503,7 +4503,8 @@ html.et-bg-light {
     cursor: not-allowed;
 }
 
-.et-field-off input {
+.et-field-off input,
+.et-field-off button {
     pointer-events: none;
 }
 
@@ -10512,6 +10513,53 @@ textarea.et-mem-save-snippet-edit::placeholder {
     color: var(--et-surface-muted);
     white-space: nowrap;
     min-width: 76px;
+}
+
+/* When ignored: a temperament a row, its first wait and growth (Settings → Proactive Messages) */
+.et-temperament-table {
+    width: 100%;
+    margin-top: 8px;
+    border-collapse: collapse;
+    font-size: 0.85rem;
+}
+
+.et-temperament-table th {
+    padding: 2px 4px;
+    text-align: left;
+    font-weight: 500;
+    opacity: 0.7;
+}
+
+.et-temperament-table td {
+    padding: 3px 4px;
+    vertical-align: middle;
+}
+
+.et-temperament-table input {
+    box-sizing: border-box;
+    width: 4.2em;
+    padding: 4px 6px;
+}
+
+.et-temperament-range {
+    white-space: nowrap;
+}
+
+.et-temperament-range span {
+    margin: 0 3px;
+    opacity: 0.6;
+}
+
+.et-temperament-reset {
+    border: none;
+    background: none;
+    color: inherit;
+    opacity: 0.7;
+    cursor: pointer;
+}
+
+.et-temperament-reset:hover {
+    opacity: 1;
 }
 
 .et-ctx-wi-field-input {

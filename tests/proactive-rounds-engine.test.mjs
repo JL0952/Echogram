@@ -106,6 +106,17 @@ test('her reply starts the sequence: each text after the one before by the base 
     assert.equal(state().seq.next - clock, 6.5 * 2 ** 6 * MIN);
 }));
 
+test('the temperament\'s two numbers as set in the settings', fixedRandom(async () => {
+    clock = T0;
+    const { settings, state, talk, run } = setup({ temperament: 'normal' });
+    settings.proactiveTemperamentParams = { normal: { baseMinutes: [10, 20], growth: 5 } };
+    talk();
+    assert.equal(state().seq.next, clock + 15 * MIN);
+    clock = state().seq.next;
+    await run();
+    assert.equal(state().seq.next, clock + 75 * MIN);
+}));
+
 test('you text: the sequence starts over from her reply, at the base wait', fixedRandom(async () => {
     clock = T0;
     const { state, talk, run } = setup({ temperament: 'normal' });

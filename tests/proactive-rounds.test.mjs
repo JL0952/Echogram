@@ -40,6 +40,19 @@ test('the wait before her next text: the base wait times the growth once per una
     for (const t of R.TEMPERAMENTS) assert.deepEqual(Object.keys(t).sort(), ['baseMinutes', 'growth', 'id', 'label', 'partedChance', 'partedMinutes']);
 });
 
+test('the two numbers as you set them: kept in range, the rest of the temperament as it was', () => {
+    const own = { normal: { baseMinutes: [5, 10], growth: 2 } };
+    assert.deepEqual(R.temperamentOf('normal', own).baseMinutes, [5, 10]);
+    assert.equal(R.temperamentOf('normal', own).growth, 2);
+    assert.equal(R.temperamentOf('normal', own).partedChance, 0.7);
+    assert.equal(R.temperamentOf('clingy', own).growth, 2);
+    assert.equal(R.waitMs({ temperament: 'normal', overrides: own, unanswered: 2, random: () => 0.5 }) / MIN, 30);
+    // Out of range: the start at least 0.1, the end no earlier than the start, growth at least 1; what's missing, the default
+    assert.deepEqual(R.cleanParams({ baseMinutes: [-3, -1], growth: 0.5 }), { baseMinutes: [0.1, 0.1], growth: 1 });
+    assert.deepEqual(R.cleanParams({ baseMinutes: [30, 10] }), { baseMinutes: [30, 30], growth: 3 });
+    assert.deepEqual(R.cleanParams({ baseMinutes: ['', 'x'], growth: '' }), { baseMinutes: [20, 60], growth: 3 });
+});
+
 test('what the model is told for each of her texts: how many are unanswered, the time and the schedule\'s line, a fresh decision, what may be on her mind', () => {
     const t = (h, m = 0) => new Date(2026, 9, 31, h, m).getTime();
     const first = R.outreachInstruction({ charName: 'Mira', userName: 'Qi', unanswered: 1, now: t(20, 6), lastAt: t(20), doing: '18:00–21:00 逛街 (城里)',

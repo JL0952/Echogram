@@ -592,7 +592,7 @@
         window._etSetChatSummary = r.setChatSummary;
         // Once: it binds its handlers on the document
         const sm = settingsModal || (settingsModal = window.EchoTextSettingsModal.createSettingsModal({ getSettings: () => env.settings, saveSettings: () => {},
-            buildThemeDropdownHtml: () => '', buildFontDropdownHtml: () => '' }));
+            buildThemeDropdownHtml: () => '', buildFontDropdownHtml: () => '', refreshProactiveInsights: () => {} }));
         const host = document.createElement('div');
         host.id = 'settings-host';
         host.innerHTML = sm.buildSettingsModalHtml();
@@ -2047,6 +2047,46 @@
         Controls.syncDependentControls(s);
         res.lineNeedsBoth = line().style.display === 'none';
         Object.assign(s, { ctxSTMessages: false, dailyLifeEnabled: false });
+        // When ignored: the daily limit (at least 1, 20 when empty) and each temperament's two numbers, reset where changed
+        const limit = host.querySelector('#et_proactive_daily_limit');
+        const setLimit = v => { limit.value = v; jQuery(limit).trigger('change'); };
+        delete s.proactiveDailyLimit;
+        delete s.proactiveTemperamentParams;
+        Controls.syncDependentControls(s);
+        res.limitDefault = limit.value === '20';
+        setLimit('0');
+        res.limitAtLeastOne = s.proactiveDailyLimit === 1 && limit.value === '1';
+        setLimit('');
+        res.limitEmpty = s.proactiveDailyLimit === 20;
+        setLimit('35');
+        res.limitKept = s.proactiveDailyLimit === 35;
+        const row = id => host.querySelector(`#et_temperament_table tr[data-temperament="${id}"]`);
+        const cell = (id, f) => row(id).querySelector(`[data-field="${f}"]`);
+        const put = (id, f, v) => { cell(id, f).value = v; jQuery(cell(id, f)).trigger('change'); };
+        res.fourRows = host.querySelectorAll('#et_temperament_table tbody tr').length === 4
+            && cell('normal', 'lo').value === '20' && cell('normal', 'hi').value === '60' && cell('normal', 'growth').value === '3';
+        res.noResetAtFirst = !host.querySelector('[data-temperament-reset]') && !Object.keys(s.proactiveTemperamentParams || {}).length;
+        put('normal', 'growth', '5');
+        res.changedKept = JSON.stringify(s.proactiveTemperamentParams) === JSON.stringify({ normal: { baseMinutes: [20, 60], growth: 5 } })
+            && !!row('normal').querySelector('[data-temperament-reset]') && !row('clingy').querySelector('[data-temperament-reset]');
+        put('normal', 'growth', '3');
+        res.backToDefaultDropped = !('normal' in s.proactiveTemperamentParams) && !row('normal').querySelector('[data-temperament-reset]');
+        put('clingy', 'lo', '30');
+        res.rangeFixed = cell('clingy', 'lo').value === '30' && cell('clingy', 'hi').value === '30';
+        put('clingy', 'growth', '0.2');
+        res.growthAtLeastOne = s.proactiveTemperamentParams.clingy.growth === 1 && cell('clingy', 'growth').value === '1';
+        row('clingy').querySelector('[data-temperament-reset]').click();
+        res.resetBack = !('clingy' in s.proactiveTemperamentParams) && cell('clingy', 'lo').value === '3' && cell('clingy', 'growth').value === '2';
+        put('aloof', 'growth', '6');
+        s.proactiveMessagingEnabled = false;
+        Controls.syncDependentControls(s);
+        res.offWithProactive = limit.disabled && [...host.querySelectorAll('#et_temperament_table input, #et_temperament_table button')].every(e => e.disabled)
+            && Controls.controlNeeded(field('et_proactive_daily_limit')) === 'Proactive';
+        s.proactiveMessagingEnabled = true;
+        Controls.syncDependentControls(s);
+        res.onAgain = !limit.disabled && !row('aloof').querySelector('[data-temperament-reset]').disabled;
+        delete s.proactiveDailyLimit;
+        delete s.proactiveTemperamentParams;
         host.remove();
         res.errors = errors.slice();
         res.ok = Object.values(res).filter(v => typeof v === 'boolean').every(Boolean) && !errors.length;
