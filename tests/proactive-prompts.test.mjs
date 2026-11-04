@@ -20,7 +20,8 @@ function proactive(features) {
     });
 }
 const templates = proactive([]).getDefaultProactiveConfigForCharacter({}).triggerTemplates;
-const turn = (features, type, prompt = templates[type]) => proactive(features).buildTriggerTurnText({ type, prompt }, 'Mira');
+// What a text on a topic is offered to send with it, and the reply format (lib/proactive-messaging.js writeOutreach)
+const turn = (features, type) => { const p = proactive(features); return [p.mediaHint(type), p.replyFormat('Mira')].filter(Boolean).join(' '); };
 
 const TRIGGERS = ['checkin', 'dormancy_break', 'late_night', 'morning_wave', 'lunch_nudge', 'evening_winddown',
     'weekend_ping', 'affection_reciprocation', 'repair_attempt', 'curiosity_ping', 'anxiety_reassurance', 'celebration_nudge',
@@ -54,12 +55,10 @@ test('templates read well once exact times are taken out', () => {
     }
 });
 
-test('a trigger turn offers its media when the platform has them', () => {
+test('a topic offers its media when the platform has them', () => {
     assert.equal(turn(WECHAT, 'commute_ping'),
-        '[Instruction for this turn — not a message from Me; never quote or answer it: '
-        + 'It is {{time}} on {{weekday}} — morning or evening commute time. Text {{user}} from the commute — traffic, transit, people-watching, or just boredom.'
-        + ' If it feels natural, send a <photo> of the view on the way with it, or instead of text.'
-        + ' Reply only with what Mira sends now, 3 texts at most, in the usual format: text messages, plus a photo, a voice message, a file, a link or a song when one fits.]');
+        'If it feels natural, send a <photo> of the view on the way with it, or instead of text.'
+        + ' Reply only with what Mira sends now, 3 texts at most, in the usual format: text messages, plus a photo, a voice message, a file, a link or a song when one fits.');
     assert.match(turn(ECHOTEXT, 'song_stuck'), /send a <voice> message humming or singing a bit of it or the song as <music> with it/);
     assert.match(turn(['voice'], 'song_stuck'), /send a <voice> message humming or singing a bit of it with it/);
     assert.match(turn(WECHAT, 'random_thought'), /send a <photo> of what sparked it or a <link> with it/);
@@ -69,9 +68,9 @@ test('a trigger turn offers its media when the platform has them', () => {
 test('media the platform lacks are never offered', () => {
     const plain = turn(['transfer'], 'commute_ping');
     assert.doesNotMatch(plain, /photo|voice|location|link|file|music|song/);
-    assert.match(plain, /Reply only with the text message\(s\) Mira sends now, 3 at most, in the usual format\.\]$/);
+    assert.match(plain, /Reply only with the text message\(s\) Mira sends now, 3 at most, in the usual format\.$/);
     assert.doesNotMatch(turn(['photo'], 'song_stuck'), /voice/);
-    assert.match(turn(['photo'], 'random_thought'), /send a <photo> of what sparked it with it, or instead of text\. Reply only with what Mira sends now, 3 texts at most, in the usual format: text messages, plus a photo when one fits\.\]$/);
+    assert.match(turn(['photo'], 'random_thought'), /send a <photo> of what sparked it with it, or instead of text\. Reply only with what Mira sends now, 3 texts at most, in the usual format: text messages, plus a photo when one fits\.$/);
 });
 
 test('triggers without a media idea still allow any media, but a place', () => {
@@ -83,8 +82,8 @@ test('triggers without a media idea still allow any media, but a place', () => {
 
 test('a place only on the topics of being out, and only when they are out or on their way', () => {
     const out = /or a <location> when you're out or on your way somewhere \(never when you're home\) with it/;
-    for (const type of ['block_change', 'life_event', 'lunch_nudge', 'weekend_ping', 'post_work']) assert.match(turn(WECHAT, type, 'x.'), out, type);
-    for (const type of ['random_thought', 'craving_share', 'commute_ping', 'checkin']) assert.doesNotMatch(turn(WECHAT, type, 'x.'), /location/, type);
+    for (const type of ['block_change', 'life_event', 'lunch_nudge', 'weekend_ping', 'post_work']) assert.match(turn(WECHAT, type), out, type);
+    for (const type of ['random_thought', 'craving_share', 'commute_ping', 'checkin']) assert.doesNotMatch(turn(WECHAT, type), /location/, type);
     // A platform without places: none
     assert.doesNotMatch(turn(['photo'], 'lunch_nudge'), /location/);
 });

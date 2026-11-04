@@ -21,75 +21,45 @@ test('four temperaments, Normal by default; the Big Five suggest one, never Obse
     assert.equal(R.defaultTemperament(undefined), 'normal');
 });
 
-test('a round: the first wait, then each one the last times the growth', () => {
-    // random 0: the shortest first wait, waits shrunk by a fifth
-    assert.deepEqual(minutesAfter(R.planRound({ temperament: 'normal', startAt: T0, random: fixed(0) })), [20, 68]);
-    assert.deepEqual(minutesAfter(R.planRound({ temperament: 'clingy', startAt: T0, random: fixed(0) })), [3, 7.8, 17.4, 36.6]);
-    // random 0.5: the middle of each range, no jitter
-    assert.deepEqual(minutesAfter(R.planRound({ temperament: 'clingy', startAt: T0, random: fixed(0.5) })), [6.5, 19.5, 45.5, 97.5]);
-    const obsessed = R.planRound({ temperament: 'obsessed', startAt: T0, random: fixed(0.5) });
-    assert.equal(obsessed.length, 10);
-    assert.equal(minutesAfter(obsessed)[0], 1.3);
-    // Waits only grow; never closer than 30 seconds
-    for (let i = 1; i < obsessed.length; i++) assert.ok(obsessed[i] - obsessed[i - 1] >= R.MIN_GAP_MS);
-    // A later obsessed round starts hours on, then the quick waits again
-    const later = minutesAfter(R.planRound({ temperament: 'obsessed', startAt: T0, random: fixed(0.5), firstHours: [2, 4] }));
-    assert.equal(later[0], 180);
-    assert.ok(later[1] - later[0] < 5);
+test('the wait before her next text: the base wait times the growth once per unanswered one, the feelings stretching it', () => {
+    // random 0.5: the middle of the base, no jitter
+    const minutes = (temperament, unanswered, pace = 1) => R.waitMs({ temperament, unanswered, pace, random: fixed(0.5) }) / MIN;
+    assert.deepEqual([0, 1, 2, 3].map(n => minutes('normal', n)), [40, 120, 360, 1080]);
+    assert.deepEqual([0, 1, 2, 3].map(n => minutes('clingy', n)), [6.5, 13, 26, 52]);
+    assert.deepEqual([0, 1, 2].map(n => minutes('aloof', n)), [120, 480, 1920]);
+    assert.equal(minutes('obsessed', 0), 1.25);
+    assert.ok(Math.abs(minutes('obsessed', 4) - 1.25 * 1.5 ** 4) < 0.001);
+    // The feelings' pace
+    assert.equal(minutes('normal', 0, 1.4), 56);
+    // random 0 and 1: the base's ends, a fifth either way
+    assert.equal(R.waitMs({ temperament: 'normal', random: fixed(0) }) / MIN, 16);
+    assert.equal(R.waitMs({ temperament: 'normal', random: fixed(0.999999) }) / MIN > 71, true);
+    // Never closer than 30 seconds
+    assert.equal(R.waitMs({ temperament: 'obsessed', pace: 0.1, random: fixed(0) }), R.MIN_GAP_MS);
+    // Two numbers a temperament: nothing else
+    for (const t of R.TEMPERAMENTS) assert.deepEqual(Object.keys(t).sort(), ['baseMinutes', 'growth', 'id', 'label', 'partedChance', 'partedMinutes']);
 });
 
-test('aloof: one text, or none at all', () => {
-    assert.deepEqual(R.planRound({ temperament: 'aloof', startAt: T0, random: fixed(0.1) }), []);
-    assert.deepEqual(minutesAfter(R.planRound({ temperament: 'aloof', startAt: T0, random: fixed(0.5) })), [120]);
-});
-
-test('the conversation was open: you texted within half an hour before her last text', () => {
-    const at = m => T0 + m * MIN;
-    assert.equal(R.isConversationOpen([{ is_user: true, send_date: at(0) }, { is_user: false, send_date: at(1) }]), true);
-    assert.equal(R.isConversationOpen([{ is_user: true, send_date: at(0) }, { is_user: false, send_date: at(29) }, { is_user: false, send_date: at(30) }]), true);
-    assert.equal(R.isConversationOpen([{ is_user: true, send_date: at(0) }, { is_user: false, send_date: at(45) }]), false);
-    // Your text is the last one: she's the one to answer
-    assert.equal(R.isConversationOpen([{ is_user: false, send_date: at(0) }, { is_user: true, send_date: at(1) }]), false);
-    assert.equal(R.isConversationOpen([{ is_user: false, send_date: at(0) }]), false);
-    assert.equal(R.isConversationOpen([]), false);
-});
-
-test('what the model is told for one follow-up: how many are unanswered, the time and the schedule\'s line, a fresh decision, whether it may mention the silence', () => {
+test('what the model is told for each of her texts: how many are unanswered, the time and the schedule\'s line, a fresh decision, what may be on her mind', () => {
     const t = (h, m = 0) => new Date(2026, 9, 31, h, m).getTime();
-    const first = R.textInstruction({ charName: 'Mira', userName: 'Qi', unanswered: 1, now: t(20, 6), lastAt: t(20), doing: '18:00–21:00 逛街 (城里)', silence: false });
-    assert.equal(first, "Qi hasn't replied to Mira's last text. Write the one text Mira sends now (it is 20:06, 6 minutes after Mira's last one · 18:00–21:00 逛街 (城里)). "
-        + 'It is a fresh decision Mira makes now. Let who Mira is and what Mira is doing now decide whether it goes on with what was said or brings up something new. '
-        + "It doesn't mention that Qi hasn't replied. Write it as one text, in the usual format.");
-    const third = R.textInstruction({ charName: 'Mira', userName: 'Qi', unanswered: 3, now: t(22), lastAt: t(20, 45), silence: true });
-    assert.match(third, /^Qi hasn't replied to Mira's last 3 texts\. Write the one text Mira sends now \(it is 22:00, an hour after Mira's last one\)\. /);
-    assert.match(third, /aware of the earlier ones still unanswered\. .*, brings up something new, or mentions the silence\. Write it as one text/);
+    const first = R.outreachInstruction({ charName: 'Mira', userName: 'Qi', unanswered: 1, now: t(20, 6), lastAt: t(20), doing: '18:00–21:00 逛街 (城里)',
+        material: 'You just thought of Qi.', media: 'If it feels natural, send a <photo>.', format: 'Reply only with what Mira sends now.' });
+    assert.equal(first, "Qi hasn't replied to Mira's last text. Mira texts Qi now (it is 20:06, 6 minutes after Mira's last one · 18:00–21:00 逛街 (城里)). "
+        + 'It is a fresh decision Mira makes now. Let who Mira is and what Mira is doing now decide whether it goes on with what was said, brings up something new, or mentions the silence. '
+        + "Something that may be on Mira's mind now, for if it fits: You just thought of Qi. If it feels natural, send a <photo>. Reply only with what Mira sends now.");
+    const third = R.outreachInstruction({ charName: 'Mira', userName: 'Qi', unanswered: 3, now: t(22), lastAt: t(20, 45) });
+    assert.match(third, /^Qi hasn't replied to Mira's last 3 texts\. Mira texts Qi now \(it is 22:00, an hour after Mira's last one\)\. .*aware of the earlier ones still unanswered\./);
     assert.equal(third.match(/hasn't replied/g).length, 1);
-    // The day before is said
-    assert.match(R.textInstruction({ now: new Date(2026, 10, 1, 0, 30).getTime(), lastAt: t(23) }), /\(it is 00:30, 2 hours after/);
+    assert.doesNotMatch(third, /on Mira's mind/);
+    // Days are said as days
+    assert.match(R.outreachInstruction({ now: t(20) + 3 * 24 * 60 * MIN, lastAt: t(20) }), /3 days after/);
 });
 
-test('a catch-up\'s follow-ups: numbered only, with one note on how they\'re written, the cap per round', () => {
-    assert.equal(R.followUpNote({ index: 0 }), 'follow-up 1');
-    assert.equal(R.followUpNote({ round: 2, index: 3 }), 'follow-up 4 of round 2');
-    const guide = temperament => R.followUpGuidance({ charName: 'Mira', userName: 'Qi', temperament, rounds: true });
-    assert.match(guide('normal'), /^Each follow-up is a fresh decision Mira makes at its own time, aware of the earlier ones still unanswered\. They belong to the same conversation, but they are not chapters of a planned emotional arc\./);
-    assert.match(guide('normal'), /At most one in each round mentions that Qi hasn't replied\.$/);
-    assert.match(guide('clingy'), /At most two in each round mention that Qi hasn't replied\.$/);
-    assert.match(guide('obsessed'), /Any of them may come back to Qi's silence\.$/);
-    assert.match(guide('aloof'), /goes on with what was said or brings up something new\. None of them mentions that Qi hasn't replied\.$/);
-});
-
-test('the hour, for counting requests', () => {
-    assert.equal(R.hourKey(new Date(2026, 0, 5, 7, 59)), '2026-01-05T07');
-});
-
-test('new topics: the wait grows with each unanswered one, up to a few in a row', () => {
-    assert.deepEqual(R.TEMPERAMENTS.map(t => t.topicCap), [1, 2, 3, 5]);
-    assert.equal(R.topicWaitHours({ baseHours: 8, temperament: 'normal' }), 8);
-    assert.equal(R.topicWaitHours({ baseHours: 8, temperament: 'normal', unanswered: 1 }), 24);
-    assert.equal(R.topicWaitHours({ baseHours: 4, temperament: 'clingy', unanswered: 2 }), 16);
-    assert.equal(R.topicWaitHours({ baseHours: 30, temperament: 'aloof', unanswered: 3 }), 30);
-    assert.equal(R.CLOCK_TRIGGERS.length, 16);
+test('a catch-up\'s texts: how they\'re written, said once', () => {
+    const guide = R.catchUpGuidance({ charName: 'Mira', userName: 'Qi' });
+    assert.match(guide, /^They were sent one after another with no reply from Qi in between\. Each is a fresh decision Mira made at its own time/);
+    assert.match(guide, /not chapters of a planned emotional arc/);
+    assert.match(guide, /what's noted as on Mira's mind is for if it fits\.$/);
 });
 
 test('just got free: within half an hour of a busy or sleeping stretch ending', () => {

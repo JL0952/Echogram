@@ -3586,7 +3586,7 @@
         proactiveMessaging.syncProactiveStateWithHistory(characterKey, history);
         // The open character changed or their chat loaded: their follow-up round's timer,
         // and a catch-up if one is due
-        proactiveMessaging.armRoundTimer();
+        proactiveMessaging.armProactiveTimer();
         setTimeout(() => maybeCatchUp(), 0);
         keepLifeMemories();
     }
@@ -5042,7 +5042,7 @@
             scheduleCharacterReply(600);
         }
         // A follow-up round that was waiting on this (a catch-up, say) goes now, not at its next retry
-        if (proactiveMessaging) proactiveMessaging.armRoundTimer();
+        if (proactiveMessaging) proactiveMessaging.armProactiveTimer();
         // Once things are quiet, the background summary of older messages
         setTimeout(() => { summarizeOldMessages(); }, 2000);
     }
@@ -5786,7 +5786,6 @@
             saveSettings();
             resumePendingReply();
         }
-        if (phone === 'together' && proactiveMessaging) proactiveMessaging.dropRound(key);
         if (before?.phone === 'together' && phone !== 'together') {
             noteTogether(key, { from: before.from, until: Math.min(before.until, Date.now()) }, { explain: true });
         }
@@ -6164,12 +6163,12 @@
     // Why a catch-up brought no texts (runCatchUp's `quiet`)
     const CATCH_UP_QUIET = { limit: 'daily limit', reply: 'reply pending', off: 'Proactive off', unwritten: 'none written' };
 
-    /** The last catch-up's bar: done, how many texts came in, or none and why ("Caught up · no texts · 2 unanswered"). */
+    /** The last catch-up's bar: done, how many texts came in, or none and why ("Caught up · no texts · daily limit"). */
     function catchUpLastLabel(last) {
         if (last.state !== 'done' || last.count === undefined) return CATCH_UP_LAST[last.state];
         if (last.count) return `Caught up · ${last.count} ${last.count === 1 ? 'text' : 'texts'}`;
-        const [why, n] = String(last.quiet || 'none').split(':');
-        const reason = why === 'unanswered' ? `${n} unanswered` : CATCH_UP_QUIET[why];
+        const why = String(last.quiet || 'none');
+        const reason = CATCH_UP_QUIET[why];
         return `Caught up · no texts${reason ? ` · ${reason}` : ''}`;
     }
 
@@ -6324,11 +6323,11 @@
         let added = 0;
         events.forEach((e, i) => {
             const mes = written.find(w => w.n === i + 1)?.mes;
-            const reply = e.text || (mes ? readReply(mes, target, e.kind === 'follow_up' ? { oneText: true } : { maxTexts: window.EchoTextProactiveRounds.TOPIC_MAX_TEXTS }) : null);
+            const reply = e.text || (mes ? readReply(mes, target, { maxTexts: window.EchoTextProactiveRounds.TOPIC_MAX_TEXTS }) : null);
             if (!reply?.mes) return;
             chat.push({
                 is_user: false, mes: reply.mes, send_date: e.at,
-                meta: { proactive: true, proactiveType: e.kind === 'follow_up' ? 'follow_up' : e.type, ...(e.kind === 'follow_up' ? { round: e.round } : {}),
+                meta: { proactive: true, proactiveType: e.type,
                     // The catch-up it came in, to take back on Redo
                     ...(run ? { catchUp: run } : {}) },
                 ...(reply.mood ? { mood: reply.mood } : {}),
@@ -6367,8 +6366,8 @@
             const instruction = CatchUp.buildInstruction({
                 charName: char.name || 'Character', userName, from, now, settle, schedule: activeSchedule(),
                 errands: activeLife()?.errands || [], madeUp: settings.dailyLifeMadeUp === true, texts: asked,
-                // How the follow-ups it writes go, when there are any
-                followUps: asked.some(e => events[e.n - 1].kind === 'follow_up') ? sim?.followUps || null : null,
+                // How they're written, when there are any
+                guidance: asked.length ? sim?.guidance || null : null,
             });
             apiMessages.push({ role: 'user', content: `[Instruction for this turn — not a message from ${userName}; never quote or answer it: ${instruction}]` });
             if (asked.length) proactiveMessaging.noteCatchUpRequest(key);
@@ -6414,7 +6413,7 @@
                 const quiet = added ? null
                     : events.length ? 'unwritten'
                     : !sim ? (settings.proactiveMessagingEnabled !== true ? 'off' : getChatHistory(target).at(-1)?.is_user ? 'reply' : 'none')
-                    : sim.quiet?.why === 'unanswered' ? `unanswered:${sim.quiet.unanswered}` : sim.quiet?.why || 'none';
+                    : sim.quiet?.why || 'none';
                 setCatchUpLast(key, inserted === 'done' ? { state: 'done', at: Date.now(), run, before, count: added, quiet } : null);
             }
             catchingUp = null;

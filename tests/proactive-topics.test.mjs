@@ -1,6 +1,7 @@
 // Run: node --test tests/*.test.mjs
-// New topics (round B, docs/platform-plan.md 12d-2) through the real trigger evaluation
-// in lib/proactive-messaging.js, the character's day stubbed.
+// What may be on her mind (docs/mechanics-reference.md 5.5) through the real topic picker in
+// lib/proactive-messaging.js, the character's day stubbed. When she texts is the sequence's
+// (tests/proactive-rounds-engine.test.mjs).
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -24,10 +25,7 @@ function engine({ temperament = 'normal', day = null } = {}) {
     });
 }
 
-/**
- * The candidates now (null: nothing may come), you last texting `userHours` ago and her
- * last proactive text `proactiveHours` ago; `topics` of hers since, unanswered.
- */
+/** The topics there are now, you last texting `userHours` ago; `topics` of hers since, unanswered. */
 function candidates({ temperament, day, userHours = 10, proactiveHours = null, topics = 0, followUps = 0, now = NOW }) {
     const p = engine({ temperament, day });
     const t = now.getTime();
@@ -38,7 +36,7 @@ function candidates({ temperament, day, userHours = 10, proactiveHours = null, t
     const state = { lastUserMessageAt: userAt, lastCharacterMessageAt: userAt, triggerHistory: {}, lastEmotionSnapshot: null,
         lastProactiveAt: proactiveHours === null ? 0 : t - proactiveHours * HOUR };
     const config = { ...p.getDefaultProactiveConfigForCharacter({}), temperament };
-    return p.evaluateProactiveTrigger({ history, state, config, now, collect: true });
+    return p.topicAt({ history, state, config, now, collect: true });
 }
 const types = c => (c || []).map(x => x.type);
 const day = (over = {}) => ({ phone: 'free', block: { from: '07:00', doing: '吃早饭', place: '家', phone: 'free' }, since: NOW.getTime() - 2 * HOUR,
@@ -74,30 +72,12 @@ test('without a schedule the other kinds lead with the time of day; with one the
     assert.ok(candidates({ day: day() }).find(c => c.type === 'random_thought').prompt.startsWith('A completely random thought'));
 });
 
-test('asleep: nothing; busy: only on some stretches, the same all day', () => {
-    assert.equal(candidates({ day: day({ phone: 'asleep' }) }), null);
-    let open = 0;
-    for (let h = 0; h < 24; h++) {
-        for (const m of ['00', '30']) {
-            const from = `${String(h).padStart(2, '0')}:${m}`;
-            const c = candidates({ day: day({ phone: 'busy', block: { from, doing: '上班', phone: 'busy' } }) });
-            if (c) open++;
-            // The same answer again for the same stretch today
-            assert.equal(!!candidates({ day: day({ phone: 'busy', block: { from, doing: '上班', phone: 'busy' } }) }), !!c);
-        }
-    }
-    assert.ok(open >= 5 && open <= 27, String(open));
-});
-
-test('just got free: a topic about it, and the wait is halved', () => {
+test('just got free: a topic about it', () => {
     const free = day({ since: NOW.getTime() - 10 * 60000, prevPhone: 'busy', prevDoing: '开会' });
     const c = candidates({ day: free });
     const topic = c.find(x => x.type === 'block_change');
     // (How long since you texted is worded from the real clock)
     assert.match(topic.prompt, /^Mira just got free: 开会 is over; now: 吃早饭\. Text Qi about what Mira just did or what's next\.$/);
-    // Obsessed waits 1–2 hours: 0.99 hours since the last topic is too soon, unless just got free
-    assert.equal(candidates({ temperament: 'obsessed', day: day(), proactiveHours: 0.99 }), null);
-    assert.ok(candidates({ temperament: 'obsessed', day: free, proactiveHours: 0.99 }));
     // Too long ago, or not after a busy or sleeping stretch: not just free
     assert.ok(!types(candidates({ day: day({ since: NOW.getTime() - 40 * 60000, prevPhone: 'busy' }) })).includes('block_change'));
     assert.ok(!types(candidates({ day: day({ since: NOW.getTime() - 10 * 60000, prevPhone: 'free' }) })).includes('block_change'));
@@ -111,23 +91,8 @@ test('an errand due by tomorrow, and today\'s news', () => {
     // Nothing due soon, nothing today: neither
     const quiet = types(candidates({ day: day({ life: { errands: [{ text: '搬家', due: '2026-11-07' }], log: [], today: null } }) }));
     assert.ok(!quiet.includes('errand') && !quiet.includes('life_event'));
-    // However soon after your last text: how long to wait is the temperament's
+    // However soon after your last text
     assert.ok(types(candidates({ day: day({ life }), userHours: 1 })).includes('errand'));
-});
-
-test('unanswered topics: capped by the temperament, each one longer to wait; follow-ups don\'t count', () => {
-    // Normal: 2 in a row at most
-    assert.ok(candidates({ topics: 1, proactiveHours: 40 }));
-    assert.equal(candidates({ topics: 2, proactiveHours: 40 }), null);
-    assert.ok(candidates({ topics: 1, followUps: 4, proactiveHours: 40 }));
-    // Aloof: 1; Obsessed: 5
-    assert.equal(candidates({ temperament: 'aloof', topics: 1, proactiveHours: 200 }), null);
-    assert.ok(candidates({ temperament: 'obsessed', topics: 4, proactiveHours: 20 }));
-    assert.equal(candidates({ temperament: 'obsessed', topics: 5, proactiveHours: 20 }), null);
-    // Normal waits 6–10 hours; with one unanswered, three times that
-    assert.ok(candidates({ proactiveHours: 10.1 }));
-    assert.equal(candidates({ topics: 1, proactiveHours: 10.1 }), null);
-    assert.ok(candidates({ topics: 1, proactiveHours: 30.1 }));
 });
 
 test('the insights panel: why nothing comes, and the six kinds, Life by her own day or by the clock', () => {
@@ -135,19 +100,20 @@ test('the insights panel: why nothing comes, and the six kinds, Life by her own 
     const history = [{ is_user: true, mes: 'ok', send_date: now - 20 * HOUR },
         { is_user: false, mes: 'a', send_date: now - 19 * HOUR, meta: { proactive: true, proactiveType: 'random_thought' } },
         { is_user: false, mes: 'b', send_date: now - 18 * HOUR, meta: { proactive: true, proactiveType: 'checkin' } }];
-    const snapshot = dayInfo => {
+    const snapshot = (dayInfo, phone = null) => {
         const settings = { proactiveMessagingEnabled: true };
         return window.EchoTextProactiveMessaging.createProactiveMessaging({
         getSettings: () => settings, getUserName: () => 'Qi', getActiveFeatures: () => [],
         expandTimeDateMacros: t => t, replaceMacros: t => t, getEmotionState: () => null, getProactivePace: () => 1,
-        getTemperament: () => 'normal', getDailyLife: () => (dayInfo ? { ...dayInfo } : null),
+        getTemperament: () => 'normal', getDailyLife: () => (dayInfo ? { ...dayInfo } : null), getScheduleNow: () => phone,
         getCurrentCharacter: () => ({ name: 'Mira', avatar: 'mira.png' }), getCharacterKey: () => 'mira.png',
         getChatHistory: () => history,
         }).getProactiveInsightsSnapshot();
     };
-    assert.equal(snapshot(null).next, 'Waiting for you (2 unanswered)');
-    history.pop();
-    assert.equal(snapshot(day({ phone: 'asleep' })).next, 'Asleep');
+    // Her two texts unanswered: the next one, its wait three times longer twice (Normal)
+    assert.match(snapshot(null).next, /^Next text (in .*|due) · 2 unanswered$/);
+    // Asleep: held until she's up
+    assert.match(snapshot(day({ phone: 'asleep' }), { phone: 'asleep', endsAt: now + 3 * HOUR }).next, /^Asleep until \d\d:\d\d · 2 unanswered$/);
     const rows = dayInfo => snapshot(dayInfo).triggerDiagnostics;
     const KINDS = ['life', 'you', 'share', 'callback', 'mood', 'gap'];
     assert.deepEqual(rows(day()).map(t => t.id), KINDS);
@@ -164,74 +130,4 @@ test('the insights panel: why nothing comes, and the six kinds, Life by her own 
     assert.equal(rows(null).find(t => t.id === 'gap').reason, 'Your last text 20h ago');
     // When one went last: the newest of its texts
     assert.equal(rows(null).find(t => t.id === 'share').last === 'Never', false);
-});
-
-test('with you in person: no new topics', () => {
-    assert.equal(candidates({ day: day({ phone: 'together' }) }), null);
-});
-
-test('after parting: that text comes first and once, whatever the wait, unless it is too late', () => {
-    const t = NOW.getTime();
-    const run = ({ parted, dayOver = {}, proactiveHours = 0.1 }) => {
-        const p = engine({ temperament: 'normal', day: day(dayOver) });
-        const userAt = t - 10 * HOUR;
-        const history = [{ is_user: false, mes: 'hi', send_date: userAt - HOUR }, { is_user: true, mes: 'ok', send_date: userAt }];
-        const state = { lastUserMessageAt: userAt, lastCharacterMessageAt: userAt, triggerHistory: {}, lastEmotionSnapshot: null, lastProactiveAt: t - proactiveHours * HOUR, parted };
-        const config = { ...p.getDefaultProactiveConfigForCharacter({}), temperament: 'normal' };
-        return { state, trigger: p.evaluateProactiveTrigger({ history, state, config, now: NOW }) };
-    };
-    // Due: right after another text, the wait doesn't count
-    const due = run({ parted: { at: t - 60000 } });
-    assert.equal(due.trigger.type, 'parted');
-    assert.match(due.trigger.prompt, /Mira and Qi were together in person/);
-    // Not yet: the usual wait holds
-    assert.equal(run({ parted: { at: t + 60000 } }).trigger, null);
-    // An hour late: gone, and the usual wait holds
-    const late = run({ parted: { at: t - HOUR } });
-    assert.equal(late.trigger, null);
-    assert.equal(late.state.parted, null);
-    // Asleep by now, or together again: not now, still there
-    const asleep = run({ parted: { at: t - 60000 }, dayOver: { phone: 'asleep' } });
-    assert.equal(asleep.trigger, null);
-    assert.ok(asleep.state.parted);
-    assert.equal(run({ parted: { at: t - 60000 }, dayOver: { phone: 'together' } }).trigger, null);
-});
-
-test('the insights say with you, and when the text after parting comes', () => {
-    const history = [{ is_user: true, mes: 'ok', send_date: Date.now() - 10 * HOUR }, { is_user: false, mes: 'hi', send_date: Date.now() - 9 * HOUR }];
-    const insight = (dayInfo, parted) => {
-        const settings = { proactiveMessagingEnabled: true, proactiveState: { 'mira.png': { lastUserMessageAt: 0, lastCharacterMessageAt: 0, lastProactiveAt: 0, triggerHistory: {}, parted } } };
-        return window.EchoTextProactiveMessaging.createProactiveMessaging({
-            getSettings: () => settings, getUserName: () => 'Qi', getActiveFeatures: () => [],
-            expandTimeDateMacros: t => t, replaceMacros: t => t, getEmotionState: () => null, getProactivePace: () => 1,
-            getTemperament: () => 'normal', getDailyLife: () => (dayInfo ? { ...dayInfo } : null),
-            getCurrentCharacter: () => ({ name: 'Mira', avatar: 'mira.png' }), getCharacterKey: () => 'mira.png',
-            getChatHistory: () => history,
-        }).getProactiveInsightsSnapshot();
-    };
-    assert.equal(insight(day({ phone: 'together' })).next, 'With you');
-    assert.match(insight(day(), { at: Date.now() + 12 * 60000 }).next, /^After parting in /);
-});
-
-test('while you play the main chat: no new topics, the text after parting waits, and the insights say so', () => {
-    const t = NOW.getTime();
-    const run = (until, parted = null) => {
-        const p = window.EchoTextProactiveMessaging.createProactiveMessaging({
-            getSettings: () => ({ proactiveMessagingEnabled: true }), getUserName: () => 'Qi', getActiveFeatures: () => [],
-            expandTimeDateMacros: x => x, replaceMacros: x => x, getEmotionState: () => null, getProactivePace: () => 1,
-            findLastUserMessageIndex: h => h.map(m => m.is_user).lastIndexOf(true), getTemperament: () => 'normal',
-            getDailyLife: () => day(), getStoryPauseUntil: () => until,
-            getCurrentCharacter: () => ({ name: 'Mira', avatar: 'mira.png' }), getCharacterKey: () => 'mira.png',
-        });
-        const userAt = t - 10 * HOUR;
-        const history = [{ is_user: false, mes: 'hi', send_date: userAt - HOUR }, { is_user: true, mes: 'ok', send_date: userAt }];
-        const state = { lastUserMessageAt: userAt, lastCharacterMessageAt: userAt, triggerHistory: {}, lastEmotionSnapshot: null, lastProactiveAt: 0, parted };
-        return { state, trigger: p.evaluateProactiveTrigger({ history, state, config: { ...p.getDefaultProactiveConfigForCharacter({}), temperament: 'normal' }, now: NOW }) };
-    };
-    assert.ok(run(0).trigger, 'something comes when you are not playing');
-    assert.equal(run(t + 60000).trigger, null);
-    const held = run(t + 60000, { at: t - 60000 });
-    assert.equal(held.trigger, null);
-    assert.ok(held.state.parted, 'still there');
-    assert.equal(run(t - 1, { at: t - 60000 }).trigger.type, 'parted');
 });

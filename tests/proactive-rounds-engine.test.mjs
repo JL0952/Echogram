@@ -1,6 +1,7 @@
 // Run: node --test tests/*.test.mjs
-// Follow-up rounds (docs/platform-plan.md 12d-1) through the real engine in
-// lib/proactive-messaging.js: a fake clock, the model stubbed, typing delays skipped.
+// Her texts when you don't answer, one sequence (docs/mechanics-reference.md 5.13), through the
+// real engine in lib/proactive-messaging.js: live (runSequenceFor) and when catching up
+// (simulateAway), by the same rules. A fake clock, the model stubbed, typing delays skipped.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -22,38 +23,41 @@ globalThis.setTimeout = (fn, ms) => { if (ms <= 6000) queueMicrotask(fn); return
 globalThis.clearTimeout = () => {};
 test.after(() => { Date.now = realNow; });
 
-// The model's answers: each follow-up is its own request, so a list answers them in turn (a string, every one)
-function setup({ temperament = 'clingy', answer = ['?', '人呢', '你去哪了', '算了'], schedule = null, group = false } = {}) {
+// Randomness fixed at the middle: every wait is the middle of the base, no jitter
+const fixedRandom = fn => async () => { const real = Math.random; Math.random = () => 0.5; try { await fn(); } finally { Math.random = real; } };
+
+// The model's answers: each text is its own request, so a list answers them in turn (a string, every one)
+function setup({ temperament = 'clingy', answer = ['?', '人呢', '你去哪了', '算了'] } = {}) {
     const settings = { enabled: true, proactiveMessagingEnabled: true, chatHistory: { 'mira.png': [] }, proactiveState: {} };
     const asked = [];
     const warnings = [];
-    const env = { temperament, answer, schedule, group, open: 'mira.png', bars: [] };
+    const env = { temperament, answer, open: 'mira.png' };
     const p = window.EchoTextProactiveMessaging.createProactiveMessaging({
         getSettings: () => settings, saveSettings: () => {}, warn: (...a) => warnings.push(a.join(' ')),
-        // The chat open now (index.js chatTarget): another one when a test sets env.open
         getCurrentCharacter: () => ({ name: env.open === 'mira.png' ? 'Mira' : 'Other', avatar: env.open }), getCharacterKey: () => env.open,
         chatTarget: () => ({ group: null, combine: false, key: env.open }), isViewing: t => !!t && t.key === env.open,
         getChatHistory: () => settings.chatHistory['mira.png'], getUserName: () => 'Qi',
-        getTemperament: () => env.temperament, getStoryPauseUntil: at => (typeof env.storyUntil === 'function' ? env.storyUntil(at ?? Date.now()) : env.storyUntil || 0),
-        // Now, or at a time (ms) when a catch-up looks back: a test may give either as a function of the time
-        getScheduleNow: at => (typeof env.schedule === 'function' ? env.schedule(at ?? Date.now()) : env.schedule),
-        getDailyLife: at => (typeof env.day === 'function' ? env.day(at ?? Date.now()) : env.day || null),
+        getTemperament: () => env.temperament,
+        getStoryPauseUntil: at => (typeof env.storyUntil === 'function' ? env.storyUntil(at ?? Date.now()) : env.storyUntil || 0),
+        // Her phone now (or at `at`, ms, when catching up): { phone, endsAt }
+        getScheduleNow: at => (typeof env.schedule === 'function' ? env.schedule(at ?? Date.now()) : env.schedule || null),
+        getDailyLife: () => null,
         withYouAt: at => (env.together || []).some(span => span.from <= at && at < span.until),
         catchUpPending: () => !!env.pending,
         expandTimeDateMacros: t => t, replaceMacros: t => t, getActiveFeatures: () => [], getProactivePace: () => 1,
-        isGroupSession: () => env.group, isPanelOpen: () => true, getIsGenerating: () => !!env.generating, getEmotionState: () => env.feelings || null,
-        getMemories: () => env.memories || [],
+        isGroupSession: () => false, isPanelOpen: () => true, getIsGenerating: () => !!env.generating, getEmotionState: () => env.feelings || null,
+        getMemories: () => [],
         buildApiMessagesFromHistoryForChar: async (history, extraSystem) => {
             env.onBuild?.();
             return { apiMessages: [{ role: 'system', content: extraSystem.join('\n') }], rawPrompt: '', systemPrompt: '' };
         },
         requestEchoTextCompletion: async ({ apiMessages }) => {
             asked.push(apiMessages);
-            return Array.isArray(env.answer) ? env.answer[(asked.length - 1) % env.answer.length] : env.answer;
+            const a = typeof env.answer === 'function' ? env.answer() : env.answer;
+            return Array.isArray(a) ? a[(asked.length - 1) % a.length] : a;
         },
         readReply: t => ({ mes: String(t).trim(), mood: null, life: null }),
         renderMessages: () => {}, setTypingIndicatorVisible: () => {}, setFabUnreadIndicator: () => {}, noteMoodReport: () => {},
-        findLastUserMessageIndex: h => h.map(m => m.is_user).lastIndexOf(true),
     });
     const chat = () => settings.chatHistory['mira.png'];
     const state = () => settings.proactiveState['mira.png'];
@@ -65,563 +69,246 @@ function setup({ temperament = 'clingy', answer = ['?', '人呢', '你去哪了'
         chat().push({ is_user: false, mes: 'hi!', send_date: clock });
         p.markProactiveCharacterActivity('mira.png', false, 'reply', clock);
     };
-    return { p, settings, asked, warnings, env, chat, state, talk };
+    const run = () => p.runSequenceFor({ name: 'Mira', avatar: 'mira.png' }, 'mira.png');
+    return { p, settings, asked, warnings, env, chat, state, talk, run };
 }
+const turnOf = asked => asked.at(-1).at(-1).content;
 
-test('you go quiet mid-conversation: a round, each text written in its own request when it\'s due', async () => {
+test('her reply starts the sequence: each text after the one before by the base wait × growth^unanswered, one request each', fixedRandom(async () => {
     clock = T0;
-    const { p, asked, chat, state, talk, env } = setup();
+    const { asked, chat, state, talk, run } = setup();
     talk();
-    const round = state().round;
-    assert.equal(round.times.length, 4);
-    assert.ok(round.times[0] - clock >= 3 * MIN && round.times[0] - clock <= 10 * MIN);
-    // Clingy: two of the four may mention the silence, drawn when the round starts
-    assert.equal(round.silence.length, 4);
-    assert.equal(round.silence.filter(Boolean).length, 2);
-    // Not yet: nothing asked
-    clock = round.times[0] - 1000;
-    assert.equal(await p.runDueRound(), true);
+    // Clingy: 6.5 minutes (the middle of 3–10), then ×2 each unanswered one
+    assert.equal(state().seq.next, clock + 6.5 * MIN);
+    assert.equal(state().unanswered, 0);
+    clock = state().seq.next - 1000;
+    assert.equal(await run(), false);
     assert.equal(asked.length, 0);
-    // The first is due: a request for it alone, out now
-    clock = round.times[0];
-    await p.runDueRound();
+    clock = state().seq.next;
+    assert.equal(await run(), true);
     assert.equal(asked.length, 1);
-    const turn = asked[0].at(-1).content;
-    // That there's no reply is said once, in the turn
-    assert.match(asked[0][0].content, /^FOLLOW-UP MODE: you are texting Qi again on your own\.\n<proactive_situation>\nIt is currently [^\n]+\.\n<\/proactive_situation>$/);
-    assert.match(turn, /Qi hasn't replied to Mira's last text\. Write the one text Mira sends now \(it is \d\d:\d\d, \d+ minutes after Mira's last one\)\. It is a fresh decision Mira makes now\./);
-    assert.match(turn, round.silence[0] ? /or mentions the silence\. Write it as one text/ : /or brings up something new\. It doesn't mention that Qi hasn't replied\./);
-    assert.equal(turn.match(/hasn't replied/g).length, round.silence[0] ? 1 : 2);
-    assert.deepEqual(chat().slice(-1).map(m => [m.mes, m.meta.proactiveType, m.send_date]), [['?', 'follow_up', round.times[0]]]);
-    assert.equal(state().round.sent, 1);
-    // The second, on time: its own request, seeing the first unanswered
-    clock = round.times[1];
-    await p.runDueRound();
-    assert.equal(asked.length, 2);
-    assert.match(asked[1].at(-1).content, /Qi hasn't replied to Mira's last 2 texts\. .*aware of the earlier ones still unanswered/);
+    // One instruction for every text: said once that she's unanswered, the time, a fresh decision, what may be on her mind
+    assert.match(asked[0][0].content, /^PROACTIVE MODE: you are texting Qi on your own, not replying\.\n<proactive_situation>/);
+    assert.match(turnOf(asked), /^\[Instruction for this turn[^:]*: Qi hasn't replied to Mira's last text\. Mira texts Qi now \(it is 20:07, 7 minutes after Mira's last one\)\. It is a fresh decision Mira makes now\./);
+    assert.match(turnOf(asked), /Something that may be on Mira's mind now, for if it fits: /);
+    assert.match(turnOf(asked), /Reply only with the text message\(s\) Mira sends now, 3 at most, in the usual format\.\]$/);
+    assert.deepEqual(chat().slice(-1).map(m => [m.mes, m.meta.proactive, m.send_date]), [['?', true, clock]]);
+    assert.equal(state().unanswered, 1);
+    assert.equal(state().seq.next, clock + 13 * MIN);
+    clock = state().seq.next;
+    await run();
+    assert.match(turnOf(asked), /Qi hasn't replied to Mira's last 2 texts\. .*aware of the earlier ones still unanswered/);
     assert.equal(chat().at(-1).mes, '人呢');
-    // The day's cap counts the round once
-    assert.equal(state().requests.count, 1);
-    // The rest, each on time
-    for (const i of [2, 3]) {
-        clock = round.times[i];
-        await p.runDueRound();
-    }
-    assert.equal(asked.length, 4);
-    assert.deepEqual(chat().slice(-4).map(m => [m.mes, m.send_date]), round.times.map((at, i) => [['?', '人呢', '你去哪了', '算了'][i], at]));
-    // Clingy lets it go after that
-    assert.equal(state().round, null);
-});
+    assert.equal(state().seq.next, clock + 26 * MIN);
+    // It never stops on its own: the waits only grow
+    for (let i = 0; i < 4; i++) { clock = state().seq.next; await run(); }
+    assert.equal(state().unanswered, 6);
+    assert.equal(state().seq.next - clock, 6.5 * 2 ** 6 * MIN);
+}));
 
-test('how many texts of a round may mention the silence: the temperament\'s, at random', () => {
-    const R = window.EchoTextProactiveRounds;
-    assert.deepEqual(R.silenceSlots({ temperament: 'aloof', count: 1 }), [false]);
-    assert.equal(R.silenceSlots({ temperament: 'normal', count: 2 }).filter(Boolean).length, 1);
-    assert.equal(R.silenceSlots({ temperament: 'clingy', count: 4 }).filter(Boolean).length, 2);
-    assert.deepEqual(R.silenceSlots({ temperament: 'obsessed', count: 3 }), [true, true, true]);
-    // Which ones is the draw's
-    const seen = new Set(Array.from({ length: 40 }, () => R.silenceSlots({ temperament: 'normal', count: 2 }).indexOf(true)));
-    assert.deepEqual([...seen].sort(), [0, 1]);
-});
-
-test('you answer: the round is over, even one being written', async () => {
+test('you text: the sequence starts over from her reply, at the base wait', fixedRandom(async () => {
     clock = T0;
-    const { p, asked, chat, state, talk, env } = setup();
+    const { state, talk, run } = setup({ temperament: 'normal' });
     talk();
-    p.markProactiveUserActivity('mira.png', clock);
-    assert.equal(state().round, null);
-    // Answering while the texts are being written: they're thrown away
+    clock = state().seq.next;
+    await run();
+    assert.equal(state().unanswered, 1);
     talk();
-    const due = state().round.times[0];
+    assert.equal(state().unanswered, 0);
+    assert.equal(state().seq.next, clock + 40 * MIN);
+}));
+
+test('you text while it is being written: it is dropped', fixedRandom(async () => {
+    clock = T0;
+    const { p, asked, chat, state, talk, run, env } = setup();
+    talk();
+    clock = state().seq.next;
     let release;
-    env.answer = new Promise(resolve => { release = () => resolve('?\n---\n人呢'); });
-    clock = due;
-    const running = p.runDueRound();
+    env.answer = () => new Promise(resolve => { release = () => resolve('?'); });
+    const running = run();
     await new Promise(r => queueMicrotask(r));
     chat().push({ is_user: true, mes: 'sorry', send_date: clock });
     p.markProactiveUserActivity('mira.png', clock);
     release();
-    await running;
+    assert.equal(await running, false);
     assert.equal(asked.length, 1);
     assert.equal(chat().at(-1).mes, 'sorry');
-    assert.equal(state().round, null);
-});
+    assert.equal(state().seq, null);
+}));
 
-test('no round when you weren\'t talking, in a group, or with follow-ups off', () => {
+test('what holds her text back moves it to when that is over: asleep, busy, with you, the main chat, the cold shoulder', fixedRandom(async () => {
+    for (const [label, apply, until] of [
+        ['asleep', env => { env.schedule = { phone: 'asleep', endsAt: T0 + 9 * HOUR }; }, T0 + 9 * HOUR],
+        ['busy', env => { env.schedule = { phone: 'busy', endsAt: T0 + 2 * HOUR }; }, T0 + 2 * HOUR],
+        ['together', env => { env.schedule = { phone: 'together', endsAt: T0 + 3 * HOUR }; }, T0 + 3 * HOUR],
+        ['story', env => { env.storyUntil = T0 + 30 * MIN; }, T0 + 30 * MIN],
+    ]) {
+        clock = T0;
+        const { asked, state, talk, run, env } = setup();
+        talk();
+        apply(env);
+        clock = state().seq.next;
+        assert.equal(await run(), false, label);
+        assert.equal(asked.length, 0, label);
+        assert.equal(state().seq.next, until, label);
+    }
+    // The cold shoulder: to its end, from your last text
+    clock = T0;
+    const { asked, state, talk, run, env } = setup();
+    talk();
+    env.feelings = { anger: 90 };
+    clock = state().seq.next;
+    await run();
+    assert.equal(asked.length, 0);
+    assert.equal(state().seq.next, state().ghost.until);
+    assert.ok(state().ghost.until - T0 >= 7 * HOUR);
+}));
+
+test('the day\'s requests, all characters together: 20 by default, at least 1; used up, the next text waits for tomorrow', fixedRandom(async () => {
+    const midnight = new Date(2026, 10, 1).getTime();
+    const day = '2026-10-31';
+    for (const [limit, used, goes] of [[undefined, 19, true], [undefined, 20, false], [0, 1, false], [-5, 0, true], [50, 20, true]]) {
+        clock = T0;
+        const { asked, settings, state, talk, run } = setup();
+        talk();
+        if (limit !== undefined) settings.proactiveDailyLimit = limit;
+        settings.proactiveDaily = { day, count: used };
+        clock = state().seq.next;
+        await run();
+        assert.equal(asked.length, goes ? 1 : 0, `limit ${limit}, used ${used}`);
+        if (goes) assert.equal(settings.proactiveDaily.count, used + 1);
+        else assert.equal(state().seq.next, midnight);
+    }
+}));
+
+test('after time together, that text comes first and once; too late, it is dropped and the sequence goes on', fixedRandom(async () => {
+    clock = T0;
+    const { p, asked, state, talk, run } = setup({ temperament: 'normal' });
+    talk();
+    // Normal: 70% of the time (0.5 is under it), 15–30 minutes after
+    p.planParted('mira.png', clock);
+    assert.equal(state().parted.at, clock + 22.5 * MIN);
+    // Before the sequence's next text (40 minutes): the text after parting goes first
+    clock = state().parted.at;
+    await run();
+    assert.match(turnOf(asked), /Mira and Qi were together in person and have just parted/);
+    assert.equal(state().parted, null);
+    // Left too late: dropped, nothing asked; the sequence still has its next one
+    p.planParted('mira.png', clock);
+    clock = state().parted.at + 2 * HOUR;
+    assert.equal(await run(), false);
+    assert.equal(state().parted, null);
+    assert.ok(state().seq.next);
+}));
+
+test('another chat open while it is put together: not sent, tried again when it is back; the chat cleared: nothing lands', fixedRandom(async () => {
     clock = T0;
     const a = setup();
-    a.chat().push({ is_user: true, mes: 'hey', send_date: clock - 2 * HOUR }, { is_user: false, mes: 'hi', send_date: clock });
-    a.p.markProactiveCharacterActivity('mira.png', false, 'reply', clock);
-    assert.equal(a.state().round, null);
-    const b = setup({ group: true });
+    a.talk();
+    clock = a.state().seq.next;
+    a.env.onBuild = () => { a.env.open = 'other.png'; };
+    assert.equal(await a.run(), false);
+    assert.equal(a.chat().length, 2);
+    a.env.onBuild = null;
+    a.env.open = 'mira.png';
+    assert.equal(await a.run(), true);
+    assert.equal(a.chat().at(-1).mes, '?');
+    // Cleared while it was written
+    clock = T0;
+    const b = setup();
     b.talk();
-    assert.equal(b.state().round, null);
-    const c = setup();
-    c.settings.proactiveMessagingEnabled = false;
-    c.talk();
-    assert.equal(c.state().round, null);
-});
+    clock = b.state().seq.next;
+    b.env.onBuild = () => { b.settings.chatHistory['mira.png'] = []; };
+    assert.equal(await b.run(), false);
+    assert.deepEqual(b.chat(), []);
+}));
 
-test('obsessed: another round hours later, more insistent; until the day\'s requests run out', async () => {
+test('a failed request (an error, an empty answer) plans the next one from then; a catch-up due or a reply unseen holds it', fixedRandom(async () => {
     clock = T0;
-    const { p, asked, state, talk, env } = setup({ temperament: 'obsessed', answer: Array.from({ length: 10 }, (_, i) => `msg ${i}`) });
+    const { asked, settings, state, talk, run, env, warnings } = setup();
     talk();
-    const first = state().round;
-    assert.equal(first.times.length, 10);
-    for (const at of first.times.slice()) {
-        clock = at;
-        await p.runDueRound();
-    }
-    assert.equal(asked.length, 10);
-    const second = state().round;
-    assert.equal(second.number, 2);
-    assert.ok(second.times[0] - first.times[9] >= 2 * HOUR && second.times[0] - first.times[9] <= 4 * HOUR);
-    clock = second.times[0];
-    await p.runDueRound();
-    assert.match(asked[10].at(-1).content, /Qi hasn't replied to Mira's last 11 texts\./);
-    assert.match(asked[10].at(-1).content, /or mentions the silence\. Write it as one text/);
-    // A round is one of the day's requests, however many texts (the second past midnight is the next day's first)
-    const sameDay = new Date(first.times[0]).toDateString() === new Date(second.times[0]).toDateString();
-    assert.deepEqual(state().requests, { day: p.getDateKeyLocal(new Date(clock)), count: sameDay ? 2 : 1 });
-    // 30 requests a day: the 31st doesn't go
-    state().requests = { day: p.getDateKeyLocal(new Date(clock)), count: 30 };
-    state().round = { number: 3, startedAt: clock, times: [clock + MIN], texts: null, sent: 0 };
-    clock += MIN;
-    await p.runDueRound();
-    assert.equal(asked.length, 11);
-    assert.equal(state().round, null);
-    assert.equal(state().capped.reason, 'daily');
-    env.temperament = 'clingy';
-});
-
-test('Daily Life: asleep or busy, the round waits for them', async () => {
-    clock = T0;
-    const { p, asked, state, talk, env } = setup();
-    talk();
-    const due = state().round.times[0];
-    const later = state().round.times[1];
-    clock = due;
-    env.schedule = { phone: 'asleep', endsAt: due + 8 * HOUR };
-    await p.runDueRound();
-    assert.equal(asked.length, 0);
-    assert.equal(state().round.times[0], due + 8 * HOUR);
-    assert.equal(state().round.times[1], later + 8 * HOUR);
-    // Awake: it goes
-    clock = state().round.times[0];
-    env.schedule = { phone: 'free', endsAt: clock + HOUR };
-    await p.runDueRound();
+    clock = state().seq.next;
+    env.answer = () => { throw new Error('no answer for 3 minutes'); };
+    assert.equal(await run(), false);
+    assert.equal(state().seq.next, clock + 6.5 * MIN);
+    assert.ok(warnings.some(w => /no answer for 3 minutes/.test(w)));
+    env.answer = '?';
+    clock = state().seq.next;
+    env.pending = true;
+    assert.equal(await run(), false);
+    env.pending = false;
+    settings.pendingReplies = { 'mira.png': clock + HOUR };
+    assert.equal(await run(), false);
     assert.equal(asked.length, 1);
-});
+}));
 
-test('aloof: sometimes nothing at all', () => {
+test('a catch-up works out the same sequence: the same waits, the same holds, the day\'s count, the last three days, at most thirty', fixedRandom(async () => {
     clock = T0;
-    const realRandom = Math.random;
-    Math.random = () => 0.1;
-    const { state, talk } = setup({ temperament: 'aloof' });
+    const { p, state, talk } = setup({ temperament: 'normal' });
     talk();
-    Math.random = realRandom;
-    assert.equal(state().round, null);
-});
+    const from = clock;
+    // Normal: 40 minutes, then ×3 each: 40m, 2h, 6h, 18h after the one before
+    const sim = p.simulateAway('mira.png', { name: 'Mira' }, { from, to: from + 30 * HOUR });
+    const gaps = sim.events.map((e, i) => (e.at - (i ? sim.events[i - 1].at : from)) / MIN);
+    assert.deepEqual(gaps, [40, 120, 360, 1080]);
+    assert.ok(sim.events.every(e => typeof e.type === 'string' && 'note' in e));
+    assert.match(sim.guidance, /^They were sent one after another with no reply from Qi in between\./);
+    // Where it stands by then, on a copy: the fifth 54 hours after the fourth
+    assert.equal(sim.state.unanswered, 4);
+    assert.equal(sim.state.seq.next, sim.events[3].at + 3240 * MIN);
+    // The day's count goes by the day each fell on: two on the 1st (04:41, 22:41)
+    assert.deepEqual(sim.state._daily, { day: '2026-11-01', count: 2 });
+    assert.equal(state().unanswered, 0);
+    // Adopted: hers now
+    p.adoptSimulation('mira.png', sim.state);
+    assert.equal(state().unanswered, 4);
+    // Asleep from 21:00 to 07:00 every day: the one due at 22:41 waits till 07:00, then on from there
+    clock = T0;
+    const sleepy = setup({ temperament: 'normal' });
+    sleepy.talk();
+    const at = (d, h) => new Date(2026, 9, d, h).getTime();
+    sleepy.env.schedule = ms => { const d = new Date(ms); const h = d.getHours(); return h >= 21 || h < 7
+        ? { phone: 'asleep', endsAt: at(d.getDate() + (h >= 21 ? 1 : 0), 7) } : { phone: 'free', endsAt: ms + HOUR }; };
+    const night = sleepy.p.simulateAway('mira.png', { name: 'Mira' }, { from: clock, to: clock + 12 * HOUR });
+    assert.deepEqual(night.events.map(e => e.at), [clock + 40 * MIN, at(32, 7)]);
+    // You playing the main chat then: put off past it (kept in index.js storySpans)
+    clock = T0;
+    const played = setup({ temperament: 'normal' });
+    played.talk();
+    const start = clock;
+    played.env.storyUntil = ms => (ms >= start && ms < start + HOUR ? start + HOUR : 0);
+    assert.equal(played.p.simulateAway('mira.png', { name: 'Mira' }, { from: start, to: start + 2 * HOUR }).events[0].at, start + HOUR);
+    // The day's count used up: nothing that day, and the bar can say why
+    clock = T0;
+    const full = setup({ temperament: 'clingy' });
+    full.talk();
+    full.settings.proactiveDaily = { day: '2026-10-31', count: 20 };
+    const capped = full.p.simulateAway('mira.png', { name: 'Mira' }, { from: clock, to: clock + 3 * HOUR });
+    assert.deepEqual(capped.events, []);
+    assert.deepEqual(capped.quiet, { why: 'limit' });
+    // A week away, obsessed: only the last three days' are written, thirty at most, the latest kept
+    clock = T0;
+    const away = setup({ temperament: 'obsessed' });
+    away.talk();
+    away.settings.proactiveDailyLimit = 1000;
+    const week = away.p.simulateAway('mira.png', { name: 'Mira' }, { from: clock, to: clock + 7 * 24 * HOUR });
+    assert.ok(week.events.length <= 30);
+    assert.ok(week.events.every(e => e.at > clock + 4 * 24 * HOUR));
+}));
 
-test('the insights panel: the round\'s next text and the day\'s limit', async () => {
+test('the insights: her next text and how many are unanswered, what holds it, or waiting to reply', fixedRandom(async () => {
     clock = T0;
-    const { p, state, talk } = setup();
+    const { p, state, talk, run, env, chat } = setup({ temperament: 'normal' });
     talk();
-    const due = state().round.times[0];
-    clock = due - 5 * MIN;
-    assert.equal(p.getProactiveInsightsSnapshot().next, 'Follow-up 1/4 in 5m');
+    assert.equal(p.getProactiveInsightsSnapshot().next, 'Next text in 40m');
+    clock = state().seq.next;
+    await run();
+    assert.equal(p.getProactiveInsightsSnapshot().next, 'Next text in 2h · 1 unanswered');
+    env.schedule = { phone: 'asleep', endsAt: new Date(2026, 10, 1, 7).getTime() };
+    assert.equal(p.getProactiveInsightsSnapshot().next, 'Asleep until 07:00 · 1 unanswered');
+    env.schedule = null;
+    chat().push({ is_user: true, mes: 'hey', send_date: clock });
     p.markProactiveUserActivity('mira.png', clock);
-    state().requests = { day: p.getDateKeyLocal(new Date(clock)), count: 15 };
-    assert.equal(p.getProactiveInsightsSnapshot().next, 'Daily limit reached');
-});
-
-test('with you in person: no round starts, and one under way stops', () => {
-    const together = setup({ schedule: { phone: 'together', endsAt: clock + HOUR } });
-    together.talk();
-    assert.equal(together.state().round ?? null, null);
-    const running = setup();
-    running.talk();
-    assert.ok(running.state().round);
-    running.p.dropRound('mira.png');
-    assert.equal(running.state().round, null);
-});
-
-test('the text after parting is planned by temperament and gone once you text', () => {
-    clock = T0;
-    const realRandom = Math.random;
-    Math.random = () => 0.5;
-    const { p, state, env } = setup({ temperament: 'clingy' });
-    p.planParted('mira.png', clock);
-    assert.equal(state().parted.at, clock + 15 * MIN);
-    p.markProactiveUserActivity('mira.png', clock + MIN);
-    assert.equal(state().parted, null);
-    // Their proactive text says it too
-    p.planParted('mira.png', clock);
-    p.markProactiveCharacterActivity('mira.png', true, 'catch_up', clock + MIN);
-    assert.equal(state().parted, null);
-    // Noticed hours later: left unsent
-    p.planParted('mira.png', clock - 3 * HOUR);
-    assert.equal(state().parted, null);
-    // Their temperament lets it go
-    env.temperament = 'aloof';
-    p.planParted('mira.png', clock);
-    assert.equal(state().parted, null);
-    Math.random = realRandom;
-});
-
-test('the scheduler sends the text after parting once, right after another text if need be', async () => {
-    clock = T0;
-    const realRandom = Math.random;
-    const realInterval = globalThis.setInterval;
-    const realClear = globalThis.clearInterval;
-    const RealDate = globalThis.Date;
-    // The tick asks new Date(): on the fake clock too
-    globalThis.Date = class extends RealDate {
-        constructor(...args) { if (args.length) super(...args); else super(clock); }
-        static now() { return clock; }
-    };
-    let tick = null;
-    globalThis.setInterval = fn => { tick = fn; return 1; };
-    globalThis.clearInterval = () => {};
-    Math.random = () => 0.5;
-    const { p, settings, asked, chat, state, env, warnings } = setup({ temperament: 'clingy', answer: '到了' });
-    env.day = { phone: 'free', block: null, since: null, prevPhone: 'free', prevDoing: '', today: '2026-10-31', life: { errands: [], log: [], today: null } };
-    settings.proactiveCharacterConfig = {};
-    chat().push({ is_user: true, mes: 'hey', send_date: clock - 2 * HOUR }, { is_user: false, mes: 'news', send_date: clock - 5 * MIN, meta: { proactive: true, proactiveType: 'random_thought' } });
-    p.startProactiveScheduler();
-    p.planParted('mira.png', clock);
-    state().lastProactiveAt = clock - 5 * MIN;
-    clock += 2 * MIN;
-    await tick();
-    await new Promise(resolve => queueMicrotask(resolve));
-    assert.equal(asked.length, 0, 'not yet');
-    clock += 14 * MIN;
-    await tick();
-    await new Promise(resolve => setImmediate(resolve));
-    assert.deepEqual(warnings, []);
-    assert.equal(asked.length, 1);
-    assert.match(JSON.stringify(asked[0]), /have just parted/);
-    assert.equal(chat().at(-1).meta.proactiveType, 'parted');
-    assert.equal(state().parted, null);
-    clock += 2 * MIN;
-    await tick();
-    await new Promise(resolve => setImmediate(resolve));
-    assert.equal(asked.length, 1, 'only once');
-    p.stopProactiveScheduler();
-    globalThis.setInterval = realInterval;
-    globalThis.clearInterval = realClear;
-    globalThis.Date = RealDate;
-    Math.random = realRandom;
-});
-
-test('a follow-up waits while you play the main chat, the rest moved along with it', async () => {
-    clock = T0;
-    const { p, env, asked, chat, state, talk } = setup({ temperament: 'clingy' });
-    talk();
-    const before = state().round.times.slice();
-    const pausedUntil = before[0] + 10 * MIN;
-    env.storyUntil = pausedUntil;
-    clock = before[0];
-    assert.equal(await p.runDueRound(), true);
-    assert.equal(asked.length, 0);
-    assert.equal(state().round.times[0], pausedUntil);
-    assert.equal(state().round.times[1] - state().round.times[0], before[1] - before[0]);
-    // Once it's been quiet: the round goes on
-    env.storyUntil = 0;
-    clock = pausedUntil;
-    await p.runDueRound();
-    assert.equal(asked.length, 1);
-    assert.equal(chat().at(-1).mes, '?');
-});
-
-test('a round is written for its own chat: another one open by then, nothing is sent till it\'s back', async () => {
-    clock = T0;
-    const { p, env, asked, chat, state, talk } = setup({ temperament: 'clingy' });
-    talk();
-    const round = state().round;
-    clock = round.times[0];
-    // You open another chat while its prompt is put together
-    env.onBuild = () => { env.open = 'other.png'; };
-    assert.equal(await p.runDueRound(), true);
-    assert.equal(asked.length, 0);
-    assert.equal(state().round, round);
-    assert.equal(round.texts.length, 0);
-    assert.equal(chat().length, 2);
-    // Back on her chat: written and let out then
-    env.onBuild = null;
-    env.open = 'mira.png';
-    await p.runDueRound();
-    assert.equal(asked.length, 1);
-    assert.equal(chat().at(-1).mes, '?');
-});
-
-test('the chat a round followed cleared: the round ends and nothing lands in the new chat', async () => {
-    clock = T0;
-    const { p, settings, chat, state, talk } = setup({ temperament: 'clingy' });
-    talk();
-    const round = state().round;
-    clock = round.times[0];
-    await p.runDueRound();
-    assert.equal(chat().at(-1).mes, '?');
-    settings.chatHistory['mira.png'] = [];
-    clock = round.times[1];
-    assert.equal(await p.runDueRound(), false);
-    assert.equal(state().round, null);
-    assert.deepEqual(chat(), []);
-});
-
-test('a text due while the page didn\'t run waits for the catch-up; one a little late with the page running goes now', async () => {
-    clock = T0;
-    const { p, env, asked, chat, state, talk } = setup({ temperament: 'clingy' });
-    talk();
-    const round = state().round;
-    // Back after the page slept: the catch-up has it (index.js catchUpPending), nothing asked here
-    env.pending = true;
-    clock = round.times[3] + HOUR;
-    assert.equal(await p.runDueRound(), true);
-    assert.equal(asked.length, 0);
-    assert.equal(state().round.sent, 0);
-    // The page running, a timer a little late: written and sent now, as it is
-    env.pending = false;
-    clock = round.times[0] + 40 * 1000;
-    await p.runDueRound();
-    assert.equal(asked.length, 1);
-    assert.equal(chat().at(-1).send_date, clock);
-    assert.match(asked[0].at(-1).content, /^\[Instruction for this turn[^\n]*Write the one text Mira sends now/);
-});
-
-test('with a schedule, each text of a round says what she is doing at its time', async () => {
-    clock = T0;
-    const { p, asked, env, state, talk } = setup({ temperament: 'clingy' });
-    talk();
-    const round = state().round;
-    // Out until the third text's time, then on the way home
-    env.day = at => ({ phone: 'free', block: at < round.times[2] ? { from: '18:00', to: '21:00', doing: '逛街', place: '城里', phone: 'free' }
-        : { from: '21:00', to: '22:00', doing: '', place: '回家路上', phone: 'busy' } });
-    // The schedule's line at each text's own time, as the schedule has it
-    for (const i of [0, 1, 2]) {
-        clock = round.times[i];
-        await p.runDueRound();
-    }
-    assert.match(asked[0].at(-1).content, /\(it is \d\d:\d\d, \d+ minutes after Mira's last one · 18:00–21:00 逛街 \(城里\)\)/);
-    assert.match(asked[1].at(-1).content, / · 18:00–21:00 逛街 \(城里\)\)/);
-    assert.match(asked[2].at(-1).content, / · 21:00–22:00 回家路上 \[busy\]\)/);
-});
-
-test('a round put off by another generation goes as soon as that\'s over and its timer is set again', async () => {
-    clock = T0;
-    const { p, env, asked, chat, state, talk } = setup({ temperament: 'clingy' });
-    talk();
-    const round = state().round;
-    clock = round.times[0];
-    // A catch-up, say, is running: it waits (its own retry is half a minute off)
-    env.generating = true;
-    assert.equal(await p.runDueRound(), true);
-    assert.equal(asked.length, 0);
-    // Over: setting the timer again (index.js onGenerationSettled) lets it go a second later
-    env.generating = false;
-    p.armRoundTimer();
-    await new Promise(resolve => setImmediate(resolve));
-    assert.equal(asked.length, 1);
-    assert.equal(chat().at(-1).mes, '?');
-});
-
-// ── Catching up: what would have been sent while the page wasn't running, by the same rules (simulateAway) ──
-const R = window.EchoTextProactiveRounds;
-const morning = new Date(2026, 9, 31, 8, 0).getTime();
-const dayKey = ms => { const d = new Date(ms); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
-const fixedRandom = fn => async () => { const real = Math.random; Math.random = () => 0.5; try { await fn(); } finally { Math.random = real; } };
-const follows = events => events.filter(e => e.kind === 'follow_up');
-
-test('away during a round: the rest of it, then an obsessed character\'s next rounds, at the rules\' own times, one request a round', fixedRandom(async () => {
-    clock = morning;
-    const { p, state, talk } = setup({ temperament: 'obsessed' });
-    talk();
-    const first = state().round;
-    const r1 = first.times.slice();
-    const from = clock, to = clock + 10 * HOUR;
-    const sim = p.simulateAway('mira.png', { name: 'Mira' }, { from, to });
-    // The next round as the live engine plans it (runDueRound → nextRound → planRound)
-    const r2 = R.planRound({ temperament: 'obsessed', startAt: r1.at(-1), firstHours: [2, 4], random: () => 0.5 });
-    const r3 = R.planRound({ temperament: 'obsessed', startAt: r2.at(-1), firstHours: [2, 4], random: () => 0.5 });
-    assert.deepEqual(sim.events.map(e => e.at), [...r1, ...r2].filter(t => t <= to));
-    assert.ok(sim.events.every(e => e.kind === 'follow_up'));
-    assert.deepEqual([...new Set(sim.events.map(e => e.round))], [1, 2]);
-    // Numbered only; how they're written said once
-    assert.equal(sim.events[0].note, 'follow-up 1');
-    assert.equal(sim.events[10].note, 'follow-up 1 of round 2');
-    assert.match(sim.followUps, /^Each follow-up is a fresh decision Mira makes at its own time.* Any of them may come back to Qi's silence\.$/);
-    // Where it stands by then: the third round ahead, two requests counted today
-    assert.equal(sim.state.round.number, 3);
-    assert.deepEqual(sim.state.round.times, r3);
-    assert.deepEqual(sim.state.requests, { day: dayKey(morning), count: 2 });
-    // Worked out on copies: nothing changed yet
-    assert.equal(state().round, first);
-    assert.equal(first.sent, 0);
-    // Adopted: the round goes on from there
-    p.adoptSimulation('mira.png', sim.state);
-    assert.equal(state().round.number, 3);
-    assert.equal(state().requests.count, 2);
+    assert.equal(p.getProactiveInsightsSnapshot().next, 'Waiting to reply');
+    assert.equal(p.getProactiveInsightsSnapshot().character, 'Mira · Normal');
 }));
-
-test('catching up, asleep: a round\'s text waits till they\'re up, the rest moved along with it', fixedRandom(async () => {
-    clock = morning;
-    const { p, env, state, talk } = setup({ temperament: 'clingy' });
-    talk();
-    const times = state().round.times.slice();
-    // Asleep from just after the first text until three hours on
-    const sleep = [times[0] + MIN, clock + 3 * HOUR];
-    env.schedule = at => (at >= sleep[0] && at < sleep[1] ? { phone: 'asleep', endsAt: sleep[1] } : { phone: 'free', endsAt: sleep[0] > at ? sleep[0] : 0 });
-    const sim = p.simulateAway('mira.png', { name: 'Mira' }, { from: clock, to: clock + 8 * HOUR });
-    const shift = sleep[1] - times[1];
-    assert.deepEqual(follows(sim.events).map(e => e.at), [times[0], ...times.slice(1).map(t => t + shift)]);
-}));
-
-test('catching up, with you: the round stops when that began, and nothing new comes while you\'re together', fixedRandom(async () => {
-    clock = morning;
-    const { p, env, state, talk } = setup({ temperament: 'obsessed' });
-    talk();
-    const times = state().round.times.slice();
-    env.together = [{ from: times[3] - 1000, until: clock + 6 * HOUR }];
-    const sim = p.simulateAway('mira.png', { name: 'Mira' }, { from: clock, to: clock + 8 * HOUR });
-    assert.deepEqual(follows(sim.events).map(e => e.at), times.slice(0, 3));
-    assert.ok(sim.events.every(e => e.at < env.together[0].from || e.at >= env.together[0].until));
-    assert.equal(sim.state.round, null);
-}));
-
-test('catching up: the day\'s requests run out and the next round doesn\'t come', fixedRandom(async () => {
-    clock = morning;
-    const { p, state, talk } = setup({ temperament: 'obsessed' });
-    talk();
-    state().requests = { day: dayKey(morning), count: 29 };
-    const r1 = state().round.times.slice();
-    const sim = p.simulateAway('mira.png', { name: 'Mira' }, { from: clock, to: clock + 10 * HOUR });
-    assert.deepEqual(follows(sim.events).map(e => e.at), r1);
-    assert.equal(sim.state.round, null);
-    assert.equal(sim.state.capped.reason, 'daily');
-}));
-
-test('catching up: only the last three days are written, at most thirty texts, the latest kept', fixedRandom(async () => {
-    clock = morning;
-    const { p, talk } = setup({ temperament: 'obsessed' });
-    talk();
-    const from = clock, to = clock + 5 * 24 * HOUR;
-    const all = p.simulateAway('mira.png', { name: 'Mira' }, { from, to, days: 99, max: Infinity });
-    const kept = p.simulateAway('mira.png', { name: 'Mira' }, { from, to });
-    assert.ok(all.events.length > 30);
-    assert.equal(kept.events.length, 30);
-    assert.deepEqual(kept.events, all.events.filter(e => e.at > to - 3 * 24 * HOUR).slice(-30));
-    assert.deepEqual(kept.state.round, all.state.round);
-}));
-
-test('catching up, no round: new topics on the scheduler\'s ticks by the same triggers, each waiting longer with none answered, up to the temperament', fixedRandom(async () => {
-    clock = morning;
-    const { p, settings, state } = setup({ temperament: 'normal' });
-    // A day ago you two talked; no round left
-    settings.chatHistory['mira.png'].push({ is_user: true, mes: 'hey', send_date: clock - 24 * HOUR }, { is_user: false, mes: 'hi', send_date: clock - 24 * HOUR + MIN });
-    p.syncProactiveStateWithHistory('mira.png', settings.chatHistory['mira.png']);
-    assert.equal(state().round, undefined);
-    const sim = p.simulateAway('mira.png', { name: 'Mira' }, { from: clock, to: clock + 3 * 24 * HOUR });
-    const topics = sim.events.filter(e => e.kind === 'topic');
-    // Normal: two in a row with no answer at most, the second after three times the wait (6–10 hours)
-    assert.ok(topics.length >= 1 && topics.length <= 2, String(topics.length));
-    assert.ok(topics.every(e => e.type && e.note && (e.at - clock) % (2 * MIN) === 0));
-    if (topics.length === 2) assert.ok(topics[1].at - topics[0].at >= 18 * HOUR);
-    // Each counted toward its own day's requests
-    const lastDay = dayKey(topics.at(-1).at);
-    assert.deepEqual(sim.state.requests, { day: lastDay, count: topics.filter(e => dayKey(e.at) === lastDay).length });
-}));
-
-test('catching up: a round written before you left comes back as it was written, with no request counted for it', fixedRandom(async () => {
-    clock = morning;
-    const { p, state, talk } = setup({ temperament: 'clingy' });
-    talk();
-    const round = state().round;
-    round.texts = ['?', '人呢', '你去哪了', '算了'].map(mes => ({ mes, mood: null, life: null }));
-    round.sent = 1;
-    const sim = p.simulateAway('mira.png', { name: 'Mira' }, { from: clock, to: clock + 4 * HOUR });
-    assert.deepEqual(follows(sim.events).map(e => e.text?.mes), ['人呢', '你去哪了', '算了']);
-    assert.equal(sim.state.requests, undefined);
-}));
-
-test('a catch-up due holds the live round and new topics back; you texted while it ran: no round is left to adopt', fixedRandom(async () => {
-    clock = morning;
-    const { p, env, asked, state, talk } = setup({ temperament: 'obsessed' });
-    talk();
-    env.pending = true;
-    clock = state().round.times[0];
-    assert.equal(await p.runDueRound(), true);
-    assert.equal(asked.length, 0);
-    env.pending = false;
-    const sim = p.simulateAway('mira.png', { name: 'Mira' }, { from: clock - 10 * MIN, to: clock + 10 * HOUR });
-    p.markProactiveUserActivity('mira.png', clock + 10 * HOUR + MIN);
-    p.adoptSimulation('mira.png', sim.state);
-    assert.equal(state().round, null);
-}));
-
-test('catching up: a shared moment from the memories goes in once, then not again for a week', async () => {
-    const real = Math.random;
-    // The rolls: the second kind of four (Thinking of you), its one text, its one memory
-    Math.random = () => 0.3;
-    try {
-        clock = morning;
-        const { p, env, chat, state } = setup({ temperament: 'normal' });
-        env.feelings = { rapport: 40 };
-        env.memories = [{ id: 'm1', category: 'shared_moment', content: '第一次一起看烟花' }, { id: 'x', category: 'shared_moment', content: '  ' }];
-        chat().push({ is_user: true, mes: 'hey', send_date: clock - 3 * HOUR }, { is_user: false, mes: 'hi', send_date: clock - 3 * HOUR + MIN });
-        const sim = p.simulateAway('mira.png', { name: 'Mira' }, { from: clock, to: clock + 24 * HOUR });
-        const topics = sim.events.filter(e => e.kind === 'topic');
-        assert.ok(topics.length >= 2, String(topics.length));
-        assert.equal(topics[0].type, 'memory_nudge');
-        assert.match(topics[0].note, /Something reminded Mira of this: "第一次一起看烟花"$/);
-        // Kept with when it went; the next ones don't bring it up (and an empty memory never does)
-        assert.deepEqual(sim.state.recalled, { m1: topics[0].at });
-        assert.ok(topics.slice(1).every(e => !e.note.includes('Something reminded')));
-        // Adopted with the rest
-        p.adoptSimulation('mira.png', sim.state);
-        assert.deepEqual(state().recalled, { m1: topics[0].at });
-    } finally {
-        Math.random = real;
-    }
-});
-
-test('a gap with nothing to send says why: new topics unanswered up to the cap, the day\'s requests used up, else nothing due', () => {
-    clock = morning;
-    const { p, chat } = setup({ temperament: 'normal' });
-    chat().push({ is_user: true, mes: 'hey', send_date: clock - 10 * HOUR },
-        { is_user: false, mes: 'a', send_date: clock - 8 * HOUR, meta: { proactive: true, proactiveType: 'random_thought' } },
-        { is_user: false, mes: 'b', send_date: clock - 4 * HOUR, meta: { proactive: true, proactiveType: 'checkin' } });
-    const sim = p.simulateAway('mira.png', { name: 'Mira' }, { from: clock, to: clock + 10 * HOUR });
-    assert.deepEqual(sim.events, []);
-    assert.deepEqual(sim.quiet, { why: 'unanswered', unanswered: 2 });
-    // Something to send: no reason
-    const { p: p2, talk } = setup({ temperament: 'clingy' });
-    talk();
-    assert.equal(p2.simulateAway('mira.png', { name: 'Mira' }, { from: clock, to: clock + 10 * HOUR }).quiet, null);
-});
-
-test('a catch-up holds back over the main chat you played then, as live does', fixedRandom(async () => {
-    clock = morning;
-    const { p, state, talk, env } = setup({ temperament: 'clingy' });
-    talk();
-    const times = state().round.times.slice();
-    // You played the main chat from just before the first text until 30 minutes after it
-    const span = { from: times[0] - MIN, until: times[0] + 30 * MIN };
-    env.storyUntil = at => (span.from <= at && at < span.until ? span.until : 0);
-    const sim = p.simulateAway('mira.png', { name: 'Mira' }, { from: clock, to: clock + 10 * HOUR });
-    const follows = sim.events.filter(e => e.kind === 'follow_up').map(e => e.at);
-    // The round moved to when it ran out, its gaps kept
-    assert.equal(follows[0], span.until);
-    assert.deepEqual(follows.map(at => at - follows[0]), times.map(at => at - times[0]));
-}));
-
-test('a catch-up counts the hour\'s requests as live does, every text of a round but only its first checked: twenty in an hour all go', () => {
-    clock = morning;
-    const { p, state, talk } = setup({ temperament: 'obsessed' });
-    talk();
-    const start = clock + MIN;
-    state().round = { number: 1, startedAt: clock, times: Array.from({ length: 20 }, (_, i) => start + i * MIN), texts: [], sent: 0, silence: [] };
-    const sim = p.simulateAway('mira.png', { name: 'Mira' }, { from: clock, to: clock + 30 * MIN });
-    assert.equal(sim.events.length, 20);
-    assert.equal(sim.state.capped, undefined);
-});

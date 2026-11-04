@@ -105,7 +105,7 @@
         // The proactive engine, as far as the catch-up asks it (runCatchUpTest sets what it answers)
         proactiveMessaging: {
             simulateAway: (...a) => env.simulateAway(...a), adoptSimulation: (...a) => env.adoptSimulation?.(...a), noteCatchUpRequest: (...a) => env.noteCatchUpRequest?.(...a),
-            syncProactiveStateWithHistory() {}, armRoundTimer() {}, dropRound: key => env.droppedRounds?.push(key), planParted: (...a) => env.partedPlans?.push(a), markProactiveUserActivity() {}, markProactiveCharacterActivity() {}, refreshProactiveInsights() {},
+            syncProactiveStateWithHistory() {}, armProactiveTimer() {}, planParted: (...a) => env.partedPlans?.push(a), markProactiveUserActivity() {}, markProactiveCharacterActivity() {}, refreshProactiveInsights() {},
         },
         // What the engine works out over a catch-up's gap (lib/proactive-messaging.js simulateAway): nothing, unless a test says
         simulateAway: () => ({ events: [], state: {} }) };
@@ -1513,7 +1513,7 @@
         const simulated = [];
         env.simulateAway = (key, char, range) => {
             simulated.push(range);
-            return { events: [{ at: range.from + HOUR, kind: 'topic', type: 'random_thought', note: 'A random thought.' }], state: {} };
+            return { events: [{ at: range.from + HOUR, type: 'random_thought', note: 'A random thought.' }], state: {} };
         };
         env.panelOpen = true;
         const twoDays = Date.now() - 2 * 24 * HOUR;
@@ -1639,7 +1639,6 @@
         env.settings.lifeState = settings.lifeState = {};
         env.settings.pendingReplies = {};
         env.settings.antiRefusal = false;
-        env.droppedRounds = [];
         env.partedPlans = [];
         env.buildApiMessagesFromHistory = async () => ({ apiMessages: [], rawPrompt: '', systemPrompt: '' });
         const replies = [];
@@ -1680,7 +1679,6 @@
         res.set = plan()?.phone === 'together' && plan().from >= started && plan().until <= endsBy && plan().until > endsBy - 120000 && withYouOn() && !$p('[data-emo-plan-phone]').length && !$p('[data-emo-action="clear-plan"]').length
             && $p('[data-emo-plan-until]').val() === clock(plan().until);
         res.parkedComes = replies.length === 1 && !env.settings.pendingReplies['mira.png'];
-        res.roundDropped = env.droppedRounds.includes('mira.png');
         res.withYouNow = r.isWithYou() && /With you/.test(emo.buildStatusRowHtml()) && $p('.et-sched-now').text().includes('With you') && !$p('.et-sched-now').text().includes('上班');
         res.insight = r.scheduleInsight().startsWith(`With you until ${clock(plan().until)}`);
         // Texts get answered whatever the dice, and the prompt has them together, not at work
@@ -2249,8 +2247,8 @@
         env.simulateAway = (key, char, range) => {
             simCalls.push({ key, ...range });
             return { state: simState, events: [
-                { at: range.from + 5 * HOUR, kind: 'topic', type: 'random_thought', note: 'A random thought.' },
-                { at: range.from + 10 * HOUR, kind: 'follow_up', round: 2, index: 0, text: null, note: 'follow-up 1 of round 2: still no answer' },
+                { at: range.from + 5 * HOUR, type: 'random_thought', note: 'A random thought.' },
+                { at: range.from + 10 * HOUR, type: 'checkin', note: 'Just checking in.' },
             ] };
         };
         env.adoptSimulation = (key, state) => adopted.push([key, state]);
@@ -2289,7 +2287,7 @@
         const turn = asked[0]?.apiMessages.at(-1).content || '';
         res.oneRequest = asked.length === 1 && counted === 1 && /^\[Instruction for this turn/.test(turn) && /CATCH-UP: 我 hasn't been around since/.test(turn)
             && /Mira's usual week in <schedule>/.test(turn) && /- 周六搬家 \(打包了一半\); due /.test(turn)
-            && /- n=1 · [A-Z][a-z]{2} \d{4}-\d\d-\d\d \d\d:\d\d.* · A random thought\.\n- n=2 · .* · follow-up 1 of round 2: still no answer/.test(turn) && /<text n="…">/.test(turn);
+            && /- n=1 · [A-Z][a-z]{2} \d{4}-\d\d-\d\d \d\d:\d\d.* · on Mira's mind: A random thought\.\n- n=2 · .* · on Mira's mind: Just checking in\./.test(turn) && /<text n="…">/.test(turn);
         // Asked for from where the texts had run to now, three days and thirty texts at most
         res.engineAsked = simCalls.length === 1 && simCalls[0].key === 'mira.png' && simCalls[0].from === twoDays && Math.abs(simCalls[0].to - Date.now()) < 5000
             && simCalls[0].days === 3 && simCalls[0].max === 30;
@@ -2298,7 +2296,7 @@
         // In by number at the engine's times and kinds, whatever time the model wrote; its state adopted
         const added = chat().filter(m => m.meta?.proactive);
         res.texts = added.map(m => m.mes).join('|') === '想你了|人呢' && added[0].send_date === twoDays + 5 * HOUR && added[1].send_date === twoDays + 10 * HOUR
-            && added[0].meta.proactiveType === 'random_thought' && added[1].meta.proactiveType === 'follow_up' && added[1].meta.round === 2;
+            && added[0].meta.proactiveType === 'random_thought' && added[1].meta.proactiveType === 'checkin';
         res.adopted = adopted.length === 1 && adopted[0][1] === simState;
         res.barGone = !document.getElementById('et-catchup-bar');
         // Its bar stays, done, to redo it, with ×
@@ -2607,7 +2605,7 @@
         env.settings.dailyLifeEnabled = true;
         env.settings.proactiveMessagingEnabled = true;
         env.settings.catchUpEnabled = true;
-        env.simulateAway = (key, char, range) => ({ events: [{ at: range.from + HOUR, kind: 'topic', type: 'random_thought', note: 'A random thought.' }], state: {} });
+        env.simulateAway = (key, char, range) => ({ events: [{ at: range.from + HOUR, type: 'random_thought', note: 'A random thought.' }], state: {} });
         let gapStart = 0;
         const gap = () => {
             open = 'mira.png';

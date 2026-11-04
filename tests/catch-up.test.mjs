@@ -23,10 +23,11 @@ const WEEK = Life.parseSchedule([
 ].join('\n'));
 
 test('what the model is told', () => {
-    const texts = [{ n: 1, at: at(30, 19), note: 'follow-up 1' },
+    // What may be on her mind with each (none for the first)
+    const texts = [{ n: 1, at: at(30, 19), note: '' },
         { n: 3, at: at(31, 12), note: 'You feel like texting Qi.' }];
     const text = C.buildInstruction({ charName: 'Mira', userName: 'Qi', from: NOW - 6 * DAY, now: NOW, settle: true, schedule: WEEK,
-        errands: [{ text: '周六搬家', progress: '打包了一半', due: '2026-10-31' }], madeUp: false, texts, followUps: 'Each follow-up is a fresh decision.' });
+        errands: [{ text: '周六搬家', progress: '打包了一半', due: '2026-10-31' }], madeUp: false, texts, guidance: 'They were sent one after another.' });
     assert.match(text, /^CATCH-UP: Qi hasn't been around since Sun 2026-10-25 20:00; it is now Sat 2026-10-31 20:00\. Mira's life went on meanwhile\./);
     // The week is in the system prompt's <schedule>: pointed to, not listed again
     assert.match(text, /Those days went by as Mira's usual week in <schedule> has them, unless something changed them\./);
@@ -39,11 +40,11 @@ test('what the model is told', () => {
     // The same bar as a reply's: out of the ordinary; the schedule, time passing and no reply aren't events
     assert.match(text, /A handful of entries, the ones that matter: what happened is something out of the ordinary that happened to Mira — .*\. What <schedule> already has Mira doing, time passing and Qi not replying are not events\./);
     // Each text with its number, its time, what she was doing and what it's about; the times and order the engine's
-    assert.match(text, /Then the texts Mira sent Qi meanwhile, in this order:\n- n=1 · Fri 2026-10-30 19:00 · follow-up 1\n- n=3 · Sat 2026-10-31 12:00 · 10:00–23:00 逛街 \(城里\) · You feel like texting Qi\./);
-    assert.match(text, /Write each as <text n="…">…<\/text> with its number, .*a follow-up one line, any other one to three\. One for every number and no others: the times and the order are fixed\.\nThe follow-ups are sent with no reply from Qi in between\. Each follow-up is a fresh decision\./);
+    assert.match(text, /Then the texts Mira sent Qi meanwhile, in this order:\n- n=1 · Fri 2026-10-30 19:00\n- n=3 · Sat 2026-10-31 12:00 · 10:00–23:00 逛街 \(城里\) · on Mira's mind: You feel like texting Qi\./);
+    assert.match(text, /Write each as <text n="…">…<\/text> with its number, .*, one to three texts\. One for every number and no others: the times and the order are fixed\.\nThey were sent one after another\./);
     assert.doesNotMatch(text, /at="/);
-    // No follow-ups to write: nothing said about them
-    assert.doesNotMatch(C.buildInstruction({ userName: 'Qi', from: NOW - DAY, now: NOW, texts: [texts[1]] }), /follow-ups|no reply/);
+    // No guidance given: none said
+    assert.doesNotMatch(C.buildInstruction({ userName: 'Qi', from: NOW - DAY, now: NOW, texts: [texts[1]] }), /one after another/);
     assert.match(C.buildInstruction({ from: NOW - DAY, now: NOW, settle: true, madeUp: true }), /; new <errand> \(due YYYY-MM-DD\) for something that comes up/);
     // Only texts (no Daily Life)
     const only = C.buildInstruction({ charName: 'Mira', userName: 'Qi', from: NOW - DAY, now: NOW, texts: [{ n: 1, at: at(31, 12), note: 'x' }] });

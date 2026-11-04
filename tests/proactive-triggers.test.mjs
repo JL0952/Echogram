@@ -1,6 +1,6 @@
 // Run: node --test tests/*.test.mjs
-// The emotion-driven proactive triggers, the cold shoulder and the pace on the
-// new feelings (docs/emotion-plan.md 3.9), through the real trigger evaluation.
+// The emotion-driven topics, the cold shoulder and the insights on the new feelings
+// (docs/emotion-plan.md 3.9), through the real topic picker and the sequence.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -43,8 +43,8 @@ function triggers(values, { snapshot = null, heart = false, bubbleHeart = false,
         const state = { lastUserMessageAt: userAt, lastCharacterMessageAt: userAt - HOUR, triggerHistory: {}, lastEmotionSnapshot: snapshot,
             lastProactiveAt: lastProactiveHours === null ? 0 : now.getTime() - lastProactiveHours * HOUR };
         const config = { ...p.getDefaultProactiveConfigForCharacter({}), temperament };
-        const candidates = p.evaluateProactiveTrigger({ history, state, config, now, collect: true });
-        if (!candidates) blocked++;
+        const candidates = p.topicAt({ history, state, config, now, collect: true });
+        if (!candidates.length) blocked++;
         for (const c of candidates || []) if (EMOTION_TRIGGERS.includes(c.type)) found.add(c.type);
     }
     return blocked === 7 ? null : found;
@@ -110,24 +110,22 @@ test('emotions off: the same as every feeling at 0', () => {
     assert.deepEqual([...triggers(null)].sort(), [...triggers({})].sort());
 });
 
-test('the cold shoulder: high anger or disgust holds every proactive text back for hours', () => {
-    // 85 and up: 7–10 hours from the user's last text (5 hours back here)
-    assert.equal(triggers({ anger: 85 }), null);
-    assert.equal(triggers({ disgust: 85 }), null);
-    assert.ok(triggers({ anger: 85 }, { lastUserHours: 15 }));
+test('the cold shoulder: high anger or disgust holds her next text back for hours', () => {
+    const now = Date.now();
+    const next = (values, userHours, settings = { proactiveMessagingEnabled: true }) => window.EchoTextProactiveMessaging.createProactiveMessaging({
+        getSettings: () => settings, saveSettings: () => {}, getUserName: () => 'Me', getActiveFeatures: () => [],
+        expandTimeDateMacros: t => t, replaceMacros: t => t,
+        getCurrentCharacter: () => ({ name: 'Mira', avatar: 'mira.png' }), getCharacterKey: () => 'mira.png',
+        getChatHistory: () => [{ is_user: true, mes: 'ok', send_date: now - userHours * HOUR }, { is_user: false, mes: 'fine', send_date: now - userHours * HOUR + 60000 }],
+        getEmotionState: () => ({ ...Model.zeroValues(), ...values }), getProactivePace: () => 1,
+    }).getProactiveInsightsSnapshot().next;
+    // 85 and up: 7–10 hours from your last text
+    assert.match(next({ anger: 85 }, 5), /^Ghosting /);
+    assert.match(next({ disgust: 85 }, 5), /^Ghosting /);
+    assert.doesNotMatch(next({ anger: 85 }, 15), /^Ghosting /);
     // 50–69: 1–2 hours, long over; below 50: none
-    assert.ok(triggers({ anger: 55 }));
-    assert.ok(triggers({ anger: 45 }));
-});
-
-test('the temperament sets the wait between proactive texts, the feelings stretch it', () => {
-    // Obsessed: 1–2 hours. 0.9 hours since the last one is too soon; at half the pace it isn't (most days)
-    assert.equal(triggers({}, { lastProactiveHours: 0.9, temperament: 'obsessed' }), null);
-    assert.ok(triggers({}, { lastProactiveHours: 0.9, temperament: 'obsessed', pace: 0.5 }));
-    // Normal: 6–10 hours; aloof: a day or two
-    assert.equal(triggers({}, { lastProactiveHours: 5.9 }), null);
-    assert.ok(triggers({}, { lastProactiveHours: 10.1 }));
-    assert.equal(triggers({}, { lastProactiveHours: 23.9, temperament: 'aloof' }), null);
+    assert.doesNotMatch(next({ anger: 55 }, 5), /^Ghosting /);
+    assert.doesNotMatch(next({ anger: 45 }, 5), /^Ghosting /);
 });
 
 test('the insights panel: the six kinds with what each needs, the cold shoulder and the stretched wait', () => {
@@ -138,7 +136,7 @@ test('the insights panel: the six kinds with what each needs, the cold shoulder 
             getSettings: () => settings, getUserName: () => 'Me', getActiveFeatures: () => [],
             expandTimeDateMacros: t => t, replaceMacros: t => t,
             getCurrentCharacter: () => ({ name: 'Mira', avatar: 'mira.png' }), getCharacterKey: () => 'mira.png',
-            getChatHistory: () => [{ is_user: false, mes: 'hi', send_date: now - 2 * HOUR, meta: { proactive: true } }, { is_user: true, mes: 'ok', send_date: now - HOUR }],
+            getChatHistory: () => [{ is_user: true, mes: 'ok', send_date: now - HOUR }, { is_user: false, mes: 'hi', send_date: now - HOUR + 60000 }],
             getEmotionState: () => ({ ...Model.zeroValues(), ...values }), getProactivePace: () => pace,
         }).getProactiveInsightsSnapshot();
     };
@@ -152,10 +150,8 @@ test('the insights panel: the six kinds with what each needs, the cold shoulder 
     assert.equal(row(warm, 'you').reason, 'Can pick · no memories');
     assert.equal(row(warm, 'callback').reason, 'Your last text 1h ago');
     assert.match(insights({ anger: 90 }).next, /^Ghosting .* Anger\)$/);
-    // The last proactive text went 2 hours ago: Normal waits 6–10 hours, longer at 1.4 × the pace
-    const hours = next => { const m = next.match(/Cooling down \((?:(\d+)h)? ?(?:(\d+)m)?/); return Number(m[1] || 0) + Number(m[2] || 0) / 60; };
-    assert.ok(hours(calm.next) >= 4 && hours(calm.next) <= 8);
-    assert.ok(hours(insights({}, 1.4).next) > hours(calm.next));
+    // Her reply an hour ago, unanswered: her next text (Normal: 20–60 minutes after it)
+    assert.match(calm.next, /^Next text (in .*|due)$/);
     // With the temperament by the name
     assert.equal(calm.character, 'Mira · Normal');
 });
@@ -195,9 +191,8 @@ test('the cold shoulder counts down to one end, drawn once: checks, the insights
             assert.equal(now.until, first.until);
             assert.equal(Math.round(now.remainingHours * 60), Math.round((first.until - clock) / MIN));
         }
-        // The triggers' own check holds them back to the same end
-        const config = { ...p.getDefaultProactiveConfigForCharacter({}), temperament: 'normal' };
-        assert.equal(p.evaluateProactiveTrigger({ history, state: settings.proactiveState['mira.png'], config, now: new Date(clock) }), null);
+        // The insights say so, counting down to the same end
+        assert.match(p.getProactiveInsightsSnapshot().next, /^Ghosting /);
         assert.equal(kept().until, first.until);
         // A reload: the same end
         assert.equal(engine().getProactiveInsightsSnapshot().ghostWindow.until, first.until);
