@@ -2302,7 +2302,7 @@
         res.adopted = adopted.length === 1 && adopted[0][1] === simState;
         res.barGone = !document.getElementById('et-catchup-bar');
         // Its bar stays, done, to redo it, with ×
-        res.doneBar = lastBar()?.dataset.state === 'done' && lastBar().textContent.includes('Caught up')
+        res.doneBar = lastBar()?.dataset.state === 'done' && lastBar().textContent === 'Caught up · 2 texts'
             && !!lastBar().querySelector('[data-et-catchup="again"][title="Redo"]') && !!lastBar().querySelector('[data-et-catchup="dismiss"]');
         res.seen = env.settings.proactiveSeenAt['mira.png'] > Date.now() - 5000;
         // Right after: nothing more to do
@@ -2365,7 +2365,9 @@
             await r.maybeCatchUp();
             const t = asked.at(-1).apiMessages.at(-1).content;
             res[label] = !/<text n=/.test(t) && !chat().some(m => m.meta?.proactive) && simCalls.length === calls
-                && env.settings.lifeState['mira.png'].start.log.some(e => e.text === '看电影');
+                && env.settings.lifeState['mira.png'].start.log.some(e => e.text === '看电影')
+                // The bar says why no texts came
+                && lastBar()?.textContent === (proactive ? 'Caught up · no texts · reply pending' : 'Caught up · no texts · Proactive off');
             env.settings.proactiveMessagingEnabled = true;
         }
         // Daily Life off: only the texts

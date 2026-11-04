@@ -6141,6 +6141,17 @@
     }
 
     const CATCH_UP_LAST = { done: 'Caught up', paused: 'Catch-up paused', failed: 'Catch-up failed' };
+    // Why a catch-up brought no texts (runCatchUp's `quiet`)
+    const CATCH_UP_QUIET = { limit: 'daily limit', reply: 'reply pending', off: 'Proactive off', unwritten: 'none written' };
+
+    /** The last catch-up's bar: done, how many texts came in, or none and why ("Caught up · no texts · 2 unanswered"). */
+    function catchUpLastLabel(last) {
+        if (last.state !== 'done' || last.count === undefined) return CATCH_UP_LAST[last.state];
+        if (last.count) return `Caught up · ${last.count} ${last.count === 1 ? 'text' : 'texts'}`;
+        const [why, n] = String(last.quiet || 'none').split(':');
+        const reason = why === 'unanswered' ? `${n} unanswered` : CATCH_UP_QUIET[why];
+        return `Caught up · no texts${reason ? ` · ${reason}` : ''}`;
+    }
 
     /** The bars of the chat open now (the list's chat changed, or a bar did), and the last catch-up's, once it's over. */
     function drawStatusBars() {
@@ -6157,7 +6168,7 @@
         if (!last || !CATCH_UP_LAST[last.state] || !isViewing(soloTarget(key))) return;
         const again = last.state === 'done' ? 'Redo' : 'Retry';
         jQuery('#et-messages').prepend(`<div id="et-catchup-last" class="et-catchup-bar et-catchup-bar-still" data-state="${last.state}"><i class="fa-solid fa-clock-rotate-left"></i>`
-            + `<span>${CATCH_UP_LAST[last.state]}</span>`
+            + `<span>${escapeHtml(catchUpLastLabel(last))}</span>`
             + `<button type="button" class="et-catchup-pause" data-et-catchup="again" title="${again}"><i class="fa-solid fa-rotate-right"></i></button>`
             + `<button type="button" class="et-catchup-pause" data-et-catchup="dismiss" title="Dismiss"><i class="fa-solid fa-xmark"></i></button>`
             + `</div>`);
@@ -6328,6 +6339,7 @@
         let notSent = false;
         let inserted = false;
         let failed = false;
+        let added = 0;
         try {
             const history = getChatHistory(target);
             const anchor = history[history.length - 1] || null;
@@ -6351,7 +6363,8 @@
             const answer = CatchUp.readAnswer(stripThinkingTags(String(raw ?? '')), { now, asked: asked.map(e => e.n) });
             if (settle) writeLife(key, { changes: answer.life });
             inserted = 'done';
-            if (insertCatchUpTexts(chat, target, events, answer.texts, run)) {
+            added = insertCatchUpTexts(chat, target, events, answer.texts, run);
+            if (added) {
                 saveChatHistory(chat, target);
                 if (isViewing(target)) renderMessages(chat);
             }
@@ -6380,8 +6393,12 @@
                 if (settle) settings.lifeState[key] = { ...DailyLife.normalizeLife(settings.lifeState[key]), settledAt: now };
                 if (getCharacterKey() === key) markSeen(true);
                 else settings.proactiveSeenAt[key] = Date.now();
-                // Done: its bar stays, to redo it
-                setCatchUpLast(key, inserted === 'done' ? { state: 'done', at: Date.now(), run, before } : null);
+                // Done: its bar stays, to redo it, saying how many came in, or why none did
+                const quiet = added ? null
+                    : events.length ? 'unwritten'
+                    : !sim ? (settings.proactiveMessagingEnabled !== true ? 'off' : getChatHistory(target).at(-1)?.is_user ? 'reply' : 'none')
+                    : sim.quiet?.why === 'unanswered' ? `unanswered:${sim.quiet.unanswered}` : sim.quiet?.why || 'none';
+                setCatchUpLast(key, inserted === 'done' ? { state: 'done', at: Date.now(), run, before, count: added, quiet } : null);
             }
             catchingUp = null;
             isGenerating = false;

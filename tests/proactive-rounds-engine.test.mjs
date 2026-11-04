@@ -22,7 +22,8 @@ globalThis.setTimeout = (fn, ms) => { if (ms <= 6000) queueMicrotask(fn); return
 globalThis.clearTimeout = () => {};
 test.after(() => { Date.now = realNow; });
 
-function setup({ temperament = 'clingy', answer = '?\n---\n人呢\n---\n你去哪了\n---\n算了', schedule = null, group = false } = {}) {
+// The model's answers: each follow-up is its own request, so a list answers them in turn (a string, every one)
+function setup({ temperament = 'clingy', answer = ['?', '人呢', '你去哪了', '算了'], schedule = null, group = false } = {}) {
     const settings = { enabled: true, proactiveMessagingEnabled: true, chatHistory: { 'mira.png': [] }, proactiveState: {} };
     const asked = [];
     const warnings = [];
@@ -48,7 +49,10 @@ function setup({ temperament = 'clingy', answer = '?\n---\n人呢\n---\n你去�
             env.onBuild?.();
             return { apiMessages: [{ role: 'system', content: extraSystem.join('\n') }], rawPrompt: '', systemPrompt: '' };
         },
-        requestEchoTextCompletion: async ({ apiMessages }) => { asked.push(apiMessages); return env.answer; },
+        requestEchoTextCompletion: async ({ apiMessages }) => {
+            asked.push(apiMessages);
+            return Array.isArray(env.answer) ? env.answer[(asked.length - 1) % env.answer.length] : env.answer;
+        },
         readReply: t => ({ mes: String(t).trim(), mood: null, life: null }),
         renderMessages: () => {}, setTypingIndicatorVisible: () => {}, setFabUnreadIndicator: () => {}, noteMoodReport: () => {},
         findLastUserMessageIndex: h => h.map(m => m.is_user).lastIndexOf(true),
@@ -66,36 +70,60 @@ function setup({ temperament = 'clingy', answer = '?\n---\n人呢\n---\n你去�
     return { p, settings, asked, warnings, env, chat, state, talk };
 }
 
-test('you go quiet mid-conversation: a round, written in one request, let out one by one', async () => {
+test('you go quiet mid-conversation: a round, each text written in its own request when it\'s due', async () => {
     clock = T0;
-    const { p, asked, chat, state, talk } = setup();
+    const { p, asked, chat, state, talk, env } = setup();
     talk();
     const round = state().round;
     assert.equal(round.times.length, 4);
     assert.ok(round.times[0] - clock >= 3 * MIN && round.times[0] - clock <= 10 * MIN);
+    // Clingy: two of the four may mention the silence, drawn when the round starts
+    assert.equal(round.silence.length, 4);
+    assert.equal(round.silence.filter(Boolean).length, 2);
     // Not yet: nothing asked
     clock = round.times[0] - 1000;
     assert.equal(await p.runDueRound(), true);
     assert.equal(asked.length, 0);
-    // The first is due: one request for the round, its first text out now
+    // The first is due: a request for it alone, out now
     clock = round.times[0];
     await p.runDueRound();
     assert.equal(asked.length, 1);
     const turn = asked[0].at(-1).content;
     // That there's no reply is said once, in the turn
     assert.match(asked[0][0].content, /^FOLLOW-UP MODE: you are texting Qi again on your own\.\n<proactive_situation>\nIt is currently [^\n]+\.\n<\/proactive_situation>$/);
-    assert.match(turn, /Qi hasn't replied since Mira's last text\. Write the 4 texts Mira sends meanwhile \(it is now \d\d:\d\d\):\n- text 1: \d\d:\d\d, \d+ minutes after Mira's last one\n/);
-    assert.match(turn, /Each text is a fresh decision Mira makes at its own time/);
-    assert.match(turn, /At most two of them mention that Qi hasn't replied\./);
+    assert.match(turn, /Qi hasn't replied to Mira's last text\. Write the one text Mira sends now \(it is \d\d:\d\d, \d+ minutes after Mira's last one\)\. It is a fresh decision Mira makes now\./);
+    assert.match(turn, round.silence[0] ? /or mentions the silence\. Write it as one text/ : /or brings up something new\. It doesn't mention that Qi hasn't replied\./);
+    assert.equal(turn.match(/hasn't replied/g).length, round.silence[0] ? 1 : 2);
     assert.deepEqual(chat().slice(-1).map(m => [m.mes, m.meta.proactiveType, m.send_date]), [['?', 'follow_up', round.times[0]]]);
     assert.equal(state().round.sent, 1);
-    // The page slept through the rest: they go in with their own times, no new request
+    // The second, on time: its own request, seeing the first unanswered
+    clock = round.times[1];
+    await p.runDueRound();
+    assert.equal(asked.length, 2);
+    assert.match(asked[1].at(-1).content, /Qi hasn't replied to Mira's last 2 texts\. .*aware of the earlier ones still unanswered/);
+    assert.equal(chat().at(-1).mes, '人呢');
+    // The day's cap counts the round once
+    assert.equal(state().requests.count, 1);
+    // The page slept through the rest: written together, by the clock, in with their own times
+    env.answer = '你去哪了\n---\n算了';
     clock = round.times[3] + 2 * HOUR;
     await p.runDueRound();
-    assert.equal(asked.length, 1);
+    assert.equal(asked.length, 3);
+    assert.match(asked[2].at(-1).content, /Write the 2 texts Mira sent meanwhile, while Qi was away/);
     assert.deepEqual(chat().slice(-3).map(m => [m.mes, m.send_date]), [['人呢', round.times[1]], ['你去哪了', round.times[2]], ['算了', round.times[3]]]);
     // Clingy lets it go after that
     assert.equal(state().round, null);
+});
+
+test('how many texts of a round may mention the silence: the temperament\'s, at random', () => {
+    const R = window.EchoTextProactiveRounds;
+    assert.deepEqual(R.silenceSlots({ temperament: 'aloof', count: 1 }), [false]);
+    assert.equal(R.silenceSlots({ temperament: 'normal', count: 2 }).filter(Boolean).length, 1);
+    assert.equal(R.silenceSlots({ temperament: 'clingy', count: 4 }).filter(Boolean).length, 2);
+    assert.deepEqual(R.silenceSlots({ temperament: 'obsessed', count: 3 }), [true, true, true]);
+    // Which ones is the draw's
+    const seen = new Set(Array.from({ length: 40 }, () => R.silenceSlots({ temperament: 'normal', count: 2 }).indexOf(true)));
+    assert.deepEqual([...seen].sort(), [0, 1]);
 });
 
 test('you answer: the round is over, even one being written', async () => {
@@ -138,6 +166,7 @@ test('no round when you weren\'t talking, in a group, or with follow-ups off', (
 
 test('obsessed: another round hours later, more insistent; until the day\'s requests run out', async () => {
     clock = T0;
+    // The first round all gone by (written together), the next one live
     const { p, asked, state, talk, env } = setup({ temperament: 'obsessed', answer: Array.from({ length: 10 }, (_, i) => `msg ${i}`).join('\n---\n') });
     talk();
     const first = state().round;
@@ -149,8 +178,8 @@ test('obsessed: another round hours later, more insistent; until the day\'s requ
     assert.ok(second.times[0] - first.times[9] >= 2 * HOUR && second.times[0] - first.times[9] <= 4 * HOUR);
     clock = second.times[0];
     await p.runDueRound();
-    assert.match(asked[1].at(-1).content, /Qi hasn't replied since Mira's last text or the ones after it\./);
-    assert.match(asked[1].at(-1).content, /Any of them may come back to Qi's silence\./);
+    assert.match(asked[1].at(-1).content, /Qi hasn't replied to Mira's last 11 texts\./);
+    assert.match(asked[1].at(-1).content, /or mentions the silence\. Write it as one text/);
     // 30 requests a day: the 31st doesn't go
     state().requests = { day: p.getDateKeyLocal(new Date(clock)), count: 30 };
     state().round = { number: 3, startedAt: clock, times: [clock + MIN], texts: null, sent: 0 };
@@ -313,7 +342,7 @@ test('a round is written for its own chat: another one open by then, nothing is 
     assert.equal(await p.runDueRound(), true);
     assert.equal(asked.length, 0);
     assert.equal(state().round, round);
-    assert.equal(round.texts, null);
+    assert.equal(round.texts.length, 0);
     assert.equal(chat().length, 2);
     // Back on her chat: written and let out then
     env.onBuild = null;
@@ -346,6 +375,7 @@ test('a round whose texts have all gone by (the page wasn\'t running) is told th
     const hm = ms => new Date(ms).toTimeString().slice(0, 5);
     // Back an hour after the last of them, the same evening
     clock = round.times[3] + HOUR;
+    env.answer = '?\n---\n人呢\n---\n你去哪了\n---\n算了';
     await p.runDueRound();
     const turn = asked[0].at(-1).content;
     assert.match(turn, new RegExp(`Write the 4 texts Mira sent meanwhile, while Qi was away \\(it is now ${hm(clock)}\\):\\n- text 1: ${hm(round.times[0])}\\n- text 2: ${hm(round.times[1])}\\n.*\\n- text 4: ${hm(round.times[3])}\\n`));
@@ -362,19 +392,27 @@ test('with a schedule, each text of a round says what she is doing at its time',
     // Out until the third text's time, then on the way home
     env.day = at => ({ phone: 'free', block: at < round.times[2] ? { from: '18:00', to: '21:00', doing: '逛街', place: '城里', phone: 'free' }
         : { from: '21:00', to: '22:00', doing: '', place: '回家路上', phone: 'busy' } });
-    clock = round.times[0];
-    await p.runDueRound();
-    // The schedule's line, as the schedule has it
-    assert.match(asked[0].at(-1).content, /- text 1: [^\n]+ · 18:00–21:00 逛街 \(城里\)\n- text 2: [^\n]+ · 18:00–21:00 逛街 \(城里\)\n- text 3: [^\n]+ · 21:00–22:00 回家路上 \[busy\]\n- text 4: [^\n]+ · 21:00–22:00 回家路上 \[busy\]\n/);
+    // The schedule's line at each text's own time, as the schedule has it
+    for (const i of [0, 1, 2]) {
+        clock = round.times[i];
+        await p.runDueRound();
+    }
+    assert.match(asked[0].at(-1).content, /\(it is \d\d:\d\d, \d+ minutes after Mira's last one · 18:00–21:00 逛街 \(城里\)\)/);
+    assert.match(asked[1].at(-1).content, / · 18:00–21:00 逛街 \(城里\)\)/);
+    assert.match(asked[2].at(-1).content, / · 21:00–22:00 回家路上 \[busy\]\)/);
 });
 
 test('a round only partly gone by keeps its waits (the first going in quietly, with the bar); one due now has no bar', async () => {
     clock = T0;
     const late = setup({ temperament: 'clingy' });
     late.talk();
-    clock = late.state().round.times[0] + 2 * MIN;
+    const lateRound = late.state().round;
+    clock = lateRound.times[0] + 2 * MIN;
     await late.p.runDueRound();
-    assert.match(late.asked[0].at(-1).content, /Write the 4 texts Mira sends meanwhile \(it is now \d\d:\d\d\):\n- text 1: \d\d:\d\d, \d+ minutes after Mira's last one\n/);
+    // Only the one gone by, by the clock; the rest keep their times and come on their own
+    assert.match(late.asked[0].at(-1).content, /Write the text Mira sent meanwhile, while Qi was away \(it is now \d\d:\d\d\):\n- text 1: \d\d:\d\d\n/);
+    assert.equal(late.chat().at(-1).send_date, lateRound.times[0]);
+    assert.equal(lateRound.times.length, 4);
     assert.deepEqual(late.env.bars, [true, false]);
     clock = T0;
     const due = setup({ temperament: 'clingy' });
@@ -560,4 +598,19 @@ test('catching up: a shared moment from the memories goes in once, then not agai
     } finally {
         Math.random = real;
     }
+});
+
+test('a gap with nothing to send says why: new topics unanswered up to the cap, the day\'s requests used up, else nothing due', () => {
+    clock = morning;
+    const { p, chat } = setup({ temperament: 'normal' });
+    chat().push({ is_user: true, mes: 'hey', send_date: clock - 10 * HOUR },
+        { is_user: false, mes: 'a', send_date: clock - 8 * HOUR, meta: { proactive: true, proactiveType: 'random_thought' } },
+        { is_user: false, mes: 'b', send_date: clock - 4 * HOUR, meta: { proactive: true, proactiveType: 'checkin' } });
+    const sim = p.simulateAway('mira.png', { name: 'Mira' }, { from: clock, to: clock + 10 * HOUR });
+    assert.deepEqual(sim.events, []);
+    assert.deepEqual(sim.quiet, { why: 'unanswered', unanswered: 2 });
+    // Something to send: no reason
+    const { p: p2, talk } = setup({ temperament: 'clingy' });
+    talk();
+    assert.equal(p2.simulateAway('mira.png', { name: 'Mira' }, { from: clock, to: clock + 10 * HOUR }).quiet, null);
 });
