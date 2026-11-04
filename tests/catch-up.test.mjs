@@ -22,28 +22,22 @@ const WEEK = Life.parseSchedule([
     'sunday 00:00-09:00 | 家 | 睡觉 | asleep',
 ].join('\n'));
 
-test('the schedule over the last days, a line a day', () => {
-    const lines = C.scheduleLines({ schedule: WEEK, from: NOW - 10 * DAY, to: NOW });
-    assert.equal(lines.length, 4);
-    assert.equal(lines[0], 'Wed 2026-10-28: 07:00–08:00 起床 (家); 09:00–18:00 上班 (公司); 23:00–07:00 睡觉 (家) [asleep]');
-    assert.equal(lines[3], 'Sat 2026-10-31: 00:00–10:00 睡懒觉 (家) [asleep]; 10:00–23:00 逛街 (城里)');
-    assert.deepEqual(C.scheduleLines({ schedule: null, from: NOW - DAY, to: NOW }), []);
-});
-
 test('what the model is told', () => {
     const texts = [{ n: 1, at: at(30, 19), note: 'follow-up 1' },
         { n: 3, at: at(31, 12), note: 'You feel like texting Qi.' }];
     const text = C.buildInstruction({ charName: 'Mira', userName: 'Qi', from: NOW - 6 * DAY, now: NOW, settle: true, schedule: WEEK,
         errands: [{ text: '周六搬家', progress: '打包了一半', due: '2026-10-31' }], madeUp: false, texts, followUps: 'Each follow-up is a fresh decision.' });
-    assert.match(text, /^CATCH-UP: Qi hasn't been around since 2026-10-25 20:00; it is now 2026-10-31 20:00\. Mira's life went on meanwhile\./);
-    assert.match(text, /Mira's days lately, from the schedule:\n- Wed 2026-10-28: /);
-    assert.match(text, /Before those days, 3 more days went by\./);
+    assert.match(text, /^CATCH-UP: Qi hasn't been around since Sun 2026-10-25 20:00; it is now Sat 2026-10-31 20:00\. Mira's life went on meanwhile\./);
+    // The week is in the system prompt's <schedule>: pointed to, not listed again
+    assert.match(text, /Those days went by as Mira's usual week in <schedule> has them, unless something changed them\./);
+    assert.doesNotMatch(text, /上班|起床/);
+    assert.match(text, /Only the last 3 days are told in detail: 3 more days went by before them\./);
     assert.match(text, /- 周六搬家 \(打包了一半\); due 2026-10-31/);
     assert.match(text, /happened <what> \(YYYY-MM-DD HH:MM\); update <errand>: <how it stands now>; done <errand>\. An errand past its due day/);
     assert.doesNotMatch(text, /new <errand>/);
     assert.match(text, /Sum up the days before in one happened entry/);
     // Each text with its number, its time, what she was doing and what it's about; the times and order the engine's
-    assert.match(text, /Then the texts Mira sent Qi meanwhile, in this order:\n- n=1 · 2026-10-30 19:00 · follow-up 1\n- n=3 · 2026-10-31 12:00 \(逛街\) · You feel like texting Qi\./);
+    assert.match(text, /Then the texts Mira sent Qi meanwhile, in this order:\n- n=1 · Fri 2026-10-30 19:00 · follow-up 1\n- n=3 · Sat 2026-10-31 12:00 · 10:00–23:00 逛街 \(城里\) · You feel like texting Qi\./);
     assert.match(text, /Write each as <text n="…">…<\/text> with its number, .*a follow-up one line, any other one to three\. One for every number and no others: the times and the order are fixed\.\nThe follow-ups are sent with no reply from Qi in between\. Each follow-up is a fresh decision\./);
     assert.doesNotMatch(text, /at="/);
     // No follow-ups to write: nothing said about them

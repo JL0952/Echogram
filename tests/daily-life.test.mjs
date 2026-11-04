@@ -170,26 +170,41 @@ test('the next block today', () => {
     assert.equal(Life.nextBlockAt(s, at(26, 23, 45)), null);
 });
 
-test('where the character is now, for the prompt', () => {
+test('the usual week, for the part of the prompt that stays the same', () => {
+    const s = Life.parseSchedule(STANDARD);
+    assert.equal(Life.describeSchedule({ schedule: s, charName: 'Mira' }), [
+        '<schedule>',
+        "Mira's usual week. [busy]: Mira can only glance at the phone now and then; [asleep]: Mira is asleep; between blocks Mira is free.",
+        'Weekdays: 07:00–08:30 起床洗漱 (家); 09:00–18:00 上班 (公司) [busy]; 23:30–07:00 睡觉 (家) [asleep]',
+        'Saturday: 01:00–10:00 睡懒觉 (家) [asleep]; 10:00–12:00 健身 (健身房)',
+        'Sunday: 23:00–07:00 睡觉 (家) [asleep]',
+        '</schedule>',
+    ].join('\n'));
+    // The same whatever the time: it's the week, not where they are in it
+    assert.doesNotMatch(Life.describeSchedule({ schedule: s, charName: 'Mira' }), /It is|now:/);
+    assert.match(Life.describeSchedule({ schedule: Life.normalizeSchedule({ weekday: [{ from: '09:00', to: '17:00', doing: '上班', phone: 'busy' }] }) }),
+        /\nSaturday: nothing planned\nSunday: nothing planned\n/);
+    assert.equal(Life.describeSchedule({ schedule: Life.normalizeSchedule(null) }), '');
+});
+
+test('where the character is now, for the prompt: the time and the schedule\'s line, copied', () => {
     const s = Life.parseSchedule(STANDARD);
     assert.equal(Life.describeNow({ schedule: s, date: at(26, 10), charName: 'Mira' }), [
         '<daily_life>',
-        'It is Monday, morning.',
-        'Right now (09:00–18:00): 上班, at 公司.',
+        'It is Monday 10:00; on the schedule now: 09:00–18:00 上班 (公司) [busy].',
         'Mira is busy and can only glance at the phone now and then: replies are short or late, and Mira may say so.',
-        'Next (from 23:30): 睡觉, at 家.',
         'This is where Mira is in their life: treat it as true and let it show when it fits, without reciting it.',
         '</daily_life>',
     ].join('\n'));
-    // Between blocks, and asleep (last night's sleep, nothing next today)
+    // Between blocks, and asleep (last night's sleep); nothing about what comes next
     assert.match(Life.describeNow({ schedule: s, date: at(26, 19), charName: 'Mira' }),
-        /It is Monday, evening\.\nRight now: nothing in particular\. Mira is free to look at the phone and text\.\nNext \(from 23:30\)/);
+        /It is Monday 19:00; nothing on the schedule now\. Mira is free to look at the phone and text\.\n/);
     const night = Life.describeNow({ schedule: s, date: at(27, 2), charName: 'Mira' });
-    assert.match(night, /It is Tuesday, before dawn\.\nRight now \(23:30–07:00\): 睡觉, at 家\.\nIt is Mira's time to sleep/);
-    assert.match(night, /Next \(from 07:00\): 起床洗漱/);
+    assert.match(night, /It is Tuesday 02:00; on the schedule now: 23:30–07:00 睡觉 \(家\) \[asleep\]\.\nIt is Mira's time to sleep/);
+    assert.doesNotMatch(night, /Next/);
     // A block with only a place
     const placeOnly = Life.normalizeSchedule({ saturday: [{ from: '10:00', to: '12:00', place: '健身房', phone: 'free' }] });
-    assert.match(Life.describeNow({ schedule: placeOnly, date: at(31, 11), charName: 'Mira' }), /Right now \(10:00–12:00\): 健身房\.\nMira is free/);
+    assert.match(Life.describeNow({ schedule: placeOnly, date: at(31, 11), charName: 'Mira' }), /on the schedule now: 10:00–12:00 健身房\.\nMira is free/);
     assert.equal(Life.describeNow({ schedule: Life.normalizeSchedule(null), date: at(26, 10) }), '');
 });
 
@@ -264,11 +279,9 @@ test('where the character is in their life, for the prompt', () => {
     const life = Life.currentLife(LIFE, at(28, 10));
     assert.equal(Life.describeNow({ schedule: s, life, date: at(28, 10), charName: 'Mira' }), [
         '<daily_life>',
-        'It is Wednesday, morning.',
-        'Right now (09:00–18:00): 上班, at 公司.',
+        'It is Wednesday 10:00; on the schedule now: 09:00–18:00 上班 (公司) [busy].',
         'Mira is busy and can only glance at the phone now and then: replies are short or late, and Mira may say so.',
-        'Next (from 23:30): 睡觉, at 家.',
-        'Today, unlike usual (this wins over the plan above): 今晚和你吃饭，不去健身.',
+        'Today, unlike usual (this wins over the schedule): 今晚和你吃饭，不去健身.',
         "On Mira's mind lately:",
         '- 周六搬家 (打包了一半; due Saturday; 嫌麻烦)',
         '- 期中考试 (was due Oct 20)',
@@ -280,7 +293,7 @@ test('where the character is in their life, for the prompt', () => {
     ].join('\n'));
     // Without a schedule: the life alone
     assert.equal(Life.describeNow({ schedule: Life.normalizeSchedule(null), life, date: at(28, 10), charName: 'Mira' }).split('\n').slice(1, 4).join('\n'),
-        "It is Wednesday, morning.\nToday, for a change: 今晚和你吃饭，不去健身.\nOn Mira's mind lately:");
+        "It is Wednesday 10:00.\nToday, for a change: 今晚和你吃饭，不去健身.\nOn Mira's mind lately:");
     assert.equal(Life.describeNow({ schedule: Life.normalizeSchedule(null), life: Life.currentLife(null, at(28, 10)), date: at(28, 10) }), '');
 });
 
@@ -559,10 +572,12 @@ test('when the character last answered: not their own texts, nor yours', () => {
 test('a change of plan by hand in the prompt', () => {
     const s = Life.parseSchedule(STANDARD);
     const up = Life.describeNow({ schedule: s, date: at(27, 0), charName: 'Mira', override: Life.makeOverride('free', '01:00', at(26, 23)) });
-    assert.match(up, /Right now \(23:30–07:00\): 睡觉, at 家\.\nUntil 01:00, a change of plan: Mira is up and free to look at the phone and text, whatever the schedule says\.\n/);
+    // It takes the schedule's line's place
+    assert.match(up, /^<daily_life>\nIt is Tuesday 00:00; until 01:00, a change of plan: Mira is up and free to look at the phone and text, whatever the schedule says\.\n/);
+    assert.doesNotMatch(up, /on the schedule now|睡觉/);
     assert.doesNotMatch(up, /time to sleep/);
     const nap = Life.describeNow({ schedule: s, date: at(26, 19), charName: 'Mira', override: Life.makeOverride('asleep', '20:00', at(26, 19)) });
-    assert.match(nap, /Right now: nothing in particular\.\nUntil 20:00, a change of plan: Mira is asleep: if Mira is texting now, something woke Mira up\.\nNext/);
+    assert.match(nap, /It is Monday 19:00; until 20:00, a change of plan: Mira is asleep: if Mira is texting now, something woke Mira up\.\n/);
     // Run out: as without
     assert.equal(Life.describeNow({ schedule: s, date: at(27, 2), charName: 'Mira', override: Life.makeOverride('free', '01:00', at(26, 23)) }),
         Life.describeNow({ schedule: s, date: at(27, 2), charName: 'Mira' }));
@@ -632,25 +647,24 @@ test('with you, they see every text and their phone is theirs till it ends', () 
     assert.equal(Life.phoneAt({ schedule: WEEK_BUSY, override, date: at(26, 13) }).phone, 'busy');
 });
 
-test('the prompt has them together, not in the block, and what comes after it', () => {
+test('the prompt has them together, not in the block', () => {
     const date = at(26, 10);
     const override = Life.makeOverride('together', '19:00', date);
     const text = Life.describeNow({ schedule: WEEK_BUSY, date: at(26, 11), charName: 'Mira', userName: 'Qi', override,
         life: { errands: [], log: [], today: { date: '2026-10-26', text: '去看电影' } } });
     assert.match(text, /Right now Mira is with Qi in person \(since 10:00, until around 19:00\)/);
     assert.match(text, /answer as if Qi is right there/);
-    assert.match(text, /Today, unlike usual \(this wins over the plan above\): 去看电影/);
+    assert.match(text, /Today, unlike usual \(this wins over the schedule\): 去看电影/);
     // Not the block they'd have been in, nor the first thing after now that's inside the time together
     assert.doesNotMatch(text, /上班/);
     assert.doesNotMatch(text, /a change of plan/);
-    assert.match(text, /Next \(from 23:30\): 睡觉, at 家/);
     // Done: as before
     const after = Life.describeNow({ schedule: WEEK_BUSY, date: at(26, 20), charName: 'Mira', userName: 'Qi', override });
     assert.doesNotMatch(after, /in person/);
-    // The other changes of plan read as they did
+    // The other changes of plan take the schedule's line's place too
     const free = Life.describeNow({ schedule: WEEK_BUSY, date: at(26, 11), charName: 'Mira', override: Life.makeOverride('free', '12:00', date) });
-    assert.match(free, /Right now \(09:00–18:00\): 上班, at 公司\./);
-    assert.match(free, /Until 12:00, a change of plan: Mira is up and free/);
+    assert.match(free, /It is Monday 11:00; until 12:00, a change of plan: Mira is up and free/);
+    assert.doesNotMatch(free, /上班/);
 });
 
 test('rewriting a life writes the reports so far into its start and leaves how far it\'s settled', () => {

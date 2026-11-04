@@ -26,7 +26,7 @@ new Function(fs.readFileSync(`${__dirname}/scenarios.js`, 'utf8'))();
 const NAMES = ['addEchogramToStory', 'buildCharacterToday', 'buildSystemPrompt', 'buildPromptParts', 'MAX_TEXTS', 'buildLifeDate', 'buildApiMessagesFromHistory', 'buildApiMessagesFromHistoryForChar', 'placeLiveContext', 'splitsLiveContext', 'buildChatTurns', 'buildChatMessages', 'getSTStoryMessages', 'stMessageTime', 'StoryTexts', 'ST_STORY_CHUNK_MESSAGES', 'ST_STORY_CHUNK_CHARS', 'getVerbosityPrompt', 'getCharacterVerbosity', 'getEchoTextFirstMessage', 'getSTStoryContext', 'findSTOpeningIndex',
     'isCharInCurrentSTChat', 'cleanSTMessageText', 'ST_STORY_MAX_MESSAGES', 'ST_STORY_MAX_CHARS', 'replaceMacros', 'buildMessageFormatPrompt',
     'RichMessages', 'Features', 'Platforms', 'activePlatformMemo', 'getActivePlatform', 'getActiveFeatures', 'platformHas', 'getReactionIds', 'isTetheredMode',
-    'DailyLife', 'dailyLifeActive', 'activeSchedule', 'activeLife', 'buildDailyLifeContext', 'phoneOverride', 'buildLifeRules', 'getEmotionHistory'];
+    'DailyLife', 'dailyLifeActive', 'activeSchedule', 'activeLife', 'buildDailyLifeContext', 'buildScheduleContext', 'phoneOverride', 'buildLifeRules', 'getEmotionHistory'];
 // Stubbed: SillyTavern state and the parts with their own data
 const STUBS = `
     const FA_REACTIONS = env.FA_REACTIONS; const settings = env.settings; const SillyTavern = env.SillyTavern;

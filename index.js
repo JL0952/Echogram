@@ -1204,7 +1204,8 @@
         // prompt cache holds:
         //
         //  1. IDENTITY   — who the character IS (primacy anchor)
-        //  2. CHARACTER  — description, personality, scenario, persona, world info,
+        //  2. CHARACTER  — description, personality, scenario, persona, world info, the
+        //                  character's usual week (Daily Life),
         //                  plus the story opening and, where the request isn't split
         //                  (splitsLiveContext), the recent ST roleplay. Split, the roleplay
         //                  goes between the texts by time instead, so the model can tell
@@ -1216,7 +1217,7 @@
         // Then what changes from reply to reply (`live`), closest to the reply:
         //
         //  6. MEMORY     — pinned memories and the ones the recent messages bring up
-        //  7. DAILY LIFE — where the character is in their week right now
+        //  7. DAILY LIFE — the time, and the line of their week they're in now
         //  8. FEELINGS   — the behavior block, and the reply length it moves a step
         //  9. MOOD       — Auto mode's rule, with the feelings as they stand; the date
         // ───────────────────────────────────────────────────────────────────────
@@ -1264,6 +1265,8 @@
         if (charRefParts.length > 0) {
             prompt += `\n\n<character_reference>\n${charRefParts.join('\n\n')}\n</character_reference>`;
         }
+        // Daily Life: their usual week, which changes only when the schedule does (where they are in it now is live)
+        prompt += buildScheduleContext(name);
 
         // ── 2b. STORY BACKGROUND ─────────────────────────────────────────────────
         // The greeting establishes the setting, the relationship with the user and —
@@ -5889,6 +5892,13 @@
     }
 
     /** Where the character is in their life, for the system prompt; '' without Daily Life, or with nothing to say. */
+    /** The character's usual week (lib/daily-life.js describeSchedule), Daily Life on; '' else. */
+    function buildScheduleContext(charName) {
+        if (!dailyLifeActive()) return '';
+        const text = DailyLife.describeSchedule({ schedule: activeSchedule(), charName });
+        return text ? `\n\n${text}` : '';
+    }
+
     function buildDailyLifeContext(charName) {
         if (!dailyLifeActive()) return '';
         const text = DailyLife.describeNow({ schedule: activeSchedule(), life: activeLife(), date: new Date(), charName, userName: getUserName(), override: phoneOverride() });

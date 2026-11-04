@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 globalThis.window = {};
-for (const f of ['lib/proactive-rounds.js', 'lib/proactive-messaging.js']) {
+for (const f of ['lib/daily-life.js', 'lib/proactive-rounds.js', 'lib/proactive-messaging.js']) {
     new Function(readFileSync(new URL(`../${f}`, import.meta.url), 'utf8'))();
 }
 
@@ -84,7 +84,7 @@ test('you go quiet mid-conversation: a round, written in one request, let out on
     const turn = asked[0].at(-1).content;
     // That there's no reply is said once, in the turn
     assert.match(asked[0][0].content, /^FOLLOW-UP MODE: you are texting Qi again on your own\.\n<proactive_situation>\nIt is currently [^\n]+\.\n<\/proactive_situation>$/);
-    assert.match(turn, /Qi hasn't replied since Mira's last text\. Write the 4 texts Mira sends meanwhile:\n- text 1: \d+ minutes after Mira's last one\n/);
+    assert.match(turn, /Qi hasn't replied since Mira's last text\. Write the 4 texts Mira sends meanwhile \(it is now \d\d:\d\d\):\n- text 1: \d\d:\d\d, \d+ minutes after Mira's last one\n/);
     assert.match(turn, /Each text is a fresh decision Mira makes at its own time/);
     assert.match(turn, /At most two of them mention that Qi hasn't replied\./);
     assert.deepEqual(chat().slice(-1).map(m => [m.mes, m.meta.proactiveType, m.send_date]), [['?', 'follow_up', round.times[0]]]);
@@ -348,7 +348,7 @@ test('a round whose texts have all gone by (the page wasn\'t running) is told th
     clock = round.times[3] + HOUR;
     await p.runDueRound();
     const turn = asked[0].at(-1).content;
-    assert.match(turn, new RegExp(`Write the 4 texts Mira sent meanwhile, while Qi was away \\(it is now ${hm(clock)}\\):\\n- text 1: at ${hm(round.times[0])}\\n- text 2: at ${hm(round.times[1])}\\n.*\\n- text 4: at ${hm(round.times[3])}\\n`));
+    assert.match(turn, new RegExp(`Write the 4 texts Mira sent meanwhile, while Qi was away \\(it is now ${hm(clock)}\\):\\n- text 1: ${hm(round.times[0])}\\n- text 2: ${hm(round.times[1])}\\n.*\\n- text 4: ${hm(round.times[3])}\\n`));
     assert.doesNotMatch(turn, /after Mira's last one/);
     assert.deepEqual(env.bars, [true, false]);
     assert.deepEqual(chat().slice(-4).map(m => m.send_date), round.times);
@@ -360,10 +360,12 @@ test('with a schedule, each text of a round says what she is doing at its time',
     talk();
     const round = state().round;
     // Out until the third text's time, then on the way home
-    env.day = at => ({ phone: 'free', block: at < round.times[2] ? { doing: '逛街', place: '城里' } : { doing: '', place: '回家路上' } });
+    env.day = at => ({ phone: 'free', block: at < round.times[2] ? { from: '18:00', to: '21:00', doing: '逛街', place: '城里', phone: 'free' }
+        : { from: '21:00', to: '22:00', doing: '', place: '回家路上', phone: 'busy' } });
     clock = round.times[0];
     await p.runDueRound();
-    assert.match(asked[0].at(-1).content, /- text 1: \d+ minutes after Mira's last one \(逛街\)\n- text 2: [^\n]+ \(逛街\)\n- text 3: [^\n]+ \(回家路上\)\n- text 4: [^\n]+ \(回家路上\)\n/);
+    // The schedule's line, as the schedule has it
+    assert.match(asked[0].at(-1).content, /- text 1: [^\n]+ · 18:00–21:00 逛街 \(城里\)\n- text 2: [^\n]+ · 18:00–21:00 逛街 \(城里\)\n- text 3: [^\n]+ · 21:00–22:00 回家路上 \[busy\]\n- text 4: [^\n]+ · 21:00–22:00 回家路上 \[busy\]\n/);
 });
 
 test('a round only partly gone by keeps its waits (the first going in quietly, with the bar); one due now has no bar', async () => {
@@ -372,7 +374,7 @@ test('a round only partly gone by keeps its waits (the first going in quietly, w
     late.talk();
     clock = late.state().round.times[0] + 2 * MIN;
     await late.p.runDueRound();
-    assert.match(late.asked[0].at(-1).content, /Write the 4 texts Mira sends meanwhile:\n- text 1: \d+ minutes after Mira's last one\n/);
+    assert.match(late.asked[0].at(-1).content, /Write the 4 texts Mira sends meanwhile \(it is now \d\d:\d\d\):\n- text 1: \d\d:\d\d, \d+ minutes after Mira's last one\n/);
     assert.deepEqual(late.env.bars, [true, false]);
     clock = T0;
     const due = setup({ temperament: 'clingy' });

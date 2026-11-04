@@ -1466,7 +1466,7 @@
         dice = [0.99, 0];
         await r.generateEchoText(chat());
         res.upAnswers = asked.length === 3 && !pending();
-        res.prompt = r.buildDailyLifeContext('Mira').includes(`Until ${pad(later.getHours())}:30, a change of plan: Mira is up and free`)
+        res.prompt = r.buildDailyLifeContext('Mira').includes(`; until ${pad(later.getHours())}:30, a change of plan: Mira is up and free`)
             && !r.buildDailyLifeContext('Mira').includes('time to sleep');
         // Asleep by hand keeps the time; a text that doesn't wake them waits till then
         click('[data-emo-plan-phone="asleep"]');
@@ -2282,8 +2282,8 @@
         await running;
         const turn = asked[0]?.apiMessages.at(-1).content || '';
         res.oneRequest = asked.length === 1 && counted === 1 && /^\[Instruction for this turn/.test(turn) && /CATCH-UP: 我 hasn't been around since/.test(turn)
-            && /Mira's days lately, from the schedule:/.test(turn) && /- 周六搬家 \(打包了一半\); due /.test(turn)
-            && /- n=1 · \d{4}-\d\d-\d\d \d\d:\d\d.* · A random thought\.\n- n=2 · .* · follow-up 1 of round 2: still no answer/.test(turn) && /<text n="…">/.test(turn);
+            && /Mira's usual week in <schedule>/.test(turn) && /- 周六搬家 \(打包了一半\); due /.test(turn)
+            && /- n=1 · [A-Z][a-z]{2} \d{4}-\d\d-\d\d \d\d:\d\d.* · A random thought\.\n- n=2 · .* · follow-up 1 of round 2: still no answer/.test(turn) && /<text n="…">/.test(turn);
         // Asked for from where the texts had run to now, three days and thirty texts at most
         res.engineAsked = simCalls.length === 1 && simCalls[0].key === 'mira.png' && simCalls[0].from === twoDays && Math.abs(simCalls[0].to - Date.now()) < 5000
             && simCalls[0].days === 3 && simCalls[0].max === 30;
