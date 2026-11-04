@@ -1167,10 +1167,11 @@
      * what doesn't (`live`). A provider's prompt cache only matches from the start of the
      * request up to the first thing that differs, so with what changes up front the chat
      * after it is never cached (see placeLiveContext). Without `verbosity` (a proactive text,
-     * whose own instruction says how many) the reply length is left out.
+     * whose own instruction says how many) the reply length is left out. `scheduleFrom`: the
+     * schedule starts that day instead of today (a catch-up, for the days it tells).
      * @returns {Promise<{ stable: string, live: string, maxTexts?: number }>} maxTexts: the most the reply keeps
      */
-    async function buildPromptParts(targetCharOverride = null, history = null, { verbosity = true } = {}) {
+    async function buildPromptParts(targetCharOverride = null, history = null, { verbosity = true, scheduleFrom = null } = {}) {
         if (isCombinedGroupMode()) {
             const groupId = groupManager ? groupManager.getCurrentGroupId() : null;
             const combinedHistory = groupId ? groupManager.getCombineHistory(groupId) : [];
@@ -1205,7 +1206,7 @@
         //
         //  1. IDENTITY   — who the character IS (primacy anchor)
         //  2. CHARACTER  — description, personality, scenario, persona, world info, the
-        //                  character's usual week (Daily Life),
+        //                  character's usual schedule today and tomorrow (Daily Life),
         //                  plus the story opening and, where the request isn't split
         //                  (splitsLiveContext), the recent ST roleplay. Split, the roleplay
         //                  goes between the texts by time instead, so the model can tell
@@ -1265,8 +1266,8 @@
         if (charRefParts.length > 0) {
             prompt += `\n\n<character_reference>\n${charRefParts.join('\n\n')}\n</character_reference>`;
         }
-        // Daily Life: their usual week, which changes only when the schedule does (where they are in it now is live)
-        prompt += buildScheduleContext(name);
+        // Daily Life: their usual schedule today and tomorrow, the same all day (where they are in it now is live)
+        prompt += buildScheduleContext(name, scheduleFrom);
 
         // ── 2b. STORY BACKGROUND ─────────────────────────────────────────────────
         // The greeting establishes the setting, the relationship with the user and —
@@ -1424,7 +1425,7 @@
     function buildMessageFormatPrompt(charName, userName) {
         const rules = Features.buildFeaturePrompts(getActiveFeatures(), { charName, userName, reactionIds: getReactionIds() });
         // What every tag below shares, said once
-        const tags = rules.length ? ' Each tag below goes on a line of its own too, as one of the texts. Write the texts and what goes inside the tags in the language of the conversation.' : '';
+        const tags = rules.length ? ` Each tag below goes on a line of its own too, as one of the texts. Write the texts and what goes inside the tags in the language of the conversation. Use a tag only when ${charName} really would — most replies need none. A tag from ${userName} is something they sent: respond to it.` : '';
         return [`MESSAGES: Put each text on its own line — every line reaches ${userName} as a separate message bubble. Only what ${charName} would actually send: never their unspoken thoughts.${tags}`, ...rules].join('\n');
     }
 
@@ -5944,10 +5945,10 @@
     }
 
     /** Where the character is in their life, for the system prompt; '' without Daily Life, or with nothing to say. */
-    /** The character's usual week (lib/daily-life.js describeSchedule), Daily Life on; '' else. */
-    function buildScheduleContext(charName) {
+    /** The character's usual schedule from `from`'s day (today) to tomorrow (lib/daily-life.js describeSchedule), Daily Life on; '' else. */
+    function buildScheduleContext(charName, from = null) {
         if (!dailyLifeActive()) return '';
-        const text = DailyLife.describeSchedule({ schedule: activeSchedule(), charName });
+        const text = DailyLife.describeSchedule({ schedule: activeSchedule(), charName, date: new Date(), from });
         return text ? `\n\n${text}` : '';
     }
 
@@ -6360,7 +6361,9 @@
             const history = getChatHistory(target);
             const anchor = history[history.length - 1] || null;
             const userName = getUserName();
-            const { apiMessages, rawPrompt, systemPrompt } = await buildApiMessagesFromHistoryForChar(history, [], char, { verbosity: false });
+            // The schedule from the first of the days it tells in detail
+            const scheduleFrom = Math.max(from, now - CatchUp.DAYS * 24 * 60 * 60 * 1000);
+            const { apiMessages, rawPrompt, systemPrompt } = await buildApiMessagesFromHistoryForChar(history, [], char, { verbosity: false, scheduleFrom });
             // Built from what's open now: another chat by then, it isn't sent and the gap waits
             if (!isViewing(target)) { notSent = true; return; }
             const instruction = CatchUp.buildInstruction({

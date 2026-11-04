@@ -2277,7 +2277,9 @@
         let counted = 0;
         let answer = async () => '';
         env.requestEchoTextCompletion = async req => { asked.push(req); return answer(req); };
-        env.buildApiMessagesFromHistoryForChar = async () => ({ apiMessages: [{ role: 'system', content: 'S' }], rawPrompt: '', systemPrompt: 'S' });
+        // With what it was built (the options: where its <schedule> starts)
+        const builtWith = [];
+        env.buildApiMessagesFromHistoryForChar = async (history, extra, char, options) => { builtWith.push(options); return { apiMessages: [{ role: 'system', content: 'S' }], rawPrompt: '', systemPrompt: 'S' }; };
         env.stripThinkingTags = t => t.replace(/<think>[\s\S]*?<\/think>/g, '');
         env.noteCatchUpRequest = () => { counted++; };
         // What the engine works out over the gap (lib/proactive-messaging.js simulateAway, tested on its own): two texts at its own times
@@ -2326,8 +2328,10 @@
         await running;
         const turn = asked[0]?.apiMessages.at(-1).content || '';
         res.oneRequest = asked.length === 1 && counted === 1 && /^\[Instruction for this turn/.test(turn) && /CATCH-UP: 我 hasn't been around since/.test(turn)
-            && /Mira's usual week in <schedule>/.test(turn) && /- 周六搬家 \(打包了一半\); due /.test(turn)
+            && /Mira's usual schedule in <schedule>/.test(turn) && /- 周六搬家 \(打包了一半\); due /.test(turn)
             && /- n=1 · [A-Z][a-z]{2} \d{4}-\d\d-\d\d \d\d:\d\d.* · on Mira's mind: A random thought\.\n- n=2 · .* · on Mira's mind: Just checking in\./.test(turn) && /<text n="…">/.test(turn);
+        // Its <schedule> from when it was left, two days ago (lib/daily-life.js describeSchedule, tested on its own)
+        res.scheduleFromGap = builtWith.length === 1 && builtWith[0].scheduleFrom === twoDays && builtWith[0].verbosity === false;
         // Asked for from where the texts had run to now, three days and thirty texts at most
         res.engineAsked = simCalls.length === 1 && simCalls[0].key === 'mira.png' && simCalls[0].from === twoDays && Math.abs(simCalls[0].to - Date.now()) < 5000
             && simCalls[0].days === 3 && simCalls[0].max === 30;

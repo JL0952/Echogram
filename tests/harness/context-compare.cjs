@@ -61,6 +61,6 @@ sc.history.forEach((msg, i) => {
     const tap = newApi.buildUserReactionText(msg);
     console.log(`${String(i).padStart(2)} ${msg.is_user ? 'user' : 'char'}  ${text === null ? '(left out)' : JSON.stringify(text)}${tap ? '  + tapbacks ' + JSON.stringify(tap) : ''}`);
 });
-console.log('\nformat rules mention REACTIONS:', /REACTIONS:/.test(newApi.buildMessageFormatPrompt('Mira', 'Me')));
+console.log('\nformat rules mention <react>:', /<react>/.test(newApi.buildMessageFormatPrompt('Mira', 'Me')));
 
 })();

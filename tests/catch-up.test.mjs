@@ -29,8 +29,8 @@ test('what the model is told', () => {
     const text = C.buildInstruction({ charName: 'Mira', userName: 'Qi', from: NOW - 6 * DAY, now: NOW, settle: true, schedule: WEEK,
         errands: [{ text: '周六搬家', progress: '打包了一半', due: '2026-10-31' }], madeUp: false, texts, guidance: 'They were sent one after another.' });
     assert.match(text, /^CATCH-UP: Qi hasn't been around since Sun 2026-10-25 20:00; it is now Sat 2026-10-31 20:00\. Mira's life went on meanwhile\./);
-    // The week is in the system prompt's <schedule>: pointed to, not listed again
-    assert.match(text, /Those days went by as Mira's usual week in <schedule> has them, unless something changed them\./);
+    // Those days are in the system prompt's <schedule>: pointed to, not listed again
+    assert.match(text, /Those days went by as Mira's usual schedule in <schedule> has them, unless something changed them\./);
     assert.doesNotMatch(text, /上班|起床/);
     assert.match(text, /Only the last 3 days are told in detail: 3 more days went by before them\./);
     assert.match(text, /- 周六搬家 \(打包了一半\); due 2026-10-31/);

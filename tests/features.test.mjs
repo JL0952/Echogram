@@ -14,13 +14,15 @@ const NO_REACT = ['photo', 'transfer'];
 const NONE = [];
 const REACTIONS = ['heart', 'haha', 'wow', 'sad', 'fire', 'like', 'star', 'bolt'];
 
-// The rules for the first three features as written since step 8c: "on its own line"
-// and the language are said once, in index.js's MESSAGES line
+// The rules for three features, a line each since the format rules were shortened: what they
+// share (a line of its own, the language, used only when it fits, the user's) is said once, in
+// index.js's MESSAGES line
 const FORMAT_RULES = [
-    "PHOTOS: Mira can send photos as <photo>what the photo shows</photo> — a short, concrete description of the picture — and Me sees it as an actual picture. Write the description as a neutral caption of what is visible, with no first- or second-person pronouns: refer to people by name (Mira, Me) instead of I/me/my/you. Send one whenever Mira naturally would, such as when asked for a picture, but never use it to describe Mira's own actions. A <photo> from Me is a picture they sent: react to what it shows.",
-    "REACTIONS: Mira can react to a message of Me's with a tapback: a <reply> quoting that message, then <react>name</react> right after it, where name is one of: heart, haha, wow, sad, fire, like, star, bolt — always both, even for Me's latest message: <reply>Me: the quoted words</reply> (a photo by its note: <reply>Me: [Photo: what it shows]</reply>), then <react>heart</react>. Use one only now and then, when a quick reaction genuinely fits — most replies need none. A <react> from Me is their tapback on the message the <reply> right before it quotes.",
-    "TRANSFERS: Mira can send Me money as <transfer>amount</transfer>, with the amount as a plain number. When Me sends Mira a <transfer>, Mira can accept it with <transfer_accept/> or decline it with <transfer_decline/>, or leave it pending for now. A <transfer_accept> or <transfer_decline> from Me means they accepted or declined Mira's transfer. Only send or answer transfers when it fits the story.",
+    "- <photo>what the photo shows</photo>: Me sees it as an actual picture. A short, neutral caption of what is visible, people by name (Mira, Me), with no I/me/my/you; never Mira's own actions. Send one when asked for a picture.",
+    "- <react>name</react>, name one of: heart, haha, wow, sad, fire, like, star, bolt: a tapback, right after a <reply> quoting the message of Me's it is on, even the latest — always both: <reply>Me: the quoted words</reply> (a photo by its note), then <react>heart</react>. Me's <react> is on the message their <reply> right before it quotes.",
+    "- <transfer>amount</transfer>, the amount a plain number: money to Me. To Me's <transfer>, Mira can answer <transfer_accept/> or <transfer_decline/>, or leave it pending for now; theirs mean they accepted or declined Mira's.",
 ];
+const tagOf = rule => rule.match(/^- <(\w+)>/)[1];
 
 test('the format rules read exactly as written', () => {
     assert.deepEqual(buildFeaturePrompts(['photo', 'react', 'transfer'], { charName: 'Mira', userName: 'Me', reactionIds: REACTIONS }), FORMAT_RULES);
@@ -28,28 +30,28 @@ test('the format rules read exactly as written', () => {
 
 test('no rule repeats what the MESSAGES line says once', () => {
     for (const rule of buildFeaturePrompts(ALL, { charName: 'Mira', userName: 'Me', reactionIds: REACTIONS })) {
-        assert.doesNotMatch(rule, /on its own line|language of the conversation|same language/, rule.split(':')[0]);
+        assert.doesNotMatch(rule, /on its own line|language of the conversation|same language|need none|now and then|story calls for it|respond to it/, tagOf(rule));
     }
 });
 
 test('format rules list only the enabled features, in a fixed order', () => {
     const ctx = { charName: 'Mira', userName: 'Me', reactionIds: ['heart', 'like'] };
-    assert.deepEqual(buildFeaturePrompts(NO_REACT, ctx).map(p => p.split(':')[0]), ['PHOTOS', 'TRANSFERS']);
-    assert.deepEqual(buildFeaturePrompts(['transfer', 'photo'], ctx).map(p => p.split(':')[0]), ['PHOTOS', 'TRANSFERS']);
-    assert.match(buildFeaturePrompts(['react'], ctx)[0], /one of: heart, like —/);
+    assert.deepEqual(buildFeaturePrompts(NO_REACT, ctx).map(tagOf), ['photo', 'transfer']);
+    assert.deepEqual(buildFeaturePrompts(['transfer', 'photo'], ctx).map(tagOf), ['photo', 'transfer']);
+    assert.match(buildFeaturePrompts(['react'], ctx)[0], /name one of: heart, like: /);
     assert.deepEqual(buildFeaturePrompts(NONE, ctx), []);
-    assert.deepEqual(buildFeaturePrompts(['music', 'link', 'file', 'transfer', 'location', 'voice', 'reply', 'react', 'photo'], ctx).map(p => p.split(':')[0]),
-        ['PHOTOS', 'VOICE MESSAGES', 'LOCATIONS', 'REACTIONS', 'REPLIES', 'TRANSFERS', 'FILES AND LINKS', 'MUSIC']);
+    assert.deepEqual(buildFeaturePrompts(['music', 'link', 'file', 'transfer', 'location', 'voice', 'reply', 'react', 'photo'], ctx).map(tagOf),
+        ['photo', 'voice', 'location', 'react', 'reply', 'transfer', 'file', 'link', 'music']);
 });
 
 test('the voice rule names the tag, when to use it, and how a character\'s temperament changes that', () => {
     const [rule] = buildFeaturePrompts(['voice'], { charName: 'Mira', userName: 'Me', reactionIds: REACTIONS });
-    assert.match(rule, /<voice>exactly what Mira says<\/voice>/);
+    assert.match(rule, /^- <voice>exactly what Mira says<\/voice>: /);
+    assert.match(rule, /never actions or tone/);
     assert.match(rule, /typing is awkward/);
     assert.match(rule, /closer or more intimate/);
-    assert.match(rule, /asks to hear something/);
-    assert.match(rule, /Outgoing, expressive characters send them often; reserved or shy ones rarely do/);
-    assert.match(rule, /A <voice> from Me is their recording/);
+    assert.match(rule, /Me asks to hear something/);
+    assert.match(rule, /outgoing, expressive characters send them often, reserved or shy ones rarely/);
 });
 
 test('text is untouched when every feature is on or no tag applies', () => {
@@ -84,16 +86,11 @@ test('a message that was only unsupported content is left out (null)', () => {
     assert.equal(filterContextText('   ', NO_REACT), '   ');
 });
 
-test('files and links: one rule for both where both are on, each its own where only one is', () => {
+test('files and links: a line each, either without the other', () => {
     const ctx = { charName: 'Mira', userName: 'Me', reactionIds: REACTIONS };
-    const [files] = buildFeaturePrompts(['file'], ctx);
-    assert.match(files, /^FILES: .*<file>name\.ext/);
-    assert.doesNotMatch(files, /<link>|web page/);
-    const [links] = buildFeaturePrompts(['link'], ctx);
-    assert.match(links, /^LINKS: Mira can share a web page as <link>page title \| address \| one line about it<\/link>/);
-    assert.match(links, /A <link> from Me is something they shared/);
-    assert.doesNotMatch(links, /<file>/);
-    assert.equal(buildFeaturePrompts(['file', 'link'], ctx).length, 1);
+    assert.deepEqual(buildFeaturePrompts(['file'], ctx), ["- <file>name.ext | a short summary of what's in it</file>: a ticket, form or notes Mira would really send."]);
+    assert.deepEqual(buildFeaturePrompts(['link'], ctx), ['- <link>page title | address | one line about it</link>: an article, video or place Mira would really send.']);
+    assert.deepEqual(buildFeaturePrompts(['file', 'link'], ctx).map(tagOf), ['file', 'link']);
     // The "+" menu: links are a kind of file where files are on, their own entry where not
     assert.deepEqual(Object.keys(getComposerModes(['photo', 'file', 'link'])), ['photo', 'file']);
     assert.deepEqual(Object.keys(getComposerModes(['photo', 'link'])), ['photo', 'link']);
@@ -101,22 +98,14 @@ test('files and links: one rule for both where both are on, each its own where o
     assert.equal(filterContextText('<link>News | https://a.cn</link>\n<file>a.pdf | notes</file>', ['link']), '<link>News | https://a.cn</link>\n[File: a.pdf | notes]');
 });
 
-test('the file rule names both tags and keeps sharing to what the story calls for', () => {
-    const [rule] = buildFeaturePrompts(['file', 'link'], { charName: 'Mira', userName: 'Me', reactionIds: REACTIONS });
-    assert.match(rule, /<file>name\.ext \| a short summary of what's in it<\/file>/);
-    assert.match(rule, /<link>page title \| address \| one line about it<\/link>/);
-    assert.match(rule, /only when the story calls for it/);
-    assert.match(rule, /A <file> or <link> from Me is something they shared/);
-});
-
 test('files and links degrade to plain-text notes', () => {
     assert.equal(filterContextText('<file>a.pdf | notes</file>', ['photo']), '[File: a.pdf | notes]');
     assert.equal(filterContextText('<link>News | https://a.cn</link>', ['photo']), '[Link: News | https://a.cn]');
 });
 
-test('the location rule names the tag, what it is for, and that the story has to call for it', () => {
+test('the location rule names the tag and what it is for', () => {
     const [rule] = buildFeaturePrompts(['location'], { charName: 'Mira', userName: 'Me', reactionIds: REACTIONS });
-    assert.equal(rule, 'LOCATIONS: Mira can share a place as <location>place name | address</location> — where Mira is, or where to meet — only when the story calls for it. A <location> from Me is a place they shared: respond to it.');
+    assert.equal(rule, '- <location>place name | address</location>: where Mira is, or where to meet.');
     // The "+" menu has it after voice, the way WeChat's panel orders 位置 after 照片
     assert.deepEqual(Object.keys(getComposerModes(['transfer', 'location', 'photo', 'file'])), ['photo', 'location', 'transfer', 'file']);
 });
@@ -128,7 +117,7 @@ test('places degrade to a plain-text note', () => {
 
 test('the music rule asks for a real song, its title and artist as released', () => {
     const [rule] = buildFeaturePrompts(['music'], { charName: 'Mira', userName: 'Me', reactionIds: REACTIONS });
-    assert.equal(rule, 'MUSIC: Mira can share a song as <music>song title | artist</music>, or with a few of its lines as <music>song title | artist | a line; the next line</music> — a real song that exists, with its title and artist as released, never translated — now and then, when a song fits the moment or comes up. A <music> from Me is a song they shared: respond to it.');
+    assert.equal(rule, '- <music>song title | artist</music>, or with a few of its lines <music>song title | artist | a line; the next line</music>: a real song that exists, title and artist as released, never translated.');
     // The "+" menu has it last, the way WeChat's panel ends with 音乐
     assert.deepEqual(Object.keys(getComposerModes(['music', 'file', 'location', 'photo', 'transfer'])), ['photo', 'location', 'transfer', 'file', 'music']);
 });
@@ -204,13 +193,13 @@ test('the model sees replies as they are; without them, as a plain note', () => 
     assert.equal(filterContextText(text, ['photo']), '[Replying to Mira: [Photo: a ticket]]\nfor us?');
 });
 
-test('the reply rule names the tag, who the name is, and that most replies need none', () => {
+test('the reply rule names the tag, who the name is, and what it is for', () => {
     const [rule] = buildFeaturePrompts(['reply'], { charName: 'Mira', userName: 'Me', reactionIds: REACTIONS });
-    assert.match(rule, /^REPLIES: /);
-    assert.match(rule, /<reply>name: the quoted words<\/reply>/);
+    assert.match(rule, /^- <reply>name: the quoted words<\/reply>, /);
     assert.match(rule, /whoever sent it \(Me or Mira\)/);
+    assert.match(rule, /for a message further back than the latest/);
     assert.match(rule, /quoted by its note in square brackets, as \[Photo: what it shows\], never with its tag/);
-    assert.match(rule, /most replies need none/);
+    assert.match(rule, /Me's <reply> quotes the message the text after it answers/);
 });
 
 test('a reply is cut to its most bubbles; tapbacks are not bubbles and stay', () => {

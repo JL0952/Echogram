@@ -170,20 +170,28 @@ test('the next block today', () => {
     assert.equal(Life.nextBlockAt(s, at(26, 23, 45)), null);
 });
 
-test('the usual week, for the part of the prompt that stays the same', () => {
+test('the usual schedule today and tomorrow, for the part of the prompt that stays the same all day', () => {
     const s = Life.parseSchedule(STANDARD);
-    assert.equal(Life.describeSchedule({ schedule: s, charName: 'Mira' }), [
-        '<schedule>',
-        "Mira's usual week. [busy]: Mira can only glance at the phone now and then; [asleep]: Mira is asleep; between blocks Mira is free.",
-        'Weekdays: 07:00–08:30 起床洗漱 (家); 09:00–18:00 上班 (公司) [busy]; 23:30–07:00 睡觉 (家) [asleep]',
-        'Saturday: 01:00–10:00 睡懒觉 (家) [asleep]; 10:00–12:00 健身 (健身房)',
-        'Sunday: 23:00–07:00 睡觉 (家) [asleep]',
-        '</schedule>',
-    ].join('\n'));
-    // The same whatever the time: it's the week, not where they are in it
-    assert.doesNotMatch(Life.describeSchedule({ schedule: s, charName: 'Mira' }), /It is|now:/);
-    assert.match(Life.describeSchedule({ schedule: Life.normalizeSchedule({ weekday: [{ from: '09:00', to: '17:00', doing: '上班', phone: 'busy' }] }) }),
-        /\nSaturday: nothing planned\nSunday: nothing planned\n/);
+    const WEEKDAY = '07:00–08:30 起床洗漱 (家); 09:00–18:00 上班 (公司) [busy]; 23:30–07:00 睡觉 (家) [asleep]';
+    const SATURDAY = '01:00–10:00 睡懒觉 (家) [asleep]; 10:00–12:00 健身 (健身房)';
+    const SUNDAY = '23:00–07:00 睡觉 (家) [asleep]';
+    const head = "Mira's usual schedule on these days. [busy]: Mira can only glance at the phone now and then; [asleep]: Mira is asleep; between blocks Mira is free.";
+    // Wednesday: two weekdays, one line
+    assert.equal(Life.describeSchedule({ schedule: s, charName: 'Mira', date: at(28, 9) }),
+        ['<schedule>', head, `Today (Wednesday) and tomorrow (Thursday): ${WEEKDAY}`, '</schedule>'].join('\n'));
+    // The same all day: it's the days, not where they are in them
+    assert.equal(Life.describeSchedule({ schedule: s, charName: 'Mira', date: at(28, 23, 59) }), Life.describeSchedule({ schedule: s, charName: 'Mira', date: at(28, 0, 1) }));
+    assert.doesNotMatch(Life.describeSchedule({ schedule: s, charName: 'Mira', date: at(28, 9) }), /It is|now:/);
+    // Friday and Saturday, Saturday and Sunday, Sunday and Monday: a line each
+    assert.ok(Life.describeSchedule({ schedule: s, date: at(30, 9) }).endsWith(`\nToday (Friday): ${WEEKDAY}\nTomorrow (Saturday): ${SATURDAY}\n</schedule>`));
+    assert.match(Life.describeSchedule({ schedule: s, date: at(31, 9) }), /\nToday \(Saturday\): 01:00.*\nTomorrow \(Sunday\): 23:00.*\n<\/schedule>$/);
+    assert.match(Life.describeSchedule({ schedule: s, date: at(25, 9) }), /\nToday \(Sunday\): 23:00.*\nTomorrow \(Monday\): 07:00/);
+    // From an earlier day (a catch-up): each kind of day once, saying which days
+    assert.equal(Life.describeSchedule({ schedule: s, charName: 'Mira', date: at(33, 9), from: at(30, 20).getTime() }),
+        ['<schedule>', head, `Friday, today (Monday) and tomorrow (Tuesday): ${WEEKDAY}`, `Saturday: ${SATURDAY}`, `Yesterday (Sunday): ${SUNDAY}`, '</schedule>'].join('\n'));
+    // A day without blocks, and no schedule
+    assert.match(Life.describeSchedule({ schedule: Life.normalizeSchedule({ weekday: [{ from: '09:00', to: '17:00', doing: '上班', phone: 'busy' }] }), date: at(31, 9) }),
+        /\nToday \(Saturday\): nothing planned\nTomorrow \(Sunday\): nothing planned\n/);
     assert.equal(Life.describeSchedule({ schedule: Life.normalizeSchedule(null) }), '');
 });
 
@@ -782,8 +790,8 @@ test('what counts as something that happened, and a reply keeps one', () => {
     // The bar, and what isn't an event: the schedule, time passing, no reply; plans go elsewhere
     assert.match(rules, /a change in Mira's circumstances or relationships, an unexpected development, or something Mira would still bring up days later/);
     assert.match(rules, /What <schedule> already has Mira doing, time passing and Qi not replying are not events; a change to Mira's plans goes under today or an errand/);
-    // Errands: beyond the week, never a reply; updated only when something changed
-    assert.match(rules, /- new <errand> \(due <YYYY-MM-DD>\): something Mira has to get done or is waiting on by a day, beyond the usual week in <schedule> — a task, an appointment, an outcome; never a reply from Qi\n/);
+    // Errands: beyond the schedule, never a reply; updated only when something changed
+    assert.match(rules, /- new <errand> \(due <YYYY-MM-DD>\): something Mira has to get done or is waiting on by a day, beyond the usual schedule in <schedule> — a task, an appointment, an outcome; never a reply from Qi\n/);
     assert.match(rules, /- update <errand>: <how it stands now>, only when that has changed\n/);
     // Past one, the rest left out, the first kept; the other changes all kept
     const two = Life.parseLifeTag('嗯\n<life>happened 被领导骂了; happened 倒了杯咖啡; update 周六搬家: 打包完了</life>', SAT, { maxHappened: 1 }).life;
