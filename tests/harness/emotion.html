@@ -2255,8 +2255,12 @@
         };
         env.adoptSimulation = (key, state) => adopted.push([key, state]);
         env.panelOpen = true;
-        // The pause button, bound as index.js binds it at startup
-        jQuery(document).off('click.catchup').on('click.catchup', '[data-et-catchup="pause"]', () => r.pauseCatchUp());
+        // The bar's buttons, bound as index.js binds them at startup
+        let again = null;
+        jQuery(document).off('click.catchup').on('click.catchup', '[data-et-catchup="pause"]', () => r.pauseCatchUp())
+            .on('click.catchup', '[data-et-catchup="again"]', () => { again = r.retryCatchUp(); })
+            .on('click.catchup', '[data-et-catchup="dismiss"]', () => r.dismissCatchUp());
+        const lastBar = () => document.getElementById('et-catchup-last');
         const chat = () => env.settings.chatHistory['mira.png'];
         const twoDays = Date.now() - 2 * 24 * HOUR;
         const fresh = (lastIsUser = false) => {
@@ -2264,6 +2268,8 @@
             if (lastIsUser) chat()[0].send_date = twoDays;
             env.settings.proactiveSeenAt = { 'mira.png': twoDays };
             env.settings.lifeState = { 'mira.png': { startAt: twoDays - HOUR, start: { errands: [{ id: 'e1', text: '周六搬家', progress: '打包了一半', due: Life.dateKey(new Date()) }], log: [], today: null } } };
+            env.settings.catchUpLast = {};
+            r.renderMessages(chat());
         };
         env.settings.dailyLifeEnabled = true;
         env.settings.proactiveMessagingEnabled = true;
@@ -2295,23 +2301,60 @@
             && added[0].meta.proactiveType === 'random_thought' && added[1].meta.proactiveType === 'follow_up' && added[1].meta.round === 2;
         res.adopted = adopted.length === 1 && adopted[0][1] === simState;
         res.barGone = !document.getElementById('et-catchup-bar');
+        // Its bar stays, done, to redo it, with ×
+        res.doneBar = lastBar()?.dataset.state === 'done' && lastBar().textContent.includes('Caught up')
+            && !!lastBar().querySelector('[data-et-catchup="again"][title="Redo"]') && !!lastBar().querySelector('[data-et-catchup="dismiss"]');
         res.seen = env.settings.proactiveSeenAt['mira.png'] > Date.now() - 5000;
         // Right after: nothing more to do
         await r.maybeCatchUp();
         res.notAgain = asked.length === 1;
 
-        // Paused: no answer kept, the gap left as it is, no error
+        // Redo: its texts and its life taken back, the engine started again from where it was, written again
+        answer = async () => '<life>happened 下雨了 (' + Life.dateKey(new Date(Date.now() - 24 * HOUR)) + ')</life>\n<text n="1">又是我</text>\n<text n="2">在吗</text>';
+        lastBar().querySelector('[data-et-catchup="again"]').click();
+        await again;
+        const redone = chat().filter(m => m.meta?.proactive);
+        const log = env.settings.lifeState['mira.png'].start.log.map(e => e.text);
+        res.redo = asked.length === 2 && redone.map(m => m.mes).join('|') === '又是我|在吗' && simCalls.at(-1).from === twoDays
+            && log.includes('下雨了') && !log.includes('加班到十点') && env.settings.lifeState['mira.png'].start.errands[0].progress === '打包了一半'
+            && lastBar()?.dataset.state === 'done';
+        // Your next text: the bar goes, the texts stay
+        r.postUserMessage({ is_user: true, mes: '在', send_date: Date.now() });
+        res.textDismisses = !lastBar() && !env.settings.catchUpLast['mira.png'] && chat().filter(m => m.meta?.proactive).length === 2;
+
+        // Paused: nothing moves on, no error; its bar says so, with Retry and ×
         fresh();
         answer = req => new Promise((resolve, reject) => req.signal.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError'))));
         const paused = r.maybeCatchUp();
         await sleep(0);
         document.querySelector('[data-et-catchup="pause"]').click();
         await paused;
-        // What the engine worked out holds all the same, so the gap isn't caught up on twice
-        res.paused = asked.length === 2 && chat().length === 2 && adopted.length === 2 && env.settings.lifeState['mira.png'].settledAt > twoDays
-            && env.settings.lifeState['mira.png'].start.errands[0].progress === '打包了一半' && !errors.length && !document.getElementById('et-catchup-bar');
+        const adoptedAtPause = adopted.length;
+        res.paused = asked.length === 3 && chat().length === 2 && adoptedAtPause === 2 && !env.settings.lifeState['mira.png'].settledAt
+            && env.settings.proactiveSeenAt['mira.png'] === twoDays && !errors.length && !document.getElementById('et-catchup-bar')
+            && lastBar()?.dataset.state === 'paused' && !!lastBar().querySelector('[data-et-catchup="again"][title="Retry"]');
+        // It waits for Retry: not run again by itself, and still there after a redraw (it's kept in the settings)
         await r.maybeCatchUp();
-        res.pausedStays = asked.length === 2;
+        r.renderMessages(chat());
+        res.pausedStays = asked.length === 3 && lastBar()?.dataset.state === 'paused' && env.settings.catchUpLast['mira.png'].state === 'paused';
+        // Retry: run again
+        answer = async () => '<text n="1">想你了</text>';
+        lastBar().querySelector('[data-et-catchup="again"]').click();
+        await again;
+        res.retried = asked.length === 4 && chat().filter(m => m.meta?.proactive).map(m => m.mes).join('|') === '想你了' && lastBar()?.dataset.state === 'done';
+
+        // Failed: kept the same way; × lets the gap go (the engine moves on, the life settled, seen now)
+        fresh();
+        answer = async () => { throw new Error('socket hang up'); };
+        await r.maybeCatchUp();
+        res.failed = lastBar()?.dataset.state === 'failed' && errors.some(e => /socket hang up/.test(e)) && !env.settings.lifeState['mira.png'].settledAt;
+        errors.length = 0;
+        const adoptedAtFail = adopted.length;
+        lastBar().querySelector('[data-et-catchup="dismiss"]').click();
+        res.dismissed = !lastBar() && !env.settings.catchUpLast['mira.png'] && adopted.length === adoptedAtFail + 1
+            && env.settings.lifeState['mira.png'].settledAt > twoDays && env.settings.proactiveSeenAt['mira.png'] > Date.now() - 5000;
+        await r.maybeCatchUp();
+        res.dismissedStays = asked.length === 5;
 
         // She owes you a reply, or Proactive is off: only the life, the engine not asked
         for (const [label, proactive, lastIsUser] of [['proactiveOff', false, false], ['owesReply', true, true]]) {

@@ -11443,6 +11443,11 @@ html.et-bg-light .et-music-play {
     animation: et-catchup-spin 1.6s linear infinite;
 }
 
+/* The last catch-up's bar, once it's over (done, paused or failed): still, with Redo or Retry and × */
+.et-catchup-bar-still > i {
+    animation: none;
+}
+
 .et-catchup-pause {
     display: inline-flex;
     align-items: center;

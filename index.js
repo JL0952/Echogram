@@ -1910,6 +1910,7 @@
         delete settings.lifeState[key];
         delete settings.phoneOverrides?.[key];
         delete settings.chatMemories?.[key];
+        delete settings.catchUpLast?.[key];
         saveSettings();
     }
 
@@ -2015,6 +2016,9 @@
     // GENERATION ENGINE
     // ============================================================
 
+    // A streamed answer silent this long is given up on (sendCompletionRequest)
+    const STREAM_SILENCE_MS = 3 * 60000;
+
     async function requestEchoTextCompletion(params) {
         activeCompletionRequests++;
         try {
@@ -2049,18 +2053,45 @@
             if (!context.ConnectionManagerRequestService) throw new Error('ConnectionManagerRequestService not available.');
 
             // Streamed, then put together: a thinking model can take minutes, and a gateway
-            // drops a connection that long without a byte (socket hang up); the main chat streams too
-            const response = await context.ConnectionManagerRequestService.sendRequest(
-                profile.id, apiMessages, undefined,
-                { stream: true, signal, extractData: true, includePreset: true, includeInstruct: true }
-            );
-            if (typeof response !== 'function') return stripPrefill(extractTextFromResponse(response));
-            let text = '';
-            // Each chunk carries the text so far (the reasoning apart, in its state)
-            for await (const chunk of response()) {
-                if (typeof chunk?.text === 'string') text = chunk.text;
+            // drops a connection that long without a byte (socket hang up); the main chat streams too.
+            // Nothing at all for STREAM_SILENCE_MS (the reasoning counts) and it's given up on,
+            // so a request that never ends doesn't hold everything waiting on it
+            const own = new AbortController();
+            const passOn = () => own.abort(signal.reason);
+            if (signal?.aborted) passOn();
+            else signal?.addEventListener('abort', passOn, { once: true });
+            let silent = false;
+            let timer = null;
+            const wait = () => {
+                clearTimeout(timer);
+                timer = setTimeout(() => { silent = true; own.abort(); }, STREAM_SILENCE_MS);
+            };
+            wait();
+            try {
+                const response = await context.ConnectionManagerRequestService.sendRequest(
+                    profile.id, apiMessages, undefined,
+                    { stream: true, signal: own.signal, extractData: true, includePreset: true, includeInstruct: true }
+                );
+                if (typeof response !== 'function') return stripPrefill(extractTextFromResponse(response));
+                let text = '';
+                let reasoning = '';
+                // Each chunk carries the text so far (the reasoning apart, in its state)
+                for await (const chunk of response()) {
+                    wait();
+                    if (typeof chunk?.text === 'string') text = chunk.text;
+                    if (typeof chunk?.state?.reasoning === 'string') reasoning = chunk.state.reasoning;
+                }
+                // Nothing written: SillyTavern skips an error the provider sends inside a stream
+                // (tryParseStreamingError catches its own throw), so it ends up empty, not failed
+                if (!text.trim()) throw new Error(reasoning.trim() ? 'the model only thought, it wrote no reply' : 'no answer (the provider may have sent an error)');
+                return stripPrefill(text);
+            } catch (err) {
+                if (silent) throw new Error(`no answer for ${STREAM_SILENCE_MS / 60000} minutes`);
+                throw err;
+            } finally {
+                clearTimeout(timer);
+                signal?.removeEventListener('abort', passOn);
             }
-            return stripPrefill(text);
         }
 
         if (settings.source === 'ollama') {
@@ -2473,15 +2504,25 @@
 
         } catch (err) {
             const aborted = err.name === 'AbortError' || (abortController && abortController.signal.aborted);
+            // Back to the chat as it was, while it's still the one this started from
+            const restored = backupHistory && (!anchor || getChatHistory(target).includes(anchor));
+            if (restored) {
+                saveChatHistory(backupHistory, target);
+                if (isViewing(target)) renderMessages(backupHistory);
+            }
             if (aborted) log('Generation cancelled');
             else {
                 error('Generation failed:', err);
-                toastr.error(`Echogram: ${err.message}`);
-            }
-            // Back to the chat as it was, while it's still the one this started from
-            if (backupHistory && (!anchor || getChatHistory(target).includes(anchor))) {
-                saveChatHistory(backupHistory, target);
-                if (isViewing(target)) renderMessages(backupHistory);
+                // A tap asks again, from the chat as it is then (its chat open, nothing else on its way)
+                toastr.error(`Echogram: ${String(err.message).replace(/[.。]\s*$/, '')}. Tap to retry.`, '', {
+                    timeOut: 15000,
+                    onclick: () => {
+                        if (isGenerating || !isViewing(target)) return;
+                        const chat = getChatHistory(target);
+                        if (restored) generateEchoText(chat.slice(0, chat.map(m => !!m?.is_user).lastIndexOf(true) + 1), chat);
+                        else generateEchoText(chat);
+                    },
+                });
             }
         } finally {
             setTypingIndicatorVisible(false);
@@ -4926,6 +4967,8 @@
 
     /** Appends a user message, renders it, and schedules the character's reply. */
     function postUserMessage(userMsg) {
+        // You're back: the last catch-up's bar goes (a paused or failed gap is let go)
+        dismissCatchUp();
         const newHistory = [...getChatHistory(), userMsg];
         saveChatHistory(newHistory);
         setFabUnreadIndicator(false);
@@ -6097,7 +6140,9 @@
         drawStatusBars();
     }
 
-    /** The bars of the chat open now (the list's chat changed, or a bar did). */
+    const CATCH_UP_LAST = { done: 'Caught up', paused: 'Catch-up paused', failed: 'Catch-up failed' };
+
+    /** The bars of the chat open now (the list's chat changed, or a bar did), and the last catch-up's, once it's over. */
     function drawStatusBars() {
         jQuery('#et-messages > .et-catchup-bar').remove();
         for (const [id, { target, text, pause }] of statusBars) {
@@ -6107,6 +6152,15 @@
                 + (pause ? `<button type="button" class="et-catchup-pause" data-et-catchup="${pause}" title="Pause"><i class="fa-solid fa-pause"></i></button>` : '')
                 + `</div>`);
         }
+        const key = getCharacterKey();
+        const last = key && !inGroupSession() && catchingUp?.key !== key ? settings.catchUpLast?.[key] : null;
+        if (!last || !CATCH_UP_LAST[last.state] || !isViewing(soloTarget(key))) return;
+        const again = last.state === 'done' ? 'Redo' : 'Retry';
+        jQuery('#et-messages').prepend(`<div id="et-catchup-last" class="et-catchup-bar et-catchup-bar-still" data-state="${last.state}"><i class="fa-solid fa-clock-rotate-left"></i>`
+            + `<span>${CATCH_UP_LAST[last.state]}</span>`
+            + `<button type="button" class="et-catchup-pause" data-et-catchup="again" title="${again}"><i class="fa-solid fa-rotate-right"></i></button>`
+            + `<button type="button" class="et-catchup-pause" data-et-catchup="dismiss" title="Dismiss"><i class="fa-solid fa-xmark"></i></button>`
+            + `</div>`);
     }
 
     function setCatchUpBar(on, key) {
@@ -6133,10 +6187,29 @@
         const char = getCurrentCharacter();
         const key = getCharacterKey();
         if (!char || !key) return;
+        // Paused or failed: it waits on its bar's Retry (or ×)
+        if (['paused', 'failed'].includes(settings.catchUpLast?.[key]?.state)) { drawStatusBars(); return; }
+        const plan = catchUpPlan(char, key);
+        if (!plan) { markSeen(true); return; }
+        const { settle, settleFrom, textFrom, sim, events, now } = plan;
+        if (!settle && !events.some(e => !e.text)) {
+            // Nothing for the model to write: a round's texts written before go in, and the engine moves on
+            skipCatchUp(key, plan);
+            return;
+        }
+        await runCatchUp({ char, key, settle, events, sim, from: Math.min(settle ? settleFrom : Infinity, events.length ? textFrom : Infinity), now });
+    }
+
+    /**
+     * What a catch-up for the open character would cover now, or null when there's no
+     * gap to look at (never seen, an empty chat, Catch up off): whether Daily Life settles
+     * (from `settleFrom`), and the texts the engine works out (`sim`, from `textFrom`).
+     */
+    function catchUpPlan(char, key) {
         const history = getChatHistory();
         const seen = settings.proactiveSeenAt?.[key];
         const last = history[history.length - 1];
-        if (!seen || !last || settings.catchUpEnabled === false) { markSeen(true); return; }
+        if (!seen || !last || settings.catchUpEnabled === false) return null;
         const now = Date.now();
         const lastAt = Number(last.send_date) || Date.parse(last.send_date) || 0;
         const settleFrom = Math.max(lastAt, settings.lifeState?.[key]?.settledAt || 0);
@@ -6145,26 +6218,81 @@
         const textFrom = Math.max(seen, lastAt);
         const sim = settings.proactiveMessagingEnabled === true && proactiveMessaging && !last.is_user && now - textFrom >= CatchUp.GAP_MS
             ? proactiveMessaging.simulateAway(key, char, { from: textFrom, to: now, days: CatchUp.DAYS, max: CatchUp.MAX_TEXTS }) : null;
-        const events = sim ? sim.events : [];
-        if (!settle && !events.some(e => !e.text)) {
-            // Nothing for the model to write: a round's texts written before go in, and the engine moves on
-            if (events.length) {
-                const chat = getChatHistory();
-                if (insertCatchUpTexts(chat, soloTarget(key), events)) { saveChatHistory(chat); renderMessages(chat); }
-            }
-            if (sim) proactiveMessaging.adoptSimulation(key, sim.state);
-            markSeen(true);
-            return;
+        return { settle, settleFrom, textFrom, sim, events: sim ? sim.events : [], now };
+    }
+
+    /**
+     * Lets a gap go without the model: the texts a round had written already go in, the
+     * engine's state moves on, the life counts as settled, and the character is seen now.
+     */
+    function skipCatchUp(key, { settle, sim, events, now }) {
+        if (events.some(e => e.text)) {
+            const chat = getChatHistory();
+            if (insertCatchUpTexts(chat, soloTarget(key), events)) { saveChatHistory(chat); renderMessages(chat); }
         }
-        await runCatchUp({ char, key, settle, events, sim, from: Math.min(settle ? settleFrom : Infinity, events.length ? textFrom : Infinity), now });
+        if (sim) proactiveMessaging.adoptSimulation(key, sim.state);
+        if (settle) settings.lifeState[key] = { ...DailyLife.normalizeLife(settings.lifeState[key]), settledAt: now };
+        markSeen(true);
+    }
+
+    // ── After a catch-up (settings.catchUpLast[k]) ───────────────────────────
+    // Its bar stays: done, it can be redone (its texts and its <life> changes taken back,
+    // the engine starting again from where it was); paused or failed, retried. Kept over
+    // a reload or another chat until × or your next text (a paused or failed gap is then
+    // let go, as × does).
+    //   { state: 'done' | 'paused' | 'failed', at, run?, before? }  (done: `run` marks its
+    //   texts, `before` is the engine's state, the life and when they were seen, as it began)
+
+    function setCatchUpLast(key, last) {
+        if (!settings.catchUpLast || typeof settings.catchUpLast !== 'object') settings.catchUpLast = {};
+        if (last) settings.catchUpLast[key] = last;
+        else delete settings.catchUpLast[key];
+    }
+
+    /** The open character's catch-up again: a paused or failed one tried again, a done one redone. */
+    function retryCatchUp() {
+        const key = getCharacterKey();
+        const last = key && settings.catchUpLast?.[key];
+        if (!last || catchingUp || isGenerating) return;
+        if (last.state === 'done') {
+            const { proactive, life, seenAt } = last.before || {};
+            if (!settings.proactiveState) settings.proactiveState = {};
+            if (proactive) settings.proactiveState[key] = proactive;
+            else delete settings.proactiveState[key];
+            if (life) settings.lifeState[key] = life;
+            else delete settings.lifeState[key];
+            if (seenAt) settings.proactiveSeenAt[key] = seenAt;
+            const chat = getChatHistory().filter(m => m?.meta?.catchUp !== last.run);
+            saveChatHistory(chat);
+            renderMessages(chat);
+        }
+        setCatchUpLast(key, null);
+        saveSettings();
+        return maybeCatchUp();
+    }
+
+    /** The bar's ×, or your next text: done, it just goes; paused or failed, the gap is let go too. */
+    function dismissCatchUp(key = getCharacterKey()) {
+        const last = key && settings.catchUpLast?.[key];
+        if (!last || catchingUp?.key === key) return;
+        setCatchUpLast(key, null);
+        if (last.state !== 'done') {
+            const char = getCurrentCharacter();
+            const plan = char && getCharacterKey() === key ? catchUpPlan(char, key) : null;
+            if (plan) skipCatchUp(key, plan);
+            else markSeen(true);
+        }
+        saveSettings();
+        drawStatusBars();
     }
 
     /**
      * A catch-up's texts into a chat at the engine's times, in its order: the model's by
      * number (`written`: { n, mes }, n counting from 1 over `events`), or what a round had
-     * written already. One the model left out stays out. How many went in.
+     * written already, marked with the catch-up's `run`. One the model left out stays out.
+     * How many went in.
      */
-    function insertCatchUpTexts(chat, target, events, written = []) {
+    function insertCatchUpTexts(chat, target, events, written = [], run = null) {
         let added = 0;
         events.forEach((e, i) => {
             const mes = written.find(w => w.n === i + 1)?.mes;
@@ -6172,7 +6300,9 @@
             if (!reply?.mes) return;
             chat.push({
                 is_user: false, mes: reply.mes, send_date: e.at,
-                meta: { proactive: true, proactiveType: e.kind === 'follow_up' ? 'follow_up' : e.type, ...(e.kind === 'follow_up' ? { round: e.round } : {}) },
+                meta: { proactive: true, proactiveType: e.kind === 'follow_up' ? 'follow_up' : e.type, ...(e.kind === 'follow_up' ? { round: e.round } : {}),
+                    // The catch-up it came in, to take back on Redo
+                    ...(run ? { catchUp: run } : {}) },
                 ...(reply.mood ? { mood: reply.mood } : {}),
             });
             added++;
@@ -6183,6 +6313,10 @@
     async function runCatchUp({ char, key, settle, events, sim, from, now }) {
         const controller = new AbortController();
         catchingUp = { key, controller };
+        // Where things were, for Redo
+        const clone = v => (v === undefined || v === null ? null : JSON.parse(JSON.stringify(v)));
+        const before = { proactive: clone(settings.proactiveState?.[key]), life: clone(settings.lifeState?.[key]), seenAt: settings.proactiveSeenAt?.[key] || null };
+        const run = now;
         // Holds the proactive timers and your next reply until it's done (onGenerationSettled)
         isGenerating = true;
         generatingTarget = soloTarget(key);
@@ -6193,6 +6327,7 @@
         const asked = events.map((e, i) => ({ n: i + 1, at: e.at, note: e.note, text: e.text })).filter(e => !e.text);
         let notSent = false;
         let inserted = false;
+        let failed = false;
         try {
             const history = getChatHistory(target);
             const anchor = history[history.length - 1] || null;
@@ -6215,21 +6350,25 @@
             if (anchor && !chat.includes(anchor)) { inserted = true; return; }
             const answer = CatchUp.readAnswer(stripThinkingTags(String(raw ?? '')), { now, asked: asked.map(e => e.n) });
             if (settle) writeLife(key, { changes: answer.life });
-            inserted = true;
-            if (insertCatchUpTexts(chat, target, events, answer.texts)) {
+            inserted = 'done';
+            if (insertCatchUpTexts(chat, target, events, answer.texts, run)) {
                 saveChatHistory(chat, target);
                 if (isViewing(target)) renderMessages(chat);
             }
         } catch (err) {
             if (!controller.signal.aborted) {
+                failed = true;
                 warn('Catching up failed:', err);
                 toastr.error(`Could not catch up: ${err.message}`, 'Echogram');
             }
         } finally {
-            // Done, paused or failed: the gap isn't tried again (not sent for another chat: it is).
-            // What the engine worked out holds either way: texts a round had written still go in,
-            // the rest are missing, and its state moves on so nothing comes twice.
-            if (!notSent) {
+            // Paused or failed: nothing moves on, and its bar offers Retry (or ×, which lets the gap go)
+            const held = !notSent && !inserted && (failed || controller.signal.aborted);
+            if (held) setCatchUpLast(key, { state: failed ? 'failed' : 'paused', at: Date.now() });
+            // Done (or the chat gone meanwhile): the gap isn't tried again (not sent for another
+            // chat: it is). What the engine worked out holds: texts a round had written still go
+            // in, and its state moves on so nothing comes twice
+            if (!notSent && !held) {
                 if (!inserted && events.some(e => e.text)) {
                     const chat = getChatHistory(target);
                     if (insertCatchUpTexts(chat, target, events)) {
@@ -6241,6 +6380,8 @@
                 if (settle) settings.lifeState[key] = { ...DailyLife.normalizeLife(settings.lifeState[key]), settledAt: now };
                 if (getCharacterKey() === key) markSeen(true);
                 else settings.proactiveSeenAt[key] = Date.now();
+                // Done: its bar stays, to redo it
+                setCatchUpLast(key, inserted === 'done' ? { state: 'done', at: Date.now(), run, before } : null);
             }
             catchingUp = null;
             isGenerating = false;
@@ -8679,6 +8820,8 @@
         setInterval(() => markSeen(), 60000);
         setTimeout(() => maybeCatchUp(), 3000);
         jQuery(document).on('click', '[data-et-catchup="pause"]', () => pauseCatchUp());
+        jQuery(document).on('click', '[data-et-catchup="again"]', () => retryCatchUp());
+        jQuery(document).on('click', '[data-et-catchup="dismiss"]', () => dismissCatchUp());
         jQuery(document).on('click', '[data-et-catchup="pause-together"]', () => pauseTogetherNote());
         // Settings that depend on another
         const Controls = window.EchoTextSettingsModal;
