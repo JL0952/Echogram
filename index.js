@@ -7352,7 +7352,9 @@
                 items.push({ id: 'photo_add', icon: 'fa-image', label: 'Add Photo', cls: '' });
             }
         }
-        if (partIndex === null) {
+        // Texts sent in a row are edited and regenerated together, from the last one, as a reply's bubbles are
+        const runEnd = !isUser || !getChatHistory()[msgIndex + 1]?.is_user;
+        if (partIndex === null && runEnd) {
             items.push({ id: 'edit', icon: 'fa-pen', label: 'Edit', cls: '' });
             items.push({ id: 'regen', icon: 'fa-rotate-right', label: 'Regenerate', cls: '' });
             items.push({ id: 'delete', icon: 'fa-trash', label: partCount > 1 ? 'Delete this' : 'Delete', cls: 'et-dots-item-delete' });
@@ -7452,11 +7454,19 @@
         if (swipe) swipe.mes = msg.mes;
     }
 
+    /** The first index of the texts the user sent in a row that end at `msgIndex`. */
+    function userRunStart(history, msgIndex) {
+        let start = msgIndex;
+        while (history[msgIndex]?.is_user && history[start - 1]?.is_user) start--;
+        return start;
+    }
+
     /**
      * Edits a message in place as one raw text (tags included): the message is
      * re-rendered as a single text bubble — the platform's own text bubble — and
      * its text becomes editable. Save writes the text back; Cancel restores the
-     * message.
+     * message. The user's texts sent in a row are edited as one, a line each, as
+     * a reply's bubbles are, and saved as a text per line.
      */
     function startInlineEdit(history, msgIndex) {
         const msg = history[msgIndex];
@@ -7465,6 +7475,13 @@
 
         // Already editing?
         if (oldEl.find('[contenteditable="true"]').length) return;
+
+        const runStart = userRunStart(history, msgIndex);
+        const run = history.slice(runStart, msgIndex + 1);
+        const rawText = run.map(m => m.mes).join('\n');
+        // The run's other texts make way for the one box while it's open
+        const runEls = jQuery(run.slice(0, -1).map((m, i) => findMessageElement(runStart + i).get(0)).filter(Boolean));
+        runEls.hide();
 
         // By history index: hidden messages (e.g. reaction-only replies on WeChat) leave gaps in the list
         const view = ChatViewModel.buildChatViewModel(history, getChatViewOptions()).messages.find(m => m.index === msgIndex);
@@ -7480,7 +7497,7 @@
         const textEl = bubble.find('[data-et-role~="text"]');
 
         // Set the content to raw markdown so it's editable and preserved
-        textEl.text(msg.mes);
+        textEl.text(rawText);
         textEl.attr('contenteditable', 'true');
         // The browser doesn't scroll the list to it; keepEditInView does, below
         textEl[0].focus({ preventScroll: true });
@@ -7535,13 +7552,26 @@
             }
             textEl.removeAttr('contenteditable');
             toolbar.remove();
+            runEls.show();
         };
 
         toolbar.find('[data-et-role="edit-save"]').on('click', () => {
             // Extract plain text from contenteditable
             const newText = textEl[0].innerText.trim();
             if (!newText) { finishEdit(); renderMessages(history); return; }
-            history[msgIndex].mes = newText;
+            if (msg.is_user) {
+                if (newText === rawText.trim()) { finishEdit(); refreshMessages(history); return; }
+                // A text per line, each keeping the place (time, receipt, photo) of the one it replaces
+                const parts = RichMessages.parseMessageParts(newText, { splitLines: true });
+                const texts = parts.map((part, i) => {
+                    if (i < run.length) return { ...run[i], mes: RichMessages.serializeParts([part]) };
+                    const { photoImages, bubbleReactions, ...rest } = run[run.length - 1];
+                    return { ...rest, mes: RichMessages.serializeParts([part]) };
+                });
+                history.splice(runStart, run.length, ...texts);
+            } else {
+                history[msgIndex].mes = newText;
+            }
             saveChatHistory(history);
             finishEdit();
             renderMessages(history, true);
