@@ -5508,7 +5508,8 @@
     function readReply(text, target = chatTarget(), { maxTexts = null, oneText = false } = {}) {
         const cleaned = cleanGeneratedResponse(text);
         const reply = emotionSystem ? emotionSystem.readReply(cleaned) : { mes: cleaned, mood: null };
-        const { text: lifeless, life } = DailyLife.parseLifeTag(reply.mes, new Date());
+        // One thing that happened a reply, at most (the rule asks for that too)
+        const { text: lifeless, life } = DailyLife.parseLifeTag(reply.mes, new Date(), { maxHappened: DailyLife.REPLY_HAPPENED });
         const mes = oneText ? RichMessages.oneText(lifeless) : maxTexts ? RichMessages.capTexts(lifeless, maxTexts) : lifeless;
         // Whether the chat it's for keeps them, not whichever is open when it answers
         if (target?.group) return { mes, mood: null, life: null };
@@ -5654,7 +5655,8 @@
     /** The rule for the hidden <life> line while Daily Life applies (see buildSystemPrompt), else ''. */
     function buildLifeRules(char) {
         if (!dailyLifeActive()) return '';
-        return `\n\n${DailyLife.lifeRules({ charName: char.name || 'Character', userName: getUserName(), madeUp: settings.dailyLifeMadeUp === true })}`;
+        return `\n\n${DailyLife.lifeRules({ charName: char.name || 'Character', userName: getUserName(), madeUp: settings.dailyLifeMadeUp === true,
+            schedule: DailyLife.hasSchedule(activeSchedule()) })}`;
     }
 
     /** The day those rules count from, while Daily Life applies, else ''. */

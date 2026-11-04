@@ -36,6 +36,8 @@ test('what the model is told', () => {
     assert.match(text, /happened <what> \(YYYY-MM-DD HH:MM\); update <errand>: <how it stands now>; done <errand>\. An errand past its due day/);
     assert.doesNotMatch(text, /new <errand>/);
     assert.match(text, /Sum up the days before in one happened entry/);
+    // The same bar as a reply's: out of the ordinary; the schedule, time passing and no reply aren't events
+    assert.match(text, /A handful of entries, the ones that matter: what happened is something out of the ordinary that happened to Mira — .*\. What <schedule> already has Mira doing, time passing and Qi not replying are not events\./);
     // Each text with its number, its time, what she was doing and what it's about; the times and order the engine's
     assert.match(text, /Then the texts Mira sent Qi meanwhile, in this order:\n- n=1 · Fri 2026-10-30 19:00 · follow-up 1\n- n=3 · Sat 2026-10-31 12:00 · 10:00–23:00 逛街 \(城里\) · You feel like texting Qi\./);
     assert.match(text, /Write each as <text n="…">…<\/text> with its number, .*a follow-up one line, any other one to three\. One for every number and no others: the times and the order are fixed\.\nThe follow-ups are sent with no reply from Qi in between\. Each follow-up is a fresh decision\./);
