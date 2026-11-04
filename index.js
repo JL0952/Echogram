@@ -6183,6 +6183,8 @@
             const instruction = CatchUp.buildInstruction({
                 charName: char.name || 'Character', userName, from, now, settle, schedule: activeSchedule(),
                 errands: activeLife()?.errands || [], madeUp: settings.dailyLifeMadeUp === true, texts: asked,
+                // How the follow-ups it writes go, when there are any
+                followUps: asked.some(e => events[e.n - 1].kind === 'follow_up') ? sim?.followUps || null : null,
             });
             apiMessages.push({ role: 'user', content: `[Instruction for this turn — not a message from ${userName}; never quote or answer it: ${instruction}]` });
             if (asked.length) proactiveMessaging.noteCatchUpRequest(key);

@@ -31,10 +31,10 @@ test('the schedule over the last days, a line a day', () => {
 });
 
 test('what the model is told', () => {
-    const texts = [{ n: 1, at: at(30, 19), note: 'follow-up 1: no answer from Qi yet; one line Mira sends meanwhile' },
+    const texts = [{ n: 1, at: at(30, 19), note: 'follow-up 1' },
         { n: 3, at: at(31, 12), note: 'You feel like texting Qi.' }];
     const text = C.buildInstruction({ charName: 'Mira', userName: 'Qi', from: NOW - 6 * DAY, now: NOW, settle: true, schedule: WEEK,
-        errands: [{ text: '周六搬家', progress: '打包了一半', due: '2026-10-31' }], madeUp: false, texts });
+        errands: [{ text: '周六搬家', progress: '打包了一半', due: '2026-10-31' }], madeUp: false, texts, followUps: 'Each follow-up is a fresh decision.' });
     assert.match(text, /^CATCH-UP: Qi hasn't been around since 2026-10-25 20:00; it is now 2026-10-31 20:00\. Mira's life went on meanwhile\./);
     assert.match(text, /Mira's days lately, from the schedule:\n- Wed 2026-10-28: /);
     assert.match(text, /Before those days, 3 more days went by\./);
@@ -43,9 +43,11 @@ test('what the model is told', () => {
     assert.doesNotMatch(text, /new <errand>/);
     assert.match(text, /Sum up the days before in one happened entry/);
     // Each text with its number, its time, what she was doing and what it's about; the times and order the engine's
-    assert.match(text, /Then the texts Mira sent Qi meanwhile, in this order:\n- n=1 · 2026-10-30 19:00 · follow-up 1: no answer from Qi yet; one line Mira sends meanwhile\n- n=3 · 2026-10-31 12:00 \(逛街\) · You feel like texting Qi\./);
-    assert.match(text, /Write each as <text n="…">…<\/text> with its number, .*a follow-up one line, any other one to three\. One for every number and no others: the times and the order are fixed\./);
+    assert.match(text, /Then the texts Mira sent Qi meanwhile, in this order:\n- n=1 · 2026-10-30 19:00 · follow-up 1\n- n=3 · 2026-10-31 12:00 \(逛街\) · You feel like texting Qi\./);
+    assert.match(text, /Write each as <text n="…">…<\/text> with its number, .*a follow-up one line, any other one to three\. One for every number and no others: the times and the order are fixed\.\nThe follow-ups are sent with no reply from Qi in between\. Each follow-up is a fresh decision\./);
     assert.doesNotMatch(text, /at="/);
+    // No follow-ups to write: nothing said about them
+    assert.doesNotMatch(C.buildInstruction({ userName: 'Qi', from: NOW - DAY, now: NOW, texts: [texts[1]] }), /follow-ups|no reply/);
     assert.match(C.buildInstruction({ from: NOW - DAY, now: NOW, settle: true, madeUp: true }), /; new <errand> \(due YYYY-MM-DD\) for something that comes up/);
     // Only texts (no Daily Life)
     const only = C.buildInstruction({ charName: 'Mira', userName: 'Qi', from: NOW - DAY, now: NOW, texts: [{ n: 1, at: at(31, 12), note: 'x' }] });

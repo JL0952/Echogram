@@ -82,9 +82,11 @@ test('you go quiet mid-conversation: a round, written in one request, let out on
     await p.runDueRound();
     assert.equal(asked.length, 1);
     const turn = asked[0].at(-1).content;
-    assert.match(asked[0][0].content, /^FOLLOW-UP MODE: Qi hasn't answered yet; you are texting again meanwhile\.\n<proactive_situation>\nIt is currently [^\n]+\.\n<\/proactive_situation>$/);
-    assert.match(turn, /Write the 4 texts Mira sends meanwhile, one line each/);
-    assert.match(turn, /As Mira would: the waiting shows, but they talk about their own day too\./);
+    // That there's no reply is said once, in the turn
+    assert.match(asked[0][0].content, /^FOLLOW-UP MODE: you are texting Qi again on your own\.\n<proactive_situation>\nIt is currently [^\n]+\.\n<\/proactive_situation>$/);
+    assert.match(turn, /Qi hasn't replied since Mira's last text\. Write the 4 texts Mira sends meanwhile:\n- text 1: \d+ minutes after Mira's last one\n/);
+    assert.match(turn, /Each text is a fresh decision Mira makes at its own time/);
+    assert.match(turn, /At most two of them mention that Qi hasn't replied\./);
     assert.deepEqual(chat().slice(-1).map(m => [m.mes, m.meta.proactiveType, m.send_date]), [['?', 'follow_up', round.times[0]]]);
     assert.equal(state().round.sent, 1);
     // The page slept through the rest: they go in with their own times, no new request
@@ -147,8 +149,8 @@ test('obsessed: another round hours later, more insistent; until the day\'s requ
     assert.ok(second.times[0] - first.times[9] >= 2 * HOUR && second.times[0] - first.times[9] <= 4 * HOUR);
     clock = second.times[0];
     await p.runDueRound();
-    assert.match(asked[1].at(-1).content, /Nor the ones Mira sent after it\./);
-    assert.match(asked[1].at(-1).content, /they keep coming back to not hearing back/);
+    assert.match(asked[1].at(-1).content, /Qi hasn't replied since Mira's last text or the ones after it\./);
+    assert.match(asked[1].at(-1).content, /Any of them may come back to Qi's silence\./);
     // 30 requests a day: the 31st doesn't go
     state().requests = { day: p.getDateKeyLocal(new Date(clock)), count: 30 };
     state().round = { number: 3, startedAt: clock, times: [clock + MIN], texts: null, sent: 0 };
@@ -346,10 +348,22 @@ test('a round whose texts have all gone by (the page wasn\'t running) is told th
     clock = round.times[3] + HOUR;
     await p.runDueRound();
     const turn = asked[0].at(-1).content;
-    assert.match(turn, new RegExp(`They were sent one after another while Qi was away: the first at ${hm(round.times[0])}, text 2 at ${hm(round.times[1])}, .*the last at ${hm(round.times[3])}; it is now ${hm(clock)}\\.`));
+    assert.match(turn, new RegExp(`Write the 4 texts Mira sent meanwhile, while Qi was away \\(it is now ${hm(clock)}\\):\\n- text 1: at ${hm(round.times[0])}\\n- text 2: at ${hm(round.times[1])}\\n.*\\n- text 4: at ${hm(round.times[3])}\\n`));
     assert.doesNotMatch(turn, /after Mira's last one/);
     assert.deepEqual(env.bars, [true, false]);
     assert.deepEqual(chat().slice(-4).map(m => m.send_date), round.times);
+});
+
+test('with a schedule, each text of a round says what she is doing at its time', async () => {
+    clock = T0;
+    const { p, asked, env, state, talk } = setup({ temperament: 'clingy' });
+    talk();
+    const round = state().round;
+    // Out until the third text's time, then on the way home
+    env.day = at => ({ phone: 'free', block: at < round.times[2] ? { doing: '逛街', place: '城里' } : { doing: '', place: '回家路上' } });
+    clock = round.times[0];
+    await p.runDueRound();
+    assert.match(asked[0].at(-1).content, /- text 1: \d+ minutes after Mira's last one \(逛街\)\n- text 2: [^\n]+ \(逛街\)\n- text 3: [^\n]+ \(回家路上\)\n- text 4: [^\n]+ \(回家路上\)\n/);
 });
 
 test('a round only partly gone by keeps its waits (the first going in quietly, with the bar); one due now has no bar', async () => {
@@ -358,7 +372,7 @@ test('a round only partly gone by keeps its waits (the first going in quietly, w
     late.talk();
     clock = late.state().round.times[0] + 2 * MIN;
     await late.p.runDueRound();
-    assert.match(late.asked[0].at(-1).content, /They come one after another: the first \d+ minutes after Mira's last one/);
+    assert.match(late.asked[0].at(-1).content, /Write the 4 texts Mira sends meanwhile:\n- text 1: \d+ minutes after Mira's last one\n/);
     assert.deepEqual(late.env.bars, [true, false]);
     clock = T0;
     const due = setup({ temperament: 'clingy' });
@@ -406,10 +420,12 @@ test('away during a round: the rest of it, then an obsessed character\'s next ro
     const r2 = R.planRound({ temperament: 'obsessed', startAt: r1.at(-1), firstHours: [2, 4], random: () => 0.5 });
     const r3 = R.planRound({ temperament: 'obsessed', startAt: r2.at(-1), firstHours: [2, 4], random: () => 0.5 });
     assert.deepEqual(sim.events.map(e => e.at), [...r1, ...r2].filter(t => t <= to));
-    assert.ok(sim.events.every(e => e.kind === 'follow_up' && e.note.includes('as Mira would: they keep coming back to not hearing back')));
+    assert.ok(sim.events.every(e => e.kind === 'follow_up'));
     assert.deepEqual([...new Set(sim.events.map(e => e.round))], [1, 2]);
-    assert.equal(sim.events[0].note.startsWith('follow-up 1:'), true);
-    assert.equal(sim.events[10].note.startsWith('follow-up 1 of round 2:'), true);
+    // Numbered only; how they're written said once
+    assert.equal(sim.events[0].note, 'follow-up 1');
+    assert.equal(sim.events[10].note, 'follow-up 1 of round 2');
+    assert.match(sim.followUps, /^Each follow-up is a fresh decision Mira makes at its own time.* Any of them may come back to Qi's silence\.$/);
     // Where it stands by then: the third round ahead, two requests counted today
     assert.equal(sim.state.round.number, 3);
     assert.deepEqual(sim.state.round.times, r3);
