@@ -93,14 +93,11 @@
 
 /* ── Panel surfaces ─────────────────────────────────────────── */
 
-/* The list runs up under the header, which sits over it */
+/* The list runs up under the header, which sits over it. (A sticky bar in it, Catching
+   up…, sticks below this padding already: its own top stays 0) */
 [data-platform="instagram"] [data-et-role~="messages"] {
     padding: calc(var(--ig-header-h) + 6px) 0 14px;
     background: var(--ig-bg);
-}
-
-[data-platform="instagram"] .et-catchup-bar {
-    top: var(--ig-header-h);
 }
 
 [data-platform="instagram"] [data-et-role~="message-list"] {

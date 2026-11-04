@@ -2048,11 +2048,19 @@
             if (!profile) throw new Error(`Profile '${settings.preset}' not found.`);
             if (!context.ConnectionManagerRequestService) throw new Error('ConnectionManagerRequestService not available.');
 
+            // Streamed, then put together: a thinking model can take minutes, and a gateway
+            // drops a connection that long without a byte (socket hang up); the main chat streams too
             const response = await context.ConnectionManagerRequestService.sendRequest(
                 profile.id, apiMessages, undefined,
-                { stream: false, signal, extractData: true, includePreset: true, includeInstruct: true }
+                { stream: true, signal, extractData: true, includePreset: true, includeInstruct: true }
             );
-            return stripPrefill(extractTextFromResponse(response));
+            if (typeof response !== 'function') return stripPrefill(extractTextFromResponse(response));
+            let text = '';
+            // Each chunk carries the text so far (the reasoning apart, in its state)
+            for await (const chunk of response()) {
+                if (typeof chunk?.text === 'string') text = chunk.text;
+            }
+            return stripPrefill(text);
         }
 
         if (settings.source === 'ollama') {
