@@ -6081,12 +6081,32 @@
     function noteStoryActivity(_messageId, type) {
         if (type === 'first_message') return;
         storyActiveAt = Date.now();
+        keepStorySpan(storyActiveAt);
         refreshProactiveInsights();
     }
 
-    /** When the character may text first again (ms), while you're playing the main chat; 0 otherwise. */
-    function storyPauseUntil() {
-        if (settings.storyPauseEnabled === false || !storyActiveAt) return 0;
+    /**
+     * When you played the main chat, for a catch-up to hold back over it as live does
+     * (settings.storySpans: [{ from, until }], until being when the pause ran out), the
+     * last few days only.
+     */
+    function keepStorySpan(at) {
+        const spans = Array.isArray(settings.storySpans) ? settings.storySpans : [];
+        const last = spans[spans.length - 1];
+        if (last && at <= last.until) last.until = at + STORY_PAUSE_MS;
+        else spans.push({ from: at, until: at + STORY_PAUSE_MS });
+        settings.storySpans = spans.filter(span => span.until > at - CatchUp.DAYS * 24 * 3600000);
+        saveSettings();
+    }
+
+    /**
+     * When the character may text first again (ms), while you're playing the main chat; 0
+     * otherwise. At `at` (ms), for a catch-up looking back: as it was then.
+     */
+    function storyPauseUntil(at = undefined) {
+        if (settings.storyPauseEnabled === false) return 0;
+        if (at !== undefined) return (Array.isArray(settings.storySpans) ? settings.storySpans : []).find(span => span.from <= at && at < span.until)?.until || 0;
+        if (!storyActiveAt) return 0;
         const until = storyActiveAt + STORY_PAUSE_MS;
         return until > Date.now() ? until : 0;
     }
@@ -6121,7 +6141,7 @@
         if (!settings.proactiveSeenAt || typeof settings.proactiveSeenAt !== 'object') settings.proactiveSeenAt = {};
         const now = Date.now();
         const seen = settings.proactiveSeenAt[key];
-        if (!force && seen && now - seen > CatchUp.GAP_MS) return;
+        if (!force && seen && now - seen > CatchUp.AWAY_MS) return;
         settings.proactiveSeenAt[key] = now;
         if (force || now - seenSavedAt > 10 * 60000) { seenSavedAt = now; saveSettings(); }
     }
@@ -6178,10 +6198,6 @@
         setStatusBar('et-catchup-bar', on ? 'Catching up…' : '', 'pause', soloTarget(key));
     }
 
-    /** The same while a follow-up round writes texts gone by (lib/proactive-messaging.js); its request can't be stopped. */
-    function setRoundBar(on, key) {
-        setStatusBar('et-round-bar', on ? 'Catching up…' : '', null, soloTarget(key));
-    }
 
     /**
      * The open character's catch-up, with Catch up on, when their chat is on screen and a
@@ -6224,10 +6240,11 @@
         const now = Date.now();
         const lastAt = Number(last.send_date) || Date.parse(last.send_date) || 0;
         const settleFrom = Math.max(lastAt, settings.lifeState?.[key]?.settledAt || 0);
-        const settle = dailyLifeActive() && now - settleFrom >= CatchUp.GAP_MS;
+        const settle = dailyLifeActive() && now - settleFrom >= CatchUp.SETTLE_GAP_MS;
         // Texts: not while she owes you a reply
         const textFrom = Math.max(seen, lastAt);
-        const sim = settings.proactiveMessagingEnabled === true && proactiveMessaging && !last.is_user && now - textFrom >= CatchUp.GAP_MS
+        // Texts: whatever was due while it didn't run live
+        const sim = settings.proactiveMessagingEnabled === true && proactiveMessaging && !last.is_user && now - textFrom >= CatchUp.AWAY_MS
             ? proactiveMessaging.simulateAway(key, char, { from: textFrom, to: now, days: CatchUp.DAYS, max: CatchUp.MAX_TEXTS }) : null;
         return { settle, settleFrom, textFrom, sim, events: sim ? sim.events : [], now };
     }
@@ -6415,7 +6432,7 @@
         if (!CatchUp || settings.catchUpEnabled === false || inGroupSession() || !key || key !== getCharacterKey()) return false;
         if (catchingUp?.key === key) return true;
         const seen = settings.proactiveSeenAt?.[key];
-        return !!seen && Date.now() - seen > CatchUp.GAP_MS;
+        return !!seen && Date.now() - seen > CatchUp.AWAY_MS;
     }
 
     /** Pausing a catch-up: its request stops, and the gap is left as it is. */
@@ -8760,7 +8777,6 @@
             readReply,
             chatTarget,
             isViewing,
-            setRoundBar,
             noteMoodReport,
             findLastUserMessageIndex,
             requestEchoTextCompletion,

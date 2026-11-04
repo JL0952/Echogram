@@ -54,57 +54,29 @@ test('the conversation was open: you texted within half an hour before her last 
     assert.equal(R.isConversationOpen([]), false);
 });
 
-test('what the model is told for a round: no reply said once, the time now, each text\'s time and the schedule\'s line it falls in, a fresh decision each, how many may mention the silence', () => {
+test('what the model is told for one follow-up: how many are unanswered, the time and the schedule\'s line, a fresh decision, whether it may mention the silence', () => {
     const t = (h, m = 0) => new Date(2026, 9, 31, h, m).getTime();
-    const start = t(20);
-    const times = [5, 15, 45, 120].map(m => start + m * MIN);
-    const text = R.roundInstruction({ charName: 'Mira', userName: 'Qi', temperament: 'clingy', times, startedAt: start, now: times[0],
-        doing: ['18:00–21:00 逛街 (城里)', '18:00–21:00 逛街 (城里)', '', '21:00–23:00 回家 [busy]'] });
-    assert.match(text, /^Qi hasn't replied since Mira's last text\. Write the 4 texts Mira sends meanwhile \(it is now 20:05\):\n- text 1: 20:05, 5 minutes after Mira's last one · 18:00–21:00 逛街 \(城里\)\n- text 2: 20:15, 15 minutes after Mira's last one · 18:00–21:00 逛街 \(城里\)\n- text 3: 20:45, 45 minutes after Mira's last one\n- text 4: 22:00, 2 hours after Mira's last one · 21:00–23:00 回家 \[busy\]\n/);
-    assert.match(text, /Each text is a fresh decision Mira makes at its own time, aware of the earlier ones still unanswered\. They belong to the same conversation, but they are not chapters of a planned emotional arc\./);
-    assert.match(text, /At most two of them mention that Qi hasn't replied\./);
-    assert.match(text, /a line holding only ---/);
-    assert.equal(text.match(/hasn't replied/g).length, 2);
-    // The temperament's cap: normal one, aloof none, obsessed any
-    const two = { userName: 'Qi', times: [start + MIN, start + 2 * MIN], startedAt: start, now: start };
-    assert.match(R.roundInstruction({ ...two, temperament: 'normal' }), /At most one of them mentions that Qi hasn't replied\./);
-    assert.match(R.roundInstruction({ ...two, temperament: 'obsessed' }), /Any of them may come back to Qi's silence\./);
-    const one = R.roundInstruction({ charName: 'Mira', userName: 'Qi', temperament: 'aloof', times: [start + 90 * MIN], startedAt: start, now: start + 90 * MIN, round: 2 });
-    assert.match(one, /^Qi hasn't replied since Mira's last text or the ones after it\. Write the text Mira sends meanwhile \(it is now 21:30\):\n- text 1: 21:30, 2 hours after Mira's last one\n/);
-    assert.match(one, /The text is a fresh decision Mira makes at its own time, aware that Qi hasn't replied\./);
-    assert.match(one, /It doesn't mention that Qi hasn't replied\. Write it in the usual format\.$/);
-    assert.match(one, /goes on with what was said or brings up something new\. It doesn't/);
-    assert.doesNotMatch(one, /mentions the silence/);
-    assert.doesNotMatch(one, /---|chapters/);
-});
-
-test('a round whose texts all went by while the page wasn\'t running: by the clock, beside the time now', () => {
-    const t = (d, h, m = 0) => new Date(2026, 9, d, h, m).getTime();
-    const times = [t(31, 18), t(31, 18, 15), t(31, 19, 2), t(31, 20, 19)];
-    const text = R.roundInstruction({ charName: 'Mira', userName: 'Qi', temperament: 'clingy', times, startedAt: t(31, 14, 30), now: t(31, 21, 46), late: true });
-    assert.match(text, /Write the 4 texts Mira sent meanwhile, while Qi was away \(it is now 21:46\):\n- text 1: 18:00\n- text 2: 18:15\n- text 3: 19:02\n- text 4: 20:19\n/);
-    assert.doesNotMatch(text, /after Mira's last one/);
-    // Past midnight: the day before is said
-    const late = R.roundInstruction({ charName: 'Mira', userName: 'Qi', temperament: 'aloof', times: [t(31, 23)], startedAt: t(31, 20), now: t(32, 1, 5), late: true });
-    assert.match(late, /Write the text Mira sent meanwhile, while Qi was away \(it is now 01:05\):\n- text 1: 2026-10-31 23:00\n/);
+    const first = R.textInstruction({ charName: 'Mira', userName: 'Qi', unanswered: 1, now: t(20, 6), lastAt: t(20), doing: '18:00–21:00 逛街 (城里)', silence: false });
+    assert.equal(first, "Qi hasn't replied to Mira's last text. Write the one text Mira sends now (it is 20:06, 6 minutes after Mira's last one · 18:00–21:00 逛街 (城里)). "
+        + 'It is a fresh decision Mira makes now. Let who Mira is and what Mira is doing now decide whether it goes on with what was said or brings up something new. '
+        + "It doesn't mention that Qi hasn't replied. Write it as one text, in the usual format.");
+    const third = R.textInstruction({ charName: 'Mira', userName: 'Qi', unanswered: 3, now: t(22), lastAt: t(20, 45), silence: true });
+    assert.match(third, /^Qi hasn't replied to Mira's last 3 texts\. Write the one text Mira sends now \(it is 22:00, an hour after Mira's last one\)\. /);
+    assert.match(third, /aware of the earlier ones still unanswered\. .*, brings up something new, or mentions the silence\. Write it as one text/);
+    assert.equal(third.match(/hasn't replied/g).length, 1);
+    // The day before is said
+    assert.match(R.textInstruction({ now: new Date(2026, 10, 1, 0, 30).getTime(), lastAt: t(23) }), /\(it is 00:30, 2 hours after/);
 });
 
 test('a catch-up\'s follow-ups: numbered only, with one note on how they\'re written, the cap per round', () => {
     assert.equal(R.followUpNote({ index: 0 }), 'follow-up 1');
     assert.equal(R.followUpNote({ round: 2, index: 3 }), 'follow-up 4 of round 2');
-    const guide = R.followUpGuidance({ charName: 'Mira', userName: 'Qi', temperament: 'normal', rounds: true });
-    assert.match(guide, /^Each follow-up is a fresh decision Mira makes at its own time, aware of the earlier ones still unanswered\./);
-    assert.match(guide, /At most one in each round mentions that Qi hasn't replied\.$/);
-});
-
-test('the model\'s answer split into the round\'s texts', () => {
-    assert.deepEqual(R.splitRound('?\n---\n人呢\n你去哪了\n---\n算了', 3), ['?', '人呢\n你去哪了', '算了']);
-    assert.deepEqual(R.splitRound('a\n***\nb\n———\nc\n---\nd', 3), ['a', 'b', 'c']);
-    // No separators: a line each, the rest in the last
-    assert.deepEqual(R.splitRound('one\ntwo\nthree\nfour', 3), ['one', 'two', 'three\nfour']);
-    assert.deepEqual(R.splitRound('only one', 3), ['only one']);
-    assert.deepEqual(R.splitRound('\n---\n\n---\nx', 2), ['x']);
-    assert.deepEqual(R.splitRound('', 2), []);
+    const guide = temperament => R.followUpGuidance({ charName: 'Mira', userName: 'Qi', temperament, rounds: true });
+    assert.match(guide('normal'), /^Each follow-up is a fresh decision Mira makes at its own time, aware of the earlier ones still unanswered\. They belong to the same conversation, but they are not chapters of a planned emotional arc\./);
+    assert.match(guide('normal'), /At most one in each round mentions that Qi hasn't replied\.$/);
+    assert.match(guide('clingy'), /At most two in each round mention that Qi hasn't replied\.$/);
+    assert.match(guide('obsessed'), /Any of them may come back to Qi's silence\.$/);
+    assert.match(guide('aloof'), /goes on with what was said or brings up something new\. None of them mentions that Qi hasn't replied\.$/);
 });
 
 test('the hour, for counting requests', () => {
