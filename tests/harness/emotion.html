@@ -29,6 +29,7 @@
 <script src="../../lib/catch-up.js"></script>
 <script src="../../lib/character-data.js"></script>
 <script src="build/bundle-reply.js"></script>
+<script src="build/bundle-typing.js"></script>
 <script src="../../lib/emotion-model.js"></script>
 <script src="../../lib/emotion-icons.js"></script>
 <script src="../../lib/texting-behavior.js"></script>
@@ -2489,6 +2490,96 @@
     // A request belongs to the chat it set out from (index.js chatTarget): another chat opened, the chat cleared
     // or changed meanwhile, through the real generateEchoText, generateEchoTextSwipe, handleDotsAction,
     // maybeCatchUp and noteTogether, the model stubbed. Group chats aren't set up here.
+    // When a reply starts after you send (index.js scheduleCharacterReply / startCharacterReply /
+    // noteTyping, the real ones, with the pause and the hold shortened): a keystroke starts the
+    // pause over; text in the box holds it until a while after its last keystroke, or until the
+    // box is empty; typing while a reply is in its read and typing delays drops it and it waits
+    // again; one the model is already writing finishes.
+    window.runTypingTest = async function () {
+        const res = {};
+        const box = document.getElementById('et-input');
+        const PAUSE = 150, HOLD = 900;
+        const make = (over = {}) => {
+            const calls = { generate: 0, abort: 0 };
+            const t = window.EchoTextHarness.typing({
+                REPLY_PAUSE_MS: PAUSE, DRAFT_HOLD_MS: HOLD, replyTimer: null, lastTypedAt: 0, replyQueued: false, replyInProgress: false,
+                isGenerating: false, abortController: null, activeCompletionRequests: 0, groupManager: null,
+                getChatHistory: () => [], generateEchoText: () => { calls.generate++; }, generatingHere: () => true,
+                ...over,
+            });
+            return { t, calls };
+        };
+        box.value = '';
+
+        // The pause, then the reply
+        let { t, calls } = make();
+        t.scheduleCharacterReply();
+        await sleep(PAUSE / 2);
+        res.waitsThePause = calls.generate === 0;
+        await sleep(PAUSE);
+        res.thenReplies = calls.generate === 1;
+
+        // A keystroke during the pause starts it over
+        ({ t, calls } = make());
+        t.scheduleCharacterReply();
+        await sleep(PAUSE * 0.7);
+        t.noteTyping();
+        await sleep(PAUSE * 0.7);
+        res.keystrokeStartsOver = calls.generate === 0;
+        await sleep(PAUSE);
+        res.afterTheNewPause = calls.generate === 1;
+
+        // Text left in the box: no reply, until the hold runs out after its last keystroke
+        ({ t, calls } = make());
+        box.value = '还没写完';
+        t.noteTyping();
+        t.scheduleCharacterReply();
+        await sleep(HOLD * 0.6);
+        res.textHolds = calls.generate === 0;
+        t.noteTyping();
+        await sleep(HOLD * 0.6);
+        res.keystrokeKeepsHolding = calls.generate === 0;
+        await sleep(HOLD * 0.6);
+        res.holdRunsOut = calls.generate === 1;
+
+        // Text held, then the box emptied: the reply comes within a pause
+        ({ t, calls } = make());
+        box.value = '还没写完';
+        t.noteTyping();
+        t.scheduleCharacterReply();
+        await sleep(PAUSE * 2);
+        box.value = '';
+        await sleep(PAUSE * 1.5);
+        res.emptiedReplies = calls.generate === 1;
+
+        // Text in the box that was never typed into (left from before): no hold
+        ({ t, calls } = make({ lastTypedAt: Date.now() - HOLD * 2 }));
+        box.value = '以前留下的';
+        t.scheduleCharacterReply();
+        await sleep(PAUSE * 1.5);
+        res.oldTextNoHold = calls.generate === 1;
+        box.value = '';
+
+        // Typing while a reply is in its read and typing delays: dropped, and it waits again
+        let aborted = 0;
+        ({ t, calls } = make({ replyInProgress: true, isGenerating: true, abortController: { abort: () => { aborted++; } } }));
+        t.noteTyping();
+        res.typingDropsDelayed = aborted === 1;
+        // The model writing: it finishes
+        aborted = 0;
+        ({ t, calls } = make({ replyInProgress: true, isGenerating: true, activeCompletionRequests: 1, abortController: { abort: () => { aborted++; } } }));
+        t.noteTyping();
+        res.writingFinishes = aborted === 0;
+        // Another chat's reply: left alone
+        ({ t, calls } = make({ replyInProgress: true, isGenerating: true, generatingHere: () => false, abortController: { abort: () => { aborted++; } } }));
+        t.noteTyping();
+        res.otherChatLeft = aborted === 0;
+        await sleep(PAUSE * 2);
+
+        res.pass = Object.entries(res).every(([, v]) => v === true);
+        return res;
+    };
+
     window.runTargetTest = async function () {
         const res = {};
         errors.length = 0;
@@ -2924,7 +3015,8 @@
         const together = await window.runTogetherTest();
         const storyPause = await window.runStoryPauseTest();
         const target = await window.runTargetTest();
-        fetch('/__log', { method: 'POST', body: JSON.stringify({ runChatMemoryTest: chatMemory, runControlsTest: controls, runTogetherTest: together, runStoryPauseTest: storyPause, runTargetTest: target, runReplyLengthTest: replyLength, runLifeReportTest: lifeReport, runUnseenTest: unseen, runCatchUpTest: catchUp, runPlanTest: plan, runLifeMemoryTest: lifeMemory, runRenameTest: rename, runEmotionTest: result, runAutoTest: auto, runReplyTest: reply, runTapbackTest: tapback, runMemoryTest: memory, runSummaryTest: summary, runInstagramTest: instagram, runScheduleTest: schedule, runLifeTest: life }) }).catch(() => {});
+        const typingTest = await window.runTypingTest();
+        fetch('/__log', { method: 'POST', body: JSON.stringify({ runChatMemoryTest: chatMemory, runControlsTest: controls, runTogetherTest: together, runStoryPauseTest: storyPause, runTargetTest: target, runTypingTest: typingTest, runReplyLengthTest: replyLength, runLifeReportTest: lifeReport, runUnseenTest: unseen, runCatchUpTest: catchUp, runPlanTest: plan, runLifeMemoryTest: lifeMemory, runRenameTest: rename, runEmotionTest: result, runAutoTest: auto, runReplyTest: reply, runTapbackTest: tapback, runMemoryTest: memory, runSummaryTest: summary, runInstagramTest: instagram, runScheduleTest: schedule, runLifeTest: life }) }).catch(() => {});
     } else if (params.has('memory')) {
         // Two memories, one pinned, the other in the last prompt; Add Memory open on a bubble
         env.settings.characterMemories = { 'mira.png': [

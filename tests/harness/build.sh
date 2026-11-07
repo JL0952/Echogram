@@ -40,6 +40,10 @@ REPLY=generateEchoText,generateEchoTextSwipe,readReply,cleanGeneratedResponse,no
 EXTRA=$CHROME,$REPLY,getChatHistory,saveChatHistory VALUES=selectedCharacterKey,emotionSystem,imageGeneration,memorySystem,settingsModal,gallery,abortController,replyInProgress,activeCompletionRequests,shareType,replyTimer,proactiveMessaging \
 STUBS=getCharacterByKey,updatePanelStatusRow,applySelectedCharacterToPanel,sendCompletionRequest,stripThinkingTags,updateSendButton,setUserMessageReceiptState,getEmotionReplyTimingModel,buildApiMessagesFromHistory,sleepWithAbort,requestEchoTextCompletion,markProactiveCharacterActivity,setFabUnreadIndicator,log,setImageGeneratingIndicatorVisible,onGenerationSettled,syncProactiveStateWithHistory,getChatCurrency,startCharacterReply,isVoiceButtonMode,markProactiveUserActivity,scheduleCharacterReply,replaceMacros,getEchoTextFirstMessage,refreshProactiveInsights,buildApiMessagesFromHistoryForChar \
     node "$H/gen.cjs" "$REPO/index.js" reply "$B/bundle-reply.js"
+# emotion.html runTypingTest: when a reply starts after you send, typing and text left in the box holding it
+EXTRA=scheduleCharacterReply,startCharacterReply,noteTyping,inputHasText VALUES=REPLY_PAUSE_MS,DRAFT_HOLD_MS,replyTimer,lastTypedAt,replyQueued,replyInProgress,abortController,activeCompletionRequests \
+STUBS=generateEchoText,generatingHere,generateEchoTextCombined \
+    node "$H/gen.cjs" "$REPO/index.js" typing "$B/bundle-typing.js"
 # mobile.html?old: the panel from REF's index.js (functions REF lacks are skipped)
 EXTRA=$CHROME node "$H/gen.cjs" "$B/index.old.js" chromeOld "$B/bundle-chrome-old.js" || echo "chromeOld: not built for $REF"
 echo "Built against $REF. Serve with: python3 tests/harness/serve.py"

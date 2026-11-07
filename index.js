@@ -126,6 +126,8 @@
     // Reply scheduling: the user can send several texts in a row and the character
     // answers once they pause (see scheduleCharacterReply)
     let replyTimer = null;
+    // When you last typed in the box (an input method's composing too): text left there holds the reply
+    let lastTypedAt = 0;
     let replyQueued = false;
     let replyInProgress = false;
     // The chat the generation under way is for (generatingHere)
@@ -4473,10 +4475,10 @@
         }).on('input', function () {
             this.style.height = 'auto';
             this.style.height = Math.min(this.scrollHeight + 2, 92) + 'px';
-            // Still typing — the character keeps waiting
-            if (replyTimer) scheduleCharacterReply();
+            // Still typing: the character keeps waiting
+            noteTyping();
             if (isGenerating) updateSendButton(true);
-        });
+        }).on('compositionstart compositionupdate', noteTyping);
 
         // Close emoji overlays when clicking outside
         jQuery(document).on('click.et-react', function (e) {
@@ -5004,6 +5006,28 @@
     // character follows up on whatever arrived meanwhile.
 
     const REPLY_PAUSE_MS = 3000;
+    // Text left in the box holds the reply until this long after its last keystroke
+    const DRAFT_HOLD_MS = 60000;
+
+    /** Whether there's text in the box, sent or not. */
+    function inputHasText() {
+        return !!String(jQuery('#et-input').val() || '').trim();
+    }
+
+    /**
+     * A keystroke in the box: a reply still waiting starts its pause over; one in its read
+     * and typing delays, before the model is asked, is dropped and waits for you as a new
+     * text would make it. One the model is already writing finishes.
+     */
+    function noteTyping() {
+        lastTypedAt = Date.now();
+        if (replyTimer) {
+            scheduleCharacterReply();
+        } else if (replyInProgress && generatingHere() && activeCompletionRequests === 0 && abortController) {
+            abortController.abort();
+            scheduleCharacterReply();
+        }
+    }
 
     /** (Re)starts the pause before the character replies; each new text or keystroke resets it. */
     function scheduleCharacterReply(delayMs = REPLY_PAUSE_MS) {
@@ -5019,6 +5043,12 @@
 
     function startCharacterReply() {
         replyTimer = null;
+        // Text in the box: you're still writing. Wait, up to a minute after its last keystroke
+        const idle = Date.now() - lastTypedAt;
+        if (inputHasText() && idle < DRAFT_HOLD_MS) {
+            scheduleCharacterReply(Math.min(REPLY_PAUSE_MS, DRAFT_HOLD_MS - idle));
+            return;
+        }
         if (isGenerating) {
             replyQueued = true;
             return;
