@@ -57,6 +57,8 @@ function setup({ temperament = 'clingy', answer = ['?', '人呢', '你去哪了'
             return Array.isArray(a) ? a[(asked.length - 1) % a.length] : a;
         },
         readReply: t => ({ mes: String(t).trim(), mood: null, life: null }),
+        // A text that failed, as the panel is told
+        textFailed: info => (env.failures ||= []).push(info),
         renderMessages: () => {}, setTypingIndicatorVisible: () => {}, setFabUnreadIndicator: () => {}, noteMoodReport: () => {},
     });
     const chat = () => settings.chatHistory['mira.png'];
@@ -234,23 +236,85 @@ test('another chat open while it is put together: not sent, tried again when it 
     assert.deepEqual(b.chat(), []);
 }));
 
-test('a failed request (an error, an empty answer) plans the next one from then; a catch-up due or a reply unseen holds it', fixedRandom(async () => {
+test('a failed text stops her texts there: no try again by itself, its reason kept, the insights say so; a catch-up due or a reply unseen holds it', fixedRandom(async () => {
     clock = T0;
-    const { asked, settings, state, talk, run, env, warnings } = setup();
+    const { p, asked, settings, state, talk, run, env, warnings } = setup();
     talk();
     clock = state().seq.next;
-    env.answer = () => { throw new Error('no answer for 3 minutes'); };
+    const due = clock;
+    env.answer = () => { throw new Error('no answer for 3 minutes.'); };
     assert.equal(await run(), false);
-    assert.equal(state().seq.next, clock + 6.5 * MIN);
+    assert.deepEqual(state().failed, { at: due, error: 'no answer for 3 minutes' });
+    assert.equal(state().seq.next, due);
     assert.ok(warnings.some(w => /no answer for 3 minutes/.test(w)));
+    // Not again by itself, however long
     env.answer = '?';
-    clock = state().seq.next;
-    env.pending = true;
+    clock += 5 * HOUR;
     assert.equal(await run(), false);
+    assert.equal(asked.length, 1);
+    assert.equal(p.getProactiveInsightsSnapshot().next, 'Text failed (no answer for 3 minutes) · retry from its bar');
+    // A catch-up meanwhile has nothing after it to work out
+    const sim = p.simulateAway('mira.png', { name: 'Mira', avatar: 'mira.png' }, { from: due, to: clock, days: 3, max: 30 });
+    assert.equal(sim.events.length, 0);
+    assert.deepEqual(sim.quiet, { why: 'failed' });
+    // Retried while a catch-up is due or a reply unseen: held as any text is
+    env.pending = true;
+    assert.equal(await env.failures[0].retry(), false);
+    assert.equal(state().failed, undefined);
     env.pending = false;
     settings.pendingReplies = { 'mira.png': clock + HOUR };
     assert.equal(await run(), false);
     assert.equal(asked.length, 1);
+}));
+
+test('a failed text: not counted in the day\'s requests, told with its reason; Retry writes it as of then, × lets it go, your text ends it', fixedRandom(async () => {
+    clock = T0;
+    const { asked, settings, state, talk, run, env, chat, p } = setup();
+    talk();
+    settings.proactiveDaily = { day: '2026-10-31', count: 3 };
+    clock = state().seq.next;
+    env.answer = () => { throw new Error('socket hang up'); };
+    assert.equal(await run(), false);
+    assert.deepEqual(settings.proactiveDaily, { day: '2026-10-31', count: 3 });
+    assert.equal(env.failures.length, 1);
+    assert.equal(env.failures[0].error, 'socket hang up');
+    assert.equal(env.failures[0].characterKey, 'mira.png');
+    // Retry two hours on: written as of then, counted once it's written
+    env.answer = '?';
+    clock += 2 * HOUR;
+    assert.equal(await env.failures[0].retry(), true);
+    assert.match(turnOf(asked), /it is 22:07, 2 hours after Mira's last one/);
+    assert.equal(chat().at(-1).mes, '?');
+    assert.equal(chat().at(-1).send_date, clock);
+    assert.equal(settings.proactiveDaily.count, 4);
+    assert.equal(state().unanswered, 1);
+    assert.equal(state().failed, undefined);
+    // An old tap once it's gone: nothing
+    assert.equal(await env.failures[0].retry(), false);
+    // An empty answer fails the same way
+    env.answer = '   ';
+    clock = state().seq.next;
+    assert.equal(await run(), false);
+    assert.equal(state().failed.error, 'the answer had no text');
+    assert.equal(settings.proactiveDaily.count, 4);
+    // ×: not sent, the next one planned from now
+    const sent = asked.length;
+    p.dismissFailedText('mira.png');
+    assert.equal(state().failed, undefined);
+    assert.equal(asked.length, sent);
+    assert.equal(state().seq.next, clock + 13 * MIN);
+    env.answer = 'hello?';
+    clock = state().seq.next;
+    assert.equal(await run(), true);
+    assert.equal(chat().at(-1).mes, 'hello?');
+    // Your text: over, her texts start again from her reply
+    env.answer = () => { throw new Error('down'); };
+    clock = state().seq.next;
+    await run();
+    assert.ok(state().failed);
+    talk();
+    assert.equal(state().failed, undefined);
+    assert.equal(state().unanswered, 0);
 }));
 
 test('a catch-up works out the same sequence: the same waits, the same holds, the day\'s count, the last three days, at most thirty', fixedRandom(async () => {
@@ -309,7 +373,7 @@ test('a catch-up works out the same sequence: the same waits, the same holds, th
 
 test('the insights: her next text and how many are unanswered, what holds it, or waiting to reply', fixedRandom(async () => {
     clock = T0;
-    const { p, state, talk, run, env, chat } = setup({ temperament: 'normal' });
+    const { p, state, talk, run, env, chat, settings } = setup({ temperament: 'normal' });
     talk();
     assert.equal(p.getProactiveInsightsSnapshot().next, 'Next text in 40m');
     clock = state().seq.next;
@@ -322,4 +386,13 @@ test('the insights: her next text and how many are unanswered, what holds it, or
     p.markProactiveUserActivity('mira.png', clock);
     assert.equal(p.getProactiveInsightsSnapshot().next, 'Waiting to reply');
     assert.equal(p.getProactiveInsightsSnapshot().character, 'Mira · Normal');
+    // The day's requests used up: said, even though she was put off to after midnight for it
+    clock += MIN;
+    chat().push({ is_user: false, mes: 'hi', send_date: clock });
+    p.markProactiveCharacterActivity('mira.png', false, 'reply', clock);
+    settings.proactiveDaily = { day: '2026-10-31', count: 20 };
+    clock = state().seq.next;
+    await run();
+    assert.equal(state().seq.next, new Date(2026, 10, 1).getTime());
+    assert.match(p.getProactiveInsightsSnapshot().next, /^Daily limit reached \(20\) until 00:00/);
 }));

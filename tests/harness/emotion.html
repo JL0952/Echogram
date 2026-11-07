@@ -106,7 +106,8 @@
         // The proactive engine, as far as the catch-up asks it (runCatchUpTest sets what it answers)
         proactiveMessaging: {
             simulateAway: (...a) => env.simulateAway(...a), adoptSimulation: (...a) => env.adoptSimulation?.(...a), noteCatchUpRequest: (...a) => env.noteCatchUpRequest?.(...a),
-            syncProactiveStateWithHistory() {}, armProactiveTimer() {}, planParted: (...a) => env.partedPlans?.push(a), markProactiveUserActivity() {}, markProactiveCharacterActivity() {}, refreshProactiveInsights() {},
+            syncProactiveStateWithHistory() {}, armProactiveTimer() {}, planParted: (...a) => env.partedPlans?.push(a),
+            retryFailedText: (...a) => env.retryFailedText?.(...a), dismissFailedText: (...a) => env.dismissFailedText?.(...a), markProactiveUserActivity() {}, markProactiveCharacterActivity() {}, refreshProactiveInsights() {},
         },
         // What the engine works out over a catch-up's gap (lib/proactive-messaging.js simulateAway): nothing, unless a test says
         simulateAway: () => ({ events: [], state: {} }) };
@@ -2330,7 +2331,7 @@
         const turn = asked[0]?.apiMessages.at(-1).content || '';
         res.oneRequest = asked.length === 1 && counted === 1 && /^\[Instruction for this turn/.test(turn) && /CATCH-UP: 我 hasn't been around since/.test(turn)
             && /Mira's usual schedule in <schedule>/.test(turn) && /- 周六搬家 \(打包了一半\); due /.test(turn)
-            && /- n=1 · [A-Z][a-z]{2} \d{4}-\d\d-\d\d \d\d:\d\d.* · on Mira's mind: A random thought\.\n- n=2 · .* · on Mira's mind: Just checking in\./.test(turn) && /<text n="…">/.test(turn);
+            && /- n=1 · [A-Z][a-z]{2} \d{4}-\d\d-\d\d \d\d:\d\d.* · on Mira's mind: A daily observation\.\n- n=2 · .* · on Mira's mind: Just checking in\./.test(turn) && /<text n="…">/.test(turn);
         // Its <schedule> from when it was left, two days ago (lib/daily-life.js describeSchedule, tested on its own)
         res.scheduleFromGap = builtWith.length === 1 && builtWith[0].scheduleFrom === twoDays && builtWith[0].verbosity === false;
         // Asked for from where the texts had run to now, three days and thirty texts at most
@@ -2399,6 +2400,55 @@
         await r.maybeCatchUp();
         res.dismissedStays = asked.length === 5;
 
+        // None of the texts came back: failed the same way, nothing kept, the engine not moved on
+        fresh();
+        answer = async () => '<life>happened 看电影 (' + Life.dateKey(new Date()) + ')</life>\n好的';
+        const adoptedAtNone = adopted.length;
+        await r.maybeCatchUp();
+        res.noneCameBack = lastBar()?.dataset.state === 'failed' && adopted.length === adoptedAtNone && !chat().some(m => m.meta?.proactive)
+            && !env.settings.lifeState['mira.png'].settledAt && !env.settings.lifeState['mira.png'].start.log.some(e => e.text === '看电影')
+            && errors.some(e => /none of the texts came back/.test(e));
+        errors.length = 0;
+        // Retry with nothing left to write (the day's requests used up meanwhile): the bar stays and says so
+        const realSim = env.simulateAway;
+        env.settings.dailyLifeEnabled = false;
+        env.simulateAway = (key, char, range) => { simCalls.push({ key, ...range }); return { state: simState, events: [], quiet: { why: 'limit' } }; };
+        const askedAtRetry = asked.length;
+        lastBar().querySelector('[data-et-catchup="again"]').click();
+        await again;
+        res.retryNothingSays = asked.length === askedAtRetry && lastBar()?.textContent === 'Caught up · no texts · daily limit'
+            && env.settings.proactiveSeenAt['mira.png'] > Date.now() - 5000;
+        // Its Redo just looks again (there's nothing it began from to put back)
+        lastBar().querySelector('[data-et-catchup="again"]').click();
+        await again;
+        res.retryNothingRedo = asked.length === askedAtRetry && lastBar()?.textContent === 'Caught up · no texts' && !errors.length;
+        env.simulateAway = realSim;
+        env.settings.dailyLifeEnabled = true;
+
+        // A text of hers that failed (the engine keeps it on her state): its bar says why, with Retry and ×,
+        // kept through a redraw; Retry and × go to the engine (lib/proactive-messaging.js, tested on its own)
+        fresh();
+        const failedBar = () => document.getElementById('et-text-failed');
+        const failedCalls = [];
+        env.retryFailedText = (char, key) => { failedCalls.push(['retry', char?.name, key]); delete env.settings.proactiveState[key].failed; return Promise.resolve(false); };
+        env.dismissFailedText = key => { failedCalls.push(['dismiss', key]); delete env.settings.proactiveState[key].failed; };
+        jQuery(document).off('click.textfailed').on('click.textfailed', '[data-et-text-failed="again"]', () => r.retryFailedText())
+            .on('click.textfailed', '[data-et-text-failed="dismiss"]', () => r.dismissFailedText());
+        env.settings.proactiveState = { 'mira.png': { failed: { at: Date.now(), error: 'socket hang up' } } };
+        r.renderMessages(chat());
+        res.textFailedBar = failedBar()?.textContent === 'Text failed · socket hang up' && !!failedBar().querySelector('[data-et-text-failed="again"][title="Retry"]')
+            && !!failedBar().querySelector('[data-et-text-failed="dismiss"]');
+        r.renderMessages(chat());
+        res.textFailedStays = document.querySelectorAll('#et-text-failed').length === 1;
+        failedBar().querySelector('[data-et-text-failed="again"]').click();
+        res.textFailedRetry = JSON.stringify(failedCalls) === '[["retry","Mira","mira.png"]]' && !failedBar();
+        env.settings.proactiveState['mira.png'].failed = { at: Date.now(), error: 'socket hang up' };
+        r.renderMessages(chat());
+        failedBar().querySelector('[data-et-text-failed="dismiss"]').click();
+        res.textFailedDismiss = failedCalls.at(-1).join() === 'dismiss,mira.png' && !failedBar();
+        env.settings.proactiveState = {};
+        jQuery(document).off('click.textfailed');
+
         // She owes you a reply, or Proactive is off: only the life, the engine not asked
         for (const [label, proactive, lastIsUser] of [['proactiveOff', false, false], ['owesReply', true, true]]) {
             fresh(lastIsUser);
@@ -2429,7 +2479,7 @@
         fresh();
         env.settings.lifeState['mira.png'].startAt = Date.now() - 1000;
         const askedBefore = asked.length;
-        answer = async () => '<life>happened 看电影 (' + Life.dateKey(new Date()) + ')</life>';
+        answer = async () => '<life>happened 看电影 (' + Life.dateKey(new Date()) + ')</life>\n<text n="1">x</text>';
         await r.maybeCatchUp();
         res.writingIsntSettling = asked.length === askedBefore + 1 && env.settings.lifeState['mira.png'].settledAt > twoDays;
         // Catch up off: neither, no request, just seen

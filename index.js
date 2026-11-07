@@ -6192,7 +6192,7 @@
 
     const CATCH_UP_LAST = { done: 'Caught up', paused: 'Catch-up paused', failed: 'Catch-up failed' };
     // Why a catch-up brought no texts (runCatchUp's `quiet`)
-    const CATCH_UP_QUIET = { limit: 'daily limit', reply: 'reply pending', off: 'Proactive off', unwritten: 'none written' };
+    const CATCH_UP_QUIET = { limit: 'daily limit', reply: 'reply pending', off: 'Proactive off', unwritten: 'none written', failed: 'a text failed' };
 
     /** The last catch-up's bar: done, how many texts came in, or none and why ("Caught up · no texts · daily limit"). */
     function catchUpLastLabel(last) {
@@ -6214,6 +6214,15 @@
                 + `</div>`);
         }
         const key = getCharacterKey();
+        // A text of hers that failed: her texts wait on its Retry (or ×, or your text)
+        const failed = key && !inGroupSession() ? settings.proactiveState?.[key]?.failed : null;
+        if (failed && isViewing(soloTarget(key))) {
+            jQuery('#et-messages').prepend(`<div id="et-text-failed" class="et-catchup-bar et-catchup-bar-still" data-state="failed"><i class="fa-solid fa-triangle-exclamation"></i>`
+                + `<span>Text failed · ${escapeHtml(failed.error)}</span>`
+                + `<button type="button" class="et-catchup-pause" data-et-text-failed="again" title="Retry"><i class="fa-solid fa-rotate-right"></i></button>`
+                + `<button type="button" class="et-catchup-pause" data-et-text-failed="dismiss" title="Dismiss"><i class="fa-solid fa-xmark"></i></button>`
+                + `</div>`);
+        }
         const last = key && !inGroupSession() && catchingUp?.key !== key ? settings.catchUpLast?.[key] : null;
         if (!last || !CATCH_UP_LAST[last.state] || !isViewing(soloTarget(key))) return;
         const again = last.state === 'done' ? 'Redo' : 'Retry';
@@ -6234,24 +6243,31 @@
      * gap is due: Daily Life settles their life over it; the texts they'd have sent are
      * worked out by the proactive engine's own rules (lib/proactive-messaging.js
      * simulateAway) and the model only writes them. Nothing to do: they're simply marked seen.
+     * `retry` (a paused or failed one's bar): its bar stays until another takes its place, and
+     * with nothing to write it says so ("Caught up · no texts · daily limit").
      */
-    async function maybeCatchUp() {
+    async function maybeCatchUp({ retry = false } = {}) {
         noteTogetherEnded();
         if (catchingUp || isGenerating || !panelOpen || inGroupSession() || !CatchUp) return;
         // Playing the main chat: once it's been quiet a while (the minute's check picks it up)
         catchUpHeld = storyPauseUntil() > 0;
-        if (catchUpHeld) return;
+        if (catchUpHeld) { if (retry) toastr.info('Catch-up waits while you play the main chat', 'Echogram'); return; }
         const char = getCurrentCharacter();
         const key = getCharacterKey();
         if (!char || !key) return;
         // Paused or failed: it waits on its bar's Retry (or ×)
-        if (['paused', 'failed'].includes(settings.catchUpLast?.[key]?.state)) { drawStatusBars(); return; }
+        if (!retry && ['paused', 'failed'].includes(settings.catchUpLast?.[key]?.state)) { drawStatusBars(); return; }
         const plan = catchUpPlan(char, key);
-        if (!plan) { markSeen(true); return; }
+        if (!plan) {
+            markSeen(true);
+            if (retry) { setCatchUpLast(key, { state: 'done', at: Date.now(), count: 0, quiet: 'none' }); saveSettings(); drawStatusBars(); }
+            return;
+        }
         const { settle, settleFrom, textFrom, sim, events, now } = plan;
         if (!settle && !events.some(e => !e.text)) {
             // Nothing for the model to write: a round's texts written before go in, and the engine moves on
-            skipCatchUp(key, plan);
+            const added = skipCatchUp(key, plan);
+            if (retry) { setCatchUpLast(key, { state: 'done', at: Date.now(), count: added, quiet: added ? null : catchUpQuiet(sim, events, soloTarget(key)) }); saveSettings(); drawStatusBars(); }
             return;
         }
         await runCatchUp({ char, key, settle, events, sim, from: Math.min(settle ? settleFrom : Infinity, events.length ? textFrom : Infinity), now });
@@ -6284,13 +6300,23 @@
      * engine's state moves on, the life counts as settled, and the character is seen now.
      */
     function skipCatchUp(key, { settle, sim, events, now }) {
+        let added = 0;
         if (events.some(e => e.text)) {
             const chat = getChatHistory();
-            if (insertCatchUpTexts(chat, soloTarget(key), events)) { saveChatHistory(chat); renderMessages(chat); }
+            added = insertCatchUpTexts(chat, soloTarget(key), events);
+            if (added) { saveChatHistory(chat); renderMessages(chat); }
         }
         if (sim) proactiveMessaging.adoptSimulation(key, sim.state);
         if (settle) settings.lifeState[key] = { ...DailyLife.normalizeLife(settings.lifeState[key]), settledAt: now };
         markSeen(true);
+        return added;
+    }
+
+    /** Why a catch-up brought no texts (CATCH_UP_QUIET): none to write, Proactive off, a reply owed, or the engine's reason. */
+    function catchUpQuiet(sim, events, target) {
+        return events.length ? 'unwritten'
+            : !sim ? (settings.proactiveMessagingEnabled !== true ? 'off' : getChatHistory(target).at(-1)?.is_user ? 'reply' : 'none')
+            : sim.quiet?.why || 'none';
     }
 
     // ── After a catch-up (settings.catchUpLast[k]) ───────────────────────────
@@ -6312,8 +6338,11 @@
         const key = getCharacterKey();
         const last = key && settings.catchUpLast?.[key];
         if (!last || catchingUp || isGenerating) return;
-        if (last.state === 'done') {
-            const { proactive, life, seenAt } = last.before || {};
+        // Paused or failed: its bar stays until what comes of trying again takes its place
+        if (last.state !== 'done') return maybeCatchUp({ retry: true });
+        // Done with nothing it began from (one that had nothing to write): looked at again
+        if (last.before) {
+            const { proactive, life, seenAt } = last.before;
             if (!settings.proactiveState) settings.proactiveState = {};
             if (proactive) settings.proactiveState[key] = proactive;
             else delete settings.proactiveState[key];
@@ -6326,7 +6355,8 @@
         }
         setCatchUpLast(key, null);
         saveSettings();
-        return maybeCatchUp();
+        // One that had nothing to write says again what comes of looking
+        return maybeCatchUp({ retry: !last.before });
     }
 
     /** The bar's ×, or your next text: done, it just goes; paused or failed, the gap is let go too. */
@@ -6410,6 +6440,8 @@
             const chat = getChatHistory(target);
             if (anchor && !chat.includes(anchor)) { inserted = true; return; }
             const answer = CatchUp.readAnswer(stripThinkingTags(String(raw ?? '')), { now, asked: asked.map(e => e.n) });
+            // Texts asked for and none came back: it failed, nothing kept, its bar offers Retry
+            if (asked.length && !answer.texts.length) throw new Error('none of the texts came back');
             if (settle) writeLife(key, { changes: answer.life });
             inserted = 'done';
             added = insertCatchUpTexts(chat, target, events, answer.texts, run);
@@ -6443,10 +6475,7 @@
                 if (getCharacterKey() === key) markSeen(true);
                 else settings.proactiveSeenAt[key] = Date.now();
                 // Done: its bar stays, to redo it, saying how many came in, or why none did
-                const quiet = added ? null
-                    : events.length ? 'unwritten'
-                    : !sim ? (settings.proactiveMessagingEnabled !== true ? 'off' : getChatHistory(target).at(-1)?.is_user ? 'reply' : 'none')
-                    : sim.quiet?.why || 'none';
+                const quiet = added ? null : catchUpQuiet(sim, events, target);
                 setCatchUpLast(key, inserted === 'done' ? { state: 'done', at: Date.now(), run, before, count: added, quiet } : null);
             }
             catchingUp = null;
@@ -6465,6 +6494,24 @@
         if (catchingUp?.key === key) return true;
         const seen = settings.proactiveSeenAt?.[key];
         return !!seen && Date.now() - seen > CatchUp.AWAY_MS;
+    }
+
+    /** The open character's failed text tried again now (its bar's ↻), as of now. */
+    function retryFailedText() {
+        const char = getCurrentCharacter();
+        const key = getCharacterKey();
+        if (!char || !key || !proactiveMessaging) return;
+        const going = proactiveMessaging.retryFailedText(char, key);
+        drawStatusBars();
+        return going;
+    }
+
+    /** The open character's failed text let go (its bar's ×): her next one planned from now. */
+    function dismissFailedText() {
+        const key = getCharacterKey();
+        if (!key || !proactiveMessaging) return;
+        proactiveMessaging.dismissFailedText(key);
+        drawStatusBars();
     }
 
     /** Pausing a catch-up: its request stops, and the gap is left as it is. */
@@ -8767,6 +8814,12 @@
             setFabUnreadIndicator,
             getEmotionState,
             getProactivePace: (key, at) => (emotionSystem ? emotionSystem.getProactivePace(key ?? undefined, at) : 1),
+            // A text of hers that failed: said, its bar up (Retry, ×), and a tap tries it again now
+            textFailed: ({ char, error, retry }) => {
+                drawStatusBars();
+                toastr.error(`Echogram: ${char?.name || 'Character'}'s text failed: ${error}. Tap to retry.`, '',
+                    { timeOut: 15000, onclick: () => { retry(); drawStatusBars(); } });
+            },
             // How the character follows up when ignored (Personality tab; lib/proactive-rounds.js)
             getTemperament: key => (emotionSystem ? emotionSystem.getTemperament(key) : 'normal'),
             // Daily Life, the open character with a schedule: where they are in their day and
@@ -8887,6 +8940,8 @@
         jQuery(document).on('click', '[data-et-catchup="pause"]', () => pauseCatchUp());
         jQuery(document).on('click', '[data-et-catchup="again"]', () => retryCatchUp());
         jQuery(document).on('click', '[data-et-catchup="dismiss"]', () => dismissCatchUp());
+        jQuery(document).on('click', '[data-et-text-failed="again"]', () => retryFailedText());
+        jQuery(document).on('click', '[data-et-text-failed="dismiss"]', () => dismissFailedText());
         jQuery(document).on('click', '[data-et-catchup="pause-together"]', () => pauseTogetherNote());
         // Settings that depend on another
         const Controls = window.EchoTextSettingsModal;
