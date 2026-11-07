@@ -1513,7 +1513,7 @@
         const simulated = [];
         env.simulateAway = (key, char, range) => {
             simulated.push(range);
-            return { events: [{ at: range.from + HOUR, type: 'random_thought', note: 'A random thought.' }], state: {} };
+            return { events: [{ at: range.from + HOUR, type: 'daily_observation', note: 'A daily observation.' }], state: {} };
         };
         env.panelOpen = true;
         const twoDays = Date.now() - 2 * 24 * HOUR;
@@ -2289,7 +2289,7 @@
         env.simulateAway = (key, char, range) => {
             simCalls.push({ key, ...range });
             return { state: simState, events: [
-                { at: range.from + 5 * HOUR, type: 'random_thought', note: 'A random thought.' },
+                { at: range.from + 5 * HOUR, type: 'daily_observation', note: 'A daily observation.' },
                 { at: range.from + 10 * HOUR, type: 'checkin', note: 'Just checking in.' },
             ] };
         };
@@ -2340,7 +2340,7 @@
         // In by number at the engine's times and kinds, whatever time the model wrote; its state adopted
         const added = chat().filter(m => m.meta?.proactive);
         res.texts = added.map(m => m.mes).join('|') === '想你了|人呢' && added[0].send_date === twoDays + 5 * HOUR && added[1].send_date === twoDays + 10 * HOUR
-            && added[0].meta.proactiveType === 'random_thought' && added[1].meta.proactiveType === 'checkin';
+            && added[0].meta.proactiveType === 'daily_observation' && added[1].meta.proactiveType === 'checkin';
         res.adopted = adopted.length === 1 && adopted[0][1] === simState;
         res.barGone = !document.getElementById('et-catchup-bar');
         // Its bar stays, done, to redo it, with ×
@@ -2649,7 +2649,7 @@
         env.settings.dailyLifeEnabled = true;
         env.settings.proactiveMessagingEnabled = true;
         env.settings.catchUpEnabled = true;
-        env.simulateAway = (key, char, range) => ({ events: [{ at: range.from + HOUR, type: 'random_thought', note: 'A random thought.' }], state: {} });
+        env.simulateAway = (key, char, range) => ({ events: [{ at: range.from + HOUR, type: 'daily_observation', note: 'A daily observation.' }], state: {} });
         let gapStart = 0;
         const gap = () => {
             open = 'mira.png';

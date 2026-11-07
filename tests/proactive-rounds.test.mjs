@@ -192,7 +192,7 @@ test('Life: her own day with a schedule; without one the clock text that fits, f
 test('the pick: a kind first, the last one\'s less likely; in it the feelings by weight, the rest past their last three', () => {
     const kinds = kindsAt({ feelings: { rapport: 30 } });
     // With the last topic a share, its kind is less likely
-    const pick = random => R.pickTopic({ kinds: kinds.filter(k => ['you', 'share'].includes(k.id)), history: { random_thought: 5 }, random });
+    const pick = random => R.pickTopic({ kinds: kinds.filter(k => ['you', 'share'].includes(k.id)), history: { daily_observation: 5 }, random });
     // you 1, share 0.3: the first 1/1.3 of the roll is you
     assert.equal(pick(fixed(0.7)).kind, 'you');
     assert.equal(pick(fixed(0.8)).kind, 'share');
@@ -200,9 +200,9 @@ test('the pick: a kind first, the last one\'s less likely; in it the feelings by
     assert.equal(R.pickTopic({ kinds: kinds.map(k => ({ ...k, ok: false })) }), null);
     // In a kind, past the last three of it
     const shareOnly = kinds.filter(k => k.id === 'share');
-    const used = { random_thought: 4, sharing_impulse: 3, song_stuck: 2 };
+    const used = { daily_observation: 4, interest_share: 3, song_stuck: 2 };
     for (const roll of [0, 0.5, 0.99]) {
-        assert.ok(!['random_thought', 'sharing_impulse', 'song_stuck'].includes(R.pickTopic({ kinds: shareOnly, history: used, random: fixed(roll) }).type));
+        assert.ok(!['daily_observation', 'interest_share', 'song_stuck'].includes(R.pickTopic({ kinds: shareOnly, history: used, random: fixed(roll) }).type));
     }
     // Feelings by their weights: reassurance (65 + 0.3 × anxiety) outweighs jealousy
     const mood = kindsAt({ feelings: { anxiety: 90, anger: 40, romance: 50 } }).filter(k => k.id === 'mood');

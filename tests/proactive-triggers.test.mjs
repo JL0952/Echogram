@@ -13,7 +13,7 @@ const Model = window.EchoTextEmotionModel;
 
 const HOUR = 3600000;
 const EMOTION_TRIGGERS = ['affection_reciprocation', 'repair_attempt', 'curiosity_ping', 'anxiety_reassurance', 'celebration_nudge',
-    'sharing_impulse', 'mood_follow_up', 'nostalgia_wave', 'longing_ping', 'playful_tease', 'jealousy_nudge', 'boredom_break',
+    'interest_share', 'mood_follow_up', 'nostalgia_wave', 'longing_ping', 'playful_tease', 'jealousy_nudge', 'boredom_break',
     'overwhelm_check', 'gratitude_burst', 'pride_share', 'suppressed_thought'];
 
 /**
@@ -86,7 +86,7 @@ test('Romance drives longing and jealousy — jealous on bad terms too', () => {
 test('the moods map one to one', () => {
     assert.ok(has({ anticipation: 60 }, 'curiosity_ping'));
     assert.ok(has({ anxiety: 60 }, 'anxiety_reassurance'));
-    assert.ok(has({ joy: 70 }, 'sharing_impulse'));
+    assert.ok(has({ joy: 70 }, 'interest_share'));
     assert.ok(has({ anxiety: 60, sadness: 45 }, 'overwhelm_check'));
     assert.ok(has({ disgust: 40 }, 'suppressed_thought'));
     assert.ok(has({ anticipation: 75, joy: 45 }, 'pride_share'));

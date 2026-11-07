@@ -32,7 +32,7 @@ function candidates({ temperament, day, userHours = 10, proactiveHours = null, t
     const userAt = t - userHours * HOUR;
     const history = [{ is_user: false, mes: 'hi', send_date: userAt - HOUR }, { is_user: true, mes: 'ok', send_date: userAt }];
     for (let i = 0; i < followUps; i++) history.push({ is_user: false, mes: '?', send_date: userAt + (i + 1) * 60000, meta: { proactive: true, proactiveType: 'follow_up' } });
-    for (let i = 0; i < topics; i++) history.push({ is_user: false, mes: 'news', send_date: userAt + HOUR, meta: { proactive: true, proactiveType: 'random_thought' } });
+    for (let i = 0; i < topics; i++) history.push({ is_user: false, mes: 'news', send_date: userAt + HOUR, meta: { proactive: true, proactiveType: 'daily_observation' } });
     const state = { lastUserMessageAt: userAt, lastCharacterMessageAt: userAt, triggerHistory: {}, lastEmotionSnapshot: null,
         lastProactiveAt: proactiveHours === null ? 0 : t - proactiveHours * HOUR };
     const config = { ...p.getDefaultProactiveConfigForCharacter({}), temperament };
@@ -56,20 +56,24 @@ test('without a schedule one clock text that fits now is Life, fixed for the day
     // With a schedule: none of them
     assert.deepEqual(clock(candidates({ day: day() })), []);
     // The other kinds stay either way
-    assert.ok(types(candidates({ day: day() })).includes('random_thought'));
+    assert.ok(types(candidates({ day: day() })).includes('daily_observation'));
 });
 
 test('without a schedule the other kinds lead with the time of day; with one they don\'t', () => {
     const plain = candidates({});
-    const scene = plain.find(c => c.type === 'random_thought').prompt;
+    const scene = plain.find(c => c.type === 'daily_observation').prompt;
     const clockType = plain.find(c => window.EchoTextProactiveRounds.CLOCK_TRIGGERS.includes(c.type)).type;
     // Its first sentence, then the topic's own words
     const first = window.EchoTextProactiveMessaging.createProactiveMessaging({ getSettings: () => ({}), expandTimeDateMacros: t => t, replaceMacros: t => t })
         .getDefaultProactiveConfigForCharacter().triggerTemplates[clockType];
-    assert.ok(scene.endsWith('Share the genuinely random or weird observation.'));
-    assert.ok(!scene.startsWith('A completely random thought'), scene);
+    assert.match(scene, /own point of view and values\. What .+ notices and shares, and how .+ takes it, come from who .+ is/);
+    assert.ok(!scene.startsWith('Something {{char}} came across'), scene);
     assert.ok(first.length > 0);
-    assert.ok(candidates({ day: day() }).find(c => c.type === 'random_thought').prompt.startsWith('A completely random thought'));
+    assert.ok(candidates({ day: day() }).find(c => c.type === 'daily_observation').prompt.startsWith('Something {{char}} came across'));
+});
+
+test('every Sharing text, and only those, says it comes from who they are', () => {
+    for (const c of candidates({})) assert.equal(/notices and shares/.test(c.prompt), c.kind === 'share', c.type);
 });
 
 test('just got free: a topic about it', () => {
@@ -98,7 +102,7 @@ test('an errand due by tomorrow, and today\'s news', () => {
 test('the insights panel: why nothing comes, and the six kinds, Life by her own day or by the clock', () => {
     const now = Date.now();
     const history = [{ is_user: true, mes: 'ok', send_date: now - 20 * HOUR },
-        { is_user: false, mes: 'a', send_date: now - 19 * HOUR, meta: { proactive: true, proactiveType: 'random_thought' } },
+        { is_user: false, mes: 'a', send_date: now - 19 * HOUR, meta: { proactive: true, proactiveType: 'daily_observation' } },
         { is_user: false, mes: 'b', send_date: now - 18 * HOUR, meta: { proactive: true, proactiveType: 'checkin' } }];
     const snapshot = (dayInfo, phone = null) => {
         const settings = { proactiveMessagingEnabled: true };
