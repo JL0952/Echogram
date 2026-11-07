@@ -66,14 +66,14 @@ test('without a schedule the other kinds lead with the time of day; with one the
     // Its first sentence, then the topic's own words
     const first = window.EchoTextProactiveMessaging.createProactiveMessaging({ getSettings: () => ({}), expandTimeDateMacros: t => t, replaceMacros: t => t })
         .getDefaultProactiveConfigForCharacter().triggerTemplates[clockType];
-    assert.match(scene, /own point of view and values\. What .+ notices and shares, and how .+ takes it, come from who .+ is/);
+    assert.ok(scene.endsWith("from {{char}}'s own point of view and values."), scene);
     assert.ok(!scene.startsWith('Something {{char}} came across'), scene);
     assert.ok(first.length > 0);
     assert.ok(candidates({ day: day() }).find(c => c.type === 'daily_observation').prompt.startsWith('Something {{char}} came across'));
 });
 
-test('every Sharing text, and only those, says it comes from who they are', () => {
-    for (const c of candidates({})) assert.equal(/notices and shares/.test(c.prompt), c.kind === 'share', c.type);
+test('no topic says it comes from who they are: the instruction around it does, once', () => {
+    for (const c of candidates({})) assert.doesNotMatch(c.prompt, /come from who/, c.type);
 });
 
 test('just got free: a topic about it', () => {
