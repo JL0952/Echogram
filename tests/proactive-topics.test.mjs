@@ -87,6 +87,26 @@ test('just got free: a topic about it', () => {
     assert.ok(!types(candidates({ day: day({ since: NOW.getTime() - 10 * 60000, prevPhone: 'free' }) })).includes('block_change'));
 });
 
+test('just got free, but you two texted around then: not news, and the insights say why', () => {
+    const free = () => day({ since: NOW.getTime() - 10 * 60000, prevPhone: 'busy', prevDoing: '开会' });
+    // Your last text 20 minutes ago (10 before the meeting ended): it came up already
+    assert.ok(!types(candidates({ day: free(), userHours: 1 / 3 })).includes('block_change'));
+    // 45 minutes ago (35 before it ended): still news
+    assert.ok(types(candidates({ day: free(), userHours: 0.75 })).includes('block_change'));
+    // With nothing else in her day, the insights panel's Life row says why it can't be picked
+    const now = Date.now();
+    const meeting = day({ since: now - 10 * 60000, prevPhone: 'busy', prevDoing: '开会' });
+    const life = sentAt => window.EchoTextProactiveMessaging.createProactiveMessaging({
+        getSettings: () => ({ proactiveMessagingEnabled: true }), getUserName: () => 'Qi', getActiveFeatures: () => [],
+        expandTimeDateMacros: t => t, replaceMacros: t => t, getEmotionState: () => null, getProactivePace: () => 1,
+        getTemperament: () => 'normal', getDailyLife: () => ({ ...meeting }), getScheduleNow: () => null,
+        getCurrentCharacter: () => ({ name: 'Mira', avatar: 'mira.png' }), getCharacterKey: () => 'mira.png',
+        getChatHistory: () => [{ is_user: true, mes: 'ok', send_date: sentAt }],
+    }).getProactiveInsightsSnapshot().triggerDiagnostics.find(t => t.id === 'life');
+    assert.equal(life(now - 20 * 60000).reason, 'Texted around when 开会 ended');
+    assert.equal(life(now - 3 * HOUR).reason, 'Can pick');
+});
+
 test('an errand due by tomorrow, and today\'s news', () => {
     const life = { errands: [{ text: '交论文', progress: '还差结论', due: '2026-10-27' }, { text: '搬家', due: '2026-11-07' }], log: [{ date: '2026-10-26', text: '早上摔了一跤' }], today: null };
     const c = candidates({ day: day({ life }) });

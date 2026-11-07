@@ -89,6 +89,15 @@ test('just got free: within half an hour of a busy or sleeping stretch ending', 
     assert.equal(R.justGotFree({ phone: 'busy', prevPhone: 'asleep', since: now - 5 * MIN, now }), false);
 });
 
+test('texted around when a stretch ended: from half an hour before it on', () => {
+    const since = T0;
+    assert.equal(R.textedAround({ since, lastTextAt: since + 5 * MIN }), true);
+    assert.equal(R.textedAround({ since, lastTextAt: since - 30 * MIN }), true);
+    assert.equal(R.textedAround({ since, lastTextAt: since - 31 * MIN }), false);
+    assert.equal(R.textedAround({ since, lastTextAt: -Infinity }), false);
+    assert.equal(R.textedAround({ since: null, lastTextAt: since }), false);
+});
+
 test('topics from the character\'s own day', () => {
     const say = (d, today) => (d === today ? 'today' : d === '2026-11-01' ? 'tomorrow' : d);
     const day = {

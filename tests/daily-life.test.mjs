@@ -793,6 +793,8 @@ test('what counts as something that happened, and a reply keeps one', () => {
     // Errands: beyond the schedule, never a reply; updated only when something changed
     assert.match(rules, /- new <errand> \(due <YYYY-MM-DD>\): something Mira has to get done or is waiting on by a day, beyond the usual schedule in <schedule> — a task, an appointment, an outcome; never a reply from Qi\n/);
     assert.match(rules, /- update <errand>: <how it stands now>, only when that has changed\n/);
+    // Today's change: only a real change from the schedule, never the schedule again
+    assert.match(rules, /- today <change>: only when Mira's plans for today really change from what <schedule> has \(something cancelled, moved or added\); never restate the schedule\n/);
     // Past one, the rest left out, the first kept; the other changes all kept
     const two = Life.parseLifeTag('嗯\n<life>happened 被领导骂了; happened 倒了杯咖啡; update 周六搬家: 打包完了</life>', SAT, { maxHappened: 1 }).life;
     assert.deepEqual(two.map(c => [c.op, c.text || c.name]), [['happened', '被领导骂了'], ['update', '周六搬家']]);
@@ -802,6 +804,7 @@ test('what counts as something that happened, and a reply keeps one', () => {
     assert.doesNotMatch(none, /<schedule>/);
     assert.match(none, /beyond what Mira does every day — /);
     assert.match(none, /What Mira does every day, time passing and Qi not replying are not events/);
+    assert.match(none, /- today <change>: only when Mira's plans for today really change from what Mira usually does .*; never restate Mira's usual day\n/);
 });
 
 test('today\'s change can go when what it was for is over, reports of it too', () => {
