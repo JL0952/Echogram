@@ -1220,9 +1220,9 @@
         // Then what changes from reply to reply (`live`), closest to the reply:
         //
         //  6. MEMORY     — pinned memories and the ones the recent messages bring up
-        //  7. DAILY LIFE — the time, and the line of their week they're in now
+        //  7. DAILY LIFE — the day, date and time, and the line of their week they're in now
         //  8. FEELINGS   — the behavior block, and the reply length it moves a step
-        //  9. MOOD       — Auto mode's rule, with the feelings as they stand; the date
+        //  9. MOOD       — Auto mode's rule, with the feelings as they stand
         // ───────────────────────────────────────────────────────────────────────
 
         // ── 1. IDENTITY ─────────────────────────────────────────────────────────
@@ -1345,7 +1345,7 @@
         let live = buildMemoryContext(history || getChatHistory());
 
         // ── 7. DAILY LIFE ────────────────────────────────────────────────────────
-        // Where the character is in their week right now (lib/daily-life.js).
+        // The day, date and time, and where the character is in their week right now (lib/daily-life.js).
         live += buildDailyLifeContext(name);
 
         // ── 8. FEELINGS ──────────────────────────────────────────────────────────
@@ -1356,9 +1356,8 @@
 
         // ── 9. MOOD ──────────────────────────────────────────────────────────────
         // Auto mode: the hidden <mood> line the model reports changed feelings in, with
-        // the feelings as they stand; readReply takes it out. Then the day it is.
+        // the feelings as they stand; readReply takes it out.
         live += buildMoodRules(char);
-        live += buildLifeDate();
 
         return { stable: prompt, live, maxTexts: MAX_TEXTS[behavior.verbosity] || MAX_TEXTS.medium };
     }
@@ -5742,10 +5741,6 @@
     }
 
     /** The day those rules count from, while Daily Life applies, else ''. */
-    function buildLifeDate() {
-        return dailyLifeActive() ? `\n\n${DailyLife.lifeDate(new Date())}` : '';
-    }
-
     /** The block of the week the character is in now ({ day, index, block }), or null. */
     function currentScheduleBlock() {
         const schedule = activeSchedule();

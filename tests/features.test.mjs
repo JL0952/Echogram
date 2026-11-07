@@ -19,7 +19,7 @@ const REACTIONS = ['heart', 'haha', 'wow', 'sad', 'fire', 'like', 'star', 'bolt'
 // index.js's MESSAGES line
 const FORMAT_RULES = [
     "- <photo>what the photo shows</photo>: Me sees it as an actual picture. A short, neutral caption of what is visible, people by name (Mira, Me), with no I/me/my/you; never Mira's own actions. Send one when asked for a picture.",
-    "- <react>name</react>, name one of: heart, haha, wow, sad, fire, like, star, bolt: a tapback, right after a <reply> quoting the message of Me's it is on, even the latest — always both: <reply>Me: the quoted words</reply> (a photo by its note), then <react>heart</react>. Me's <react> is on the message their <reply> right before it quotes.",
+    "- <react>name</react>, name one of: heart, haha, wow, sad, fire, like, star, bolt: a tapback, right after a <reply> quoting the message of Me's it is on — always both: <reply>Me: the quoted words</reply> (a photo by its note), then <react>heart</react>. Me's <react> is on the message their <reply> right before it quotes.",
     "- <transfer>amount</transfer>, the amount a plain number: money to Me. To Me's <transfer>, Mira can answer <transfer_accept/> or <transfer_decline/>, or leave it pending for now; theirs mean they accepted or declined Mira's.",
 ];
 const tagOf = rule => rule.match(/^- <(\w+)>/)[1];

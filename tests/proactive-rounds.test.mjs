@@ -58,13 +58,14 @@ test('what the model is told for each of her texts: how many are unanswered, the
     const first = R.outreachInstruction({ charName: 'Mira', userName: 'Qi', unanswered: 1, now: t(20, 6), lastAt: t(20), doing: '18:00–21:00 逛街 (城里)',
         material: 'You just thought of Qi.', media: 'If it feels natural, send a <photo>.', format: 'Reply only with what Mira sends now.' });
     assert.equal(first, "Qi hasn't replied to Mira's last text. Mira texts Qi now (it is 20:06, 6 minutes after Mira's last one · 18:00–21:00 逛街 (城里)). "
-        + 'It is a fresh decision Mira makes now. Let who Mira is and what Mira is doing now decide whether it goes on with what was said, brings up something new, or mentions the silence. '
+        + 'It is a fresh decision Mira makes now. '
         + "What Mira brings up and how Mira says it come from who Mira is: Mira's age and stage of life, personality, outlook, interests, and what's going on in Mira's life. "
-        + 'The same moment strikes different people in different ways. '
-        + "Something that may be on Mira's mind now, for if it fits: You just thought of Qi. If it feels natural, send a <photo>. Reply only with what Mira sends now.");
+        + "You just thought of Qi. If it feels natural, send a <photo>. Reply only with what Mira sends now.");
     const third = R.outreachInstruction({ charName: 'Mira', userName: 'Qi', unanswered: 3, now: t(22), lastAt: t(20, 45) });
-    assert.match(third, /^Qi hasn't replied to Mira's last 3 texts\. Mira texts Qi now \(it is 22:00, an hour after Mira's last one\)\. .*aware of the earlier ones still unanswered\./);
+    assert.match(third, /^Qi hasn't replied to Mira's last 3 texts\. Mira texts Qi now \(it is 22:00, an hour after Mira's last one\)\. It is a fresh decision Mira makes now\. /);
+    // That they're unanswered is said once
     assert.equal(third.match(/hasn't replied/g).length, 1);
+    assert.doesNotMatch(third, /unanswered/);
     assert.doesNotMatch(third, /on Mira's mind/);
     // Said with or without a topic
     assert.match(third, /What Mira brings up and how Mira says it come from who Mira is/);
@@ -74,9 +75,11 @@ test('what the model is told for each of her texts: how many are unanswered, the
 
 test('a catch-up\'s texts: how they\'re written, said once', () => {
     const guide = R.catchUpGuidance({ charName: 'Mira', userName: 'Qi' });
-    assert.match(guide, /^They were sent one after another with no reply from Qi in between\. Each is a fresh decision Mira made at its own time/);
+    assert.match(guide, /^They were sent one after another\. Each is a fresh decision Mira made at its own time: /);
+    // Not said again that you didn't reply, no choice of what it's about: that's the topic's
+    assert.doesNotMatch(guide, /reply|unanswered|silence|if it fits/);
     assert.match(guide, /not chapters of a planned emotional arc/);
-    assert.match(guide, /what's noted as on Mira's mind is for if it fits\. What Mira brings up and how Mira says it come from who Mira is: .+ The same moment strikes different people in different ways\.$/);
+    assert.match(guide, /not chapters of a planned emotional arc\. What Mira brings up and how Mira says it come from who Mira is: .+, and what's going on in Mira's life\.$/);
     assert.equal(guide.match(/come from who Mira is/g).length, 1);
 });
 

@@ -90,16 +90,19 @@ test('her reply starts the sequence: each text after the one before by the base 
     assert.equal(await run(), true);
     assert.equal(asked.length, 1);
     // One instruction for every text: said once that she's unanswered, the time, a fresh decision, what may be on her mind
-    assert.match(asked[0][0].content, /^PROACTIVE MODE: you are texting Qi on your own, not replying\.\n<proactive_situation>/);
+    // Only that it's her own text: the time is in the instruction
+    assert.equal(asked[0][0].content, 'PROACTIVE MODE: you are texting Qi on your own, not replying.');
     assert.match(turnOf(asked), /^\[Instruction for this turn[^:]*: Qi hasn't replied to Mira's last text\. Mira texts Qi now \(it is 20:07, 7 minutes after Mira's last one\)\. It is a fresh decision Mira makes now\./);
-    assert.match(turnOf(asked), /Something that may be on Mira's mind now, for if it fits: /);
+    // The engine's topic is what it's about, not something to use if it fits
+    assert.doesNotMatch(turnOf(asked), /for if it fits|may be on Mira's mind|mentions the silence/);
     assert.match(turnOf(asked), /Reply only with the text message\(s\) Mira sends now, 3 at most, in the usual format\.\]$/);
     assert.deepEqual(chat().slice(-1).map(m => [m.mes, m.meta.proactive, m.send_date]), [['?', true, clock]]);
     assert.equal(state().unanswered, 1);
     assert.equal(state().seq.next, clock + 13 * MIN);
     clock = state().seq.next;
     await run();
-    assert.match(turnOf(asked), /Qi hasn't replied to Mira's last 2 texts\. .*aware of the earlier ones still unanswered/);
+    assert.match(turnOf(asked), /Qi hasn't replied to Mira's last 2 texts\. Mira texts Qi now /);
+    assert.doesNotMatch(turnOf(asked), /unanswered/);
     assert.equal(chat().at(-1).mes, '人呢');
     assert.equal(state().seq.next, clock + 26 * MIN);
     // It never stops on its own: the waits only grow
@@ -327,7 +330,7 @@ test('a catch-up works out the same sequence: the same waits, the same holds, th
     const gaps = sim.events.map((e, i) => (e.at - (i ? sim.events[i - 1].at : from)) / MIN);
     assert.deepEqual(gaps, [40, 120, 360, 1080]);
     assert.ok(sim.events.every(e => typeof e.type === 'string' && 'note' in e));
-    assert.match(sim.guidance, /^They were sent one after another with no reply from Qi in between\./);
+    assert.match(sim.guidance, /^They were sent one after another\. /);
     // Where it stands by then, on a copy: the fifth 54 hours after the fourth
     assert.equal(sim.state.unanswered, 4);
     assert.equal(sim.state.seq.next, sim.events[3].at + 3240 * MIN);
