@@ -28,7 +28,7 @@ const TRIGGERS = ['checkin', 'dormancy_break', 'late_night', 'morning_wave', 'lu
     'interest_share', 'mood_follow_up', 'memory_nudge', 'afternoon_slump', 'pre_dawn', 'commute_ping', 'post_work',
     'sunday_evening', 'post_midnight_impulse', 'monday_reboot', 'friday_feeling', 'sunday_scaries', 'midweek_check',
     'nostalgia_wave', 'longing_ping', 'playful_tease', 'jealousy_nudge', 'boredom_break', 'overwhelm_check', 'gratitude_burst',
-    'pride_share', 'suppressed_thought', 'thinking_of_you', 'daily_observation', 'dream_mention', 'song_stuck', 'overthinking_spiral',
+    'pride_share', 'suppressed_thought', 'daily_observation', 'dream_mention', 'song_stuck', 'overthinking_spiral',
     'craving_share', 'inside_joke_callback', 'quiet_productive', 'followup_callback'];
 
 test('every trigger still has a template', () => {

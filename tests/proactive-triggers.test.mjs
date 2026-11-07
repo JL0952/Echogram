@@ -147,7 +147,8 @@ test('the insights panel: the six kinds with what each needs, the cold shoulder 
     assert.equal(row(calm, 'you').reason, 'Rapport 0, needs 20');
     const warm = insights({ rapport: 30, anxiety: 60 });
     assert.equal(row(warm, 'mood').reason, 'Can pick');
-    assert.equal(row(warm, 'you').reason, 'Can pick · no memories');
+    // Warm enough, but no shared moment or inside joke to bring up
+    assert.equal(row(warm, 'you').reason, 'No Shared Moment or Inside Joke memory to bring up');
     assert.equal(row(warm, 'callback').reason, 'Your last text 1h ago');
     assert.match(insights({ anger: 90 }).next, /^Ghosting .* Anger\)$/);
     // Her reply an hour ago, unanswered: her next text (Normal: 20–60 minutes after it)

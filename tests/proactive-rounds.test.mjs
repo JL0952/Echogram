@@ -159,8 +159,9 @@ test('each kind and when it can be picked', () => {
     assert.deepEqual(calm.map(k => k.id), ['life', 'you', 'share', 'callback', 'mood', 'gap']);
     // Thinking of you: Rapport 20 and up
     assert.equal(kind(calm, 'you').why, 'Rapport 0, needs 20');
-    // With no shared moment or inside joke in the memories, they just think of you
-    assert.deepEqual(typesOf(kindsAt({ feelings: { rapport: 20 } }), 'you'), ['thinking_of_you']);
+    // Rapport 20 but no shared moment or inside joke in the memories: nothing to bring up
+    assert.deepEqual(typesOf(kindsAt({ feelings: { rapport: 20 } }), 'you'), []);
+    assert.equal(kind(kindsAt({ feelings: { rapport: 20 } }), 'you').why, 'No Shared Moment or Inside Joke memory to bring up');
     // Sharing: always; dreams only in the morning, boredom when little is going on, pride with anticipation and joy
     assert.ok(kind(calm, 'share').ok);
     assert.ok(!typesOf(calm, 'share').includes('dream_mention'));
@@ -204,7 +205,7 @@ test('Life: her own day with a schedule; without one the clock text that fits, f
 });
 
 test('the pick: a kind first, the last one\'s less likely; in it the feelings by weight, the rest past their last three', () => {
-    const kinds = kindsAt({ feelings: { rapport: 30 } });
+    const kinds = kindsAt({ feelings: { rapport: 30 }, memories: [{ id: 'm', category: 'shared_moment', content: '一起看过的海' }] });
     // With the last topic a share, its kind is less likely
     const pick = random => R.pickTopic({ kinds: kinds.filter(k => ['you', 'share'].includes(k.id)), history: { daily_observation: 5 }, random });
     // you 1, share 0.3: the first 1/1.3 of the roll is you
@@ -242,13 +243,13 @@ test('memories: a shared moment or an inside joke for Thinking of you, others no
     ];
     const at = (recalled = {}) => kindsAt({ feelings: { rapport: 30 }, memories, recalled });
     const you = kind(at(), 'you');
-    // Each memory text with its own memories; no plain "thinking of you" while there are some
+    // Each memory text with its own memories
     assert.deepEqual(you.topics.map(t => [t.type, t.memories.map(m => m.id)]), [['memory_nudge', ['m']], ['inside_joke_callback', ['j']]]);
     assert.equal(you.memoryCount, 2);
     assert.deepEqual(kind(at(), 'share').memories.map(m => m.id), ['h', 'f']);
     // Brought up 6 days ago: not yet; 8 days ago: again
     assert.deepEqual(typesOf(at({ m: AFTERNOON.getTime() - 6 * DAY, j: AFTERNOON.getTime() - 8 * DAY }), 'you'), ['inside_joke_callback']);
-    assert.deepEqual(typesOf(at({ m: AFTERNOON.getTime() - DAY, j: AFTERNOON.getTime() - DAY }), 'you'), ['thinking_of_you']);
+    assert.deepEqual(typesOf(at({ m: AFTERNOON.getTime() - DAY, j: AFTERNOON.getTime() - DAY }), 'you'), []);
     // The pick carries the memory it brings up
     const pick = R.pickTopic({ kinds: at().filter(k => k.id === 'you'), random: fixed(0) });
     assert.deepEqual(pick, { kind: 'you', type: 'memory_nudge', memory: memories[0] });
