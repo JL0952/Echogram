@@ -826,14 +826,19 @@
         photoEl.click();
         res.photoOpens = photoEl.getAttribute('aria-expanded') === 'true' && css(photoEl.querySelector('.ig-photo-caption'), 'display') === 'flex';
         res.voiceUnread = !!msg(2).querySelector('.ig-voice-unread');
-        // The words always under the waveform, in the same bubble (Instagram's transcription)
+        // A tap shows the words under the waveform, in the same bubble (Instagram's transcription); another hides them
         const voiceEl = msg(2).querySelector('.ig-voice');
-        const words = voiceEl.querySelector('.ig-transcript');
-        res.voiceWordsInside = !!words && css(words, 'display') !== 'none' && words.getBoundingClientRect().top >= voiceEl.querySelector('.ig-voice-wave').getBoundingClientRect().bottom;
+        const words = () => msg(2).querySelector('.ig-voice .ig-transcript');
+        res.voiceHiddenFirst = css(words(), 'display') === 'none';
         voiceEl.click();
         await sleep(100);
-        res.voiceOpens = css(msg(2).querySelector('.ig-transcript'), 'display') !== 'none' && !msg(2).querySelector('.ig-voice-unread')
+        res.voiceOpens = css(words(), 'display') !== 'none' && !msg(2).querySelector('.ig-voice-unread')
             && JSON.stringify(chat()[2].voiceHeard) === '[0]';
+        res.voiceWordsInside = words().getBoundingClientRect().top >= msg(2).querySelector('.ig-voice .ig-voice-wave').getBoundingClientRect().bottom
+            && words().getBoundingClientRect().bottom <= msg(2).querySelector('.ig-voice').getBoundingClientRect().bottom;
+        msg(2).querySelector('.ig-voice').click();
+        await sleep(100);
+        res.voiceCloses = css(words(), 'display') === 'none';
         // A photo given its own image: drawn in its shape, the description still a tap away and back
         const shotCanvas = document.createElement('canvas');
         shotCanvas.width = 200;

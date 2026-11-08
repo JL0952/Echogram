@@ -1526,7 +1526,7 @@
     stroke-linecap: round;
 }
 
-/* ── Voice: play, waveform, length, and its transcription under them in the bubble ── */
+/* ── Voice: play, waveform, length; tapped, its transcription under them in the bubble ── */
 
 [data-platform="instagram"] .ig-voice {
     display: flex;
@@ -1591,6 +1591,10 @@
     font-size: calc(var(--et-font-size, 15px) - 1px);
     line-height: 1.35;
     overflow-wrap: anywhere;
+}
+
+[data-platform="instagram"] .ig-voice[aria-expanded="false"] .ig-transcript {
+    display: none;
 }
 
 [data-platform="instagram"] .ig-transcript p {

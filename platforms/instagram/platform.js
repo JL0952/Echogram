@@ -82,14 +82,14 @@
 
     /**
      * A voice message as Instagram shows one with its transcription: play button, waveform
-     * and length (with a dot until the user first taps one of the character's), and the
-     * words under them in the same bubble.
+     * and length (with a dot until the user first taps one of the character's); a tap shows
+     * the words under them in the same bubble, another hides them.
      */
     function voice(p, ctx) {
         const time = `${Math.floor(p.duration / 60)}:${String(p.duration % 60).padStart(2, '0')}`;
         const bars = waveBars(p.text).map(height => `<i style="height:${height}%"></i>`).join('');
         const dot = p.unread ? '<span class="ig-voice-unread" data-et-role="unread" title="Not played yet"></span>' : '';
-        return `<div class="ig-bubble ig-voice" role="button" tabindex="0" aria-expanded="true" data-et-action="voice-toggle" data-voice="${p.voiceIndex}"><span class="ig-voice-row"><span class="ig-voice-play">${PLAY_GLYPH}</span><span class="ig-voice-wave" aria-hidden="true">${bars}</span><span class="ig-voice-time">${time}</span>${dot}</span><span class="ig-transcript" data-et-role="transcript">${ctx.formatText(p.text)}</span></div>`;
+        return `<div class="ig-bubble ig-voice" role="button" tabindex="0" aria-expanded="false" title="Tap to read" data-et-action="voice-toggle" data-voice="${p.voiceIndex}"><span class="ig-voice-row"><span class="ig-voice-play">${PLAY_GLYPH}</span><span class="ig-voice-wave" aria-hidden="true">${bars}</span><span class="ig-voice-time">${time}</span>${dot}</span><span class="ig-transcript" data-et-role="transcript">${ctx.formatText(p.text)}</span></div>`;
     }
 
     /**
