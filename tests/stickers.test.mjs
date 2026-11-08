@@ -30,13 +30,14 @@ test('月薪喵 is the built-in set: 23 stickers, each one\'s file named after i
     assert.equal(new Set(set.stickers.map(s => s.name)).size, 23);
 });
 
-test('the character can use the stickers of the sets not turned off for them, in tab order', () => {
-    const all = characterNames(library);
-    assert.equal(all.length, 26);
-    assert.deepEqual(all.slice(0, 2), ['安慰', '不想干']);
-    assert.deepEqual(all.slice(-3), ['小猫摸摸头', '小猫摸摸头2', '上班累死猫']);
-    assert.deepEqual(characterNames(library, ['yuexinmiao']), ['小猫摸摸头', '小猫摸摸头2', '上班累死猫']);
-    assert.deepEqual(characterNames(library, ['yuexinmiao', 'cats']), []);
+test('the character can use the stickers of the sets turned on for them, in tab order; none at first', () => {
+    assert.deepEqual(characterNames(library), []);
+    assert.deepEqual(characterNames(library, ['cats']), ['小猫摸摸头', '小猫摸摸头2', '上班累死猫']);
+    const both = characterNames(library, ['cats', 'yuexinmiao']);
+    assert.equal(both.length, 26);
+    assert.deepEqual(both.slice(0, 2), ['安慰', '不想干']);
+    assert.deepEqual(both.slice(-3), ['小猫摸摸头', '小猫摸摸头2', '上班累死猫']);
+    assert.deepEqual(characterNames(library, ['gone']), []);
 });
 
 test('a written name finds its sticker: the same, the same without extension and punctuation, or the closest one inside or around it', () => {
@@ -152,6 +153,6 @@ test('imported sets come after the built-in ones, their images where the upload 
     assert.deepEqual(sets, [{ id: 'sx', name: '猫', stickers: [{ name: '小猫无奈', path: 'user/images/Echogram stickers sx/000.gif', url: '/user/images/Echogram stickers sx/000.gif' }] }]);
     const lib = [...presets, ...sets];
     assert.equal(find(lib, '无奈')?.url, '/user/images/Echogram stickers sx/000.gif');
-    assert.deepEqual(names(lib, ['yuexinmiao']), ['小猫无奈']);
+    assert.deepEqual(names(lib, ['sx']), ['小猫无奈']);
     assert.deepEqual(importedSets(undefined), []);
 });

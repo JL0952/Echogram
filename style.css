@@ -3652,13 +3652,44 @@ input.et-sticker-set-name {
     font-size: 0.8rem;
 }
 
-.et-sticker-set-char {
+/* The characters a set is on for: a name each, then a list to add one */
+.et-sticker-set-chars {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
-    gap: 4px;
+    gap: 6px;
+    margin: 6px 0 0 54px;
+}
+
+.et-sticker-char {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    padding: 2px 4px 2px 10px;
+    border: 1px solid color-mix(in srgb, var(--et-theme-color) 35%, transparent);
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--et-theme-color) 10%, transparent);
+    color: var(--et-surface-text);
+    font-size: 0.78rem;
+}
+
+.et-sticker-char button {
+    padding: 2px 5px;
+    border: 0;
+    background: none;
     color: var(--et-surface-muted);
-    font-size: 0.8rem;
     cursor: pointer;
+}
+
+.et-sticker-char-add {
+    display: inline-block;
+    width: auto;
+    margin-bottom: 0;
+}
+
+.et-sticker-char-add .et-select {
+    padding: 4px 28px 4px 10px;
+    font-size: 0.78rem;
 }
 
 .et-sticker-delete {

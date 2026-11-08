@@ -19,7 +19,7 @@ new Function(fs.readFileSync(`${H}/scenarios.js`, 'utf8'))();
 window.EchoTextChatViewModel.getStoredReactions = (msg, ids) => (!msg || msg.is_user ? [] : Object.entries(window.EchoTextChatViewModel.normalizeReactionStore(msg.reactions))
     .filter(([id]) => ids.includes(id)).map(([id, data]) => ({ id, ...data })));
 
-const NAMES = ['RichMessages', 'Features', 'ChatViewModel', 'Platform', 'Platforms', 'activePlatformMemo', 'getActivePlatform', 'getReactionIds', 'getActiveFeatures', 'platformHas', 'Stickers', 'stickerPresets', 'stickerLibrary', 'getStickerLibrary', 'getCharacterStickerNames', 'getModelFeatures',
+const NAMES = ['RichMessages', 'Features', 'ChatViewModel', 'Platform', 'Platforms', 'activePlatformMemo', 'getActivePlatform', 'getReactionIds', 'getActiveFeatures', 'platformHas', 'Stickers', 'stickerPresets', 'stickerLibrary', 'getStickerLibrary', 'stickerSetsFor', 'getCharacterStickerNames', 'getModelFeatures',
     'getContextMessageText', 'buildCombinedReactionTurns', 'getUserReactionIds', 'buildUserReactionText', 'resolveHistoryMessageText', 'buildMessageFormatPrompt',
     'getMessageDisplayParts', 'quoteForBubble'];
 function load(code) {

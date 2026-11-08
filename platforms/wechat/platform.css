@@ -1673,6 +1673,37 @@
     cursor: pointer;
 }
 
+/* The first in the row adds a set (WeChat's search glyph in that place) */
+[data-platform="wechat"] .et-sticker-add {
+    display: grid;
+    flex-shrink: 0;
+    place-items: center;
+    width: 44px;
+    height: 36px;
+    padding: 0;
+    border: 0;
+    border-radius: 8px;
+    color: var(--wx-text);
+    background: none;
+    font-size: 19px;
+    cursor: pointer;
+}
+
+[data-platform="wechat"] .et-sticker-add svg {
+    width: 24px;
+    height: 24px;
+}
+
+[data-platform="wechat"] .et-sticker-add:disabled {
+    opacity: 0.4;
+}
+
+/* Held down for its menu: no callout or selection */
+[data-platform="wechat"] .et-sticker-tab {
+    -webkit-touch-callout: none;
+    user-select: none;
+}
+
 [data-platform="wechat"] .et-sticker-tab img {
     width: 28px;
     height: 28px;

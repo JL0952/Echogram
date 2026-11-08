@@ -2004,19 +2004,24 @@
     };
 
     // Settings that depend on another: greyed out and fixed while it's off, saying what's needed
-    // Stickers (6b, 6c) through the real code: the button only on WeChat, the panel (a tab per
-    // set, the stickers with their names, a tap sending one with the panel staying up, the "+"
-    // panel taking its place and back), a ZIP imported from the settings (its file names, the
-    // uploads, a new tab), the character's switch, renaming (a taken name refused), deleting a
-    // sticker and a set (a second click), and a failed upload keeping nothing. ?zip=<path under
-    // the repo> imports that file instead of a small one made here.
+    // Stickers (6b, 6c) through the real code: the button only on WeChat, the panel (the add
+    // button, a tab per set, the stickers with their names, a tap sending one with the panel
+    // staying up, the "+" panel taking its place and back), a ZIP imported from the settings
+    // (its file names, the uploads, a new tab), which characters a set is on for (none at
+    // first; added and removed in the settings; a tab held down or right-clicked in the panel),
+    // renaming (a taken name refused), deleting a sticker and a set (a second click; the set
+    // gone from the characters), a ZIP from the panel's add button, and a failed upload keeping
+    // nothing. ?zip=<path under the repo> imports that file instead of a small one made here.
     window.runStickerTest = async function () {
         const res = {};
         errors.length = 0;
         const s = env.settings;
         const platformBefore = s.defaultPlatform;
         const chat = () => s.chatHistory['mira.png'];
-        Object.assign(s, { defaultPlatform: 'echotext', stickerSets: [], stickerSetsOff: [] });
+        Object.assign(s, { defaultPlatform: 'echotext', stickerSets: [], stickerSetsByCharacter: {} });
+        const contextBefore = window.SillyTavern.getContext;
+        window.SillyTavern.getContext = () => ({ getRequestHeaders: () => ({ 'Content-Type': 'application/json' }),
+            characters: [{ name: 'Qi', avatar: 'qi.png' }, { name: 'Mira', avatar: 'mira.png' }] });
         s.chatHistory['mira.png'] = [{ is_user: false, mes: 'hi', send_date: Date.now() - 60000 }];
         r.bindMessageActions?.();
         // The panel's taps, bound once as the extension does when the panel opens
@@ -2039,6 +2044,7 @@
         await sleep(400);
         const items = () => [...open().querySelectorAll('.et-sticker-item')];
         res.panel = open()?.dataset.etPanel === 'stickers' && open().querySelectorAll('.et-sticker-tab').length === 1
+            && open().querySelector('.et-sticker-tabs > :first-child').classList.contains('et-sticker-add')
             && items().length === 23 && items()[0].textContent === '安慰' && !!items()[0].querySelector('img');
         res.panelHeight = open().getBoundingClientRect().height > 250;
         res.keyboard = btn().classList.contains('et-sticker-btn-active');
@@ -2067,7 +2073,9 @@
         r.bindStickerSets();
         r.renderStickerSets();
         const rows = () => [...host.querySelectorAll('.et-sticker-set')];
-        res.listPreset = rows().length === 1 && !rows()[0].querySelector('[data-sticker-delete-set]') && rows()[0].querySelector('[data-sticker-set-char]').checked;
+        // 月薪喵 too is on for nobody at first: no names under it, both characters to add
+        res.listPreset = rows().length === 1 && !rows()[0].querySelector('[data-sticker-delete-set]') && !rows()[0].querySelector('.et-sticker-char')
+            && [...rows()[0].querySelectorAll('[data-sticker-char-add] option')].map(o => o.textContent).join(',') === '+ Character,Mira,Qi';
         if (!window.JSZip) await new Promise((resolve, reject) => {
             const script = document.createElement('script');
             script.src = 'build/vendor/jszip.min.js';
@@ -2108,10 +2116,7 @@
             }
             return fetchBefore(url, options);
         };
-        const contextBefore = window.SillyTavern.getContext;
-        window.SillyTavern.getContext = () => ({ getRequestHeaders: () => ({ 'Content-Type': 'application/json' }) });
-        const importFile = async file => {
-            const input = host.querySelector('#et-sticker-import-file');
+        const importFile = async (file, input = host.querySelector('#et-sticker-import-file')) => {
             const transfer = new DataTransfer();
             transfer.items.add(file);
             input.files = transfer.files;
@@ -2133,12 +2138,42 @@
             await sleep(100);
             res.tabShows = items().length === set.stickers.length && items()[0].querySelector('img').getAttribute('src') === `/${set.stickers[0].path}`;
 
-            // The character's switch
-            const char = () => rows()[1].querySelector('[data-sticker-set-char]');
-            char().click();
-            res.charOff = s.stickerSetsOff.includes(set.id);
-            char().click();
-            res.charOn = !s.stickerSetsOff.includes(set.id);
+            // On for nobody; Mira added from the list, her name under it, then taken off
+            res.importedOff = !Object.keys(s.stickerSetsByCharacter).length;
+            const pick = rows()[1].querySelector('[data-sticker-char-add]');
+            pick.value = 'mira.png';
+            pick.dispatchEvent(new Event('change', { bubbles: true }));
+            res.charAdded = s.stickerSetsByCharacter['mira.png']?.join() === set.id && rows()[1].querySelector('.et-sticker-char')?.textContent === 'Mira'
+                && [...rows()[1].querySelectorAll('[data-sticker-char-add] option')].map(o => o.textContent).join(',') === '+ Character,Qi';
+            rows()[1].querySelector('[data-sticker-char-remove]').click();
+            res.charRemoved = !s.stickerSetsByCharacter['mira.png'] && !rows()[1].querySelector('.et-sticker-char');
+
+            // In the panel: 月薪喵's tab held down turns it on for Mira; the click that ends it doesn't switch tabs
+            const tab = i => open().querySelectorAll('.et-sticker-tab')[i];
+            tab(0).dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+            await sleep(650);
+            const menu = () => document.querySelector('.et-sticker-set-menu:not(.et-dots-menu-closing)');
+            // The page stubs closeAllDotMenus: a picked menu is taken away here
+            const pickMenu = () => { menu().querySelector('.et-dots-item').click(); document.querySelectorAll('.et-sticker-set-menu').forEach(m => m.remove()); };
+            res.holdMenu = !!menu() && menu().textContent.includes('Mira') && !menu().querySelector('.et-dots-item-current');
+            tab(0).dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
+            tab(0).click();
+            res.holdKeepsTab = tab(1).classList.contains('et-sticker-tab-active');
+            pickMenu();
+            await sleep(250);
+            res.holdTurnsOn = s.stickerSetsByCharacter['mira.png']?.join() === 'yuexinmiao' && rows()[0].querySelector('.et-sticker-char')?.textContent === 'Mira';
+            // Right-clicked: it shows as on, and turns it off
+            tab(0).dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+            await sleep(50);
+            res.rightClickShowsOn = !!menu()?.querySelector('.et-dots-item-current');
+            pickMenu();
+            await sleep(250);
+            res.rightClickTurnsOff = !s.stickerSetsByCharacter['mira.png'];
+            r.toggleStickerPanel();
+            await sleep(400);
+            r.toggleStickerPanel();
+            await sleep(400);
+            tab(1).click();
 
             // Its stickers under it; a name the library has is refused, a new one kept
             rows()[1].querySelector('[data-sticker-set-toggle]').click();
@@ -2158,9 +2193,19 @@
             res.oneArmed = set.stickers.length === count;
             rows()[1].querySelector('[data-sticker-delete]').click();
             res.oneDeleted = set.stickers.length === count - 1 && deletes.includes(removed);
+            s.stickerSetsByCharacter = { 'mira.png': ['yuexinmiao', set.id], 'qi.png': [set.id] };
             rows()[1].querySelector('[data-sticker-delete-set]').click();
             rows()[1].querySelector('[data-sticker-delete-set]').click();
-            res.setDeleted = s.stickerSets.length === 0 && rows().length === 1 && deletes.length === count && open().querySelectorAll('.et-sticker-tab').length === 1;
+            res.setDeleted = s.stickerSets.length === 0 && rows().length === 1 && deletes.length === count && open().querySelectorAll('.et-sticker-tab').length === 1
+                && JSON.stringify(s.stickerSetsByCharacter) === '{"mira.png":["yuexinmiao"]}';
+
+            // The panel's add button: the same import, its set shown
+            uploads.length = 0;
+            await importFile(zipFile, open().querySelector('.et-sticker-add-file'));
+            res.panelImport = s.stickerSets.length === 1 && open().querySelectorAll('.et-sticker-tab').length === 2
+                && open().querySelector('.et-sticker-tab-active')?.dataset.stickerSet === s.stickerSets[0].id && !open().querySelector('.et-sticker-add').disabled;
+            s.stickerSets = [];
+            r.invalidateStickerLibrary();
 
             // A failed upload keeps nothing, and takes back what went up
             uploads.length = 0;

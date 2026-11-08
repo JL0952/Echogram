@@ -94,7 +94,7 @@ if (opt('big5') || opt('morality')) {
 
 const NAMES = ['buildSystemPrompt', 'MAX_TEXTS', 'splitsLiveContext', 'getSTStoryMessages', 'buildPromptParts', 'buildLifeDate', 'getVerbosityPrompt', 'getCharacterVerbosity', 'getEchoTextFirstMessage', 'getSTStoryContext', 'findSTOpeningIndex',
     'isCharInCurrentSTChat', 'cleanSTMessageText', 'ST_STORY_MAX_MESSAGES', 'ST_STORY_MAX_CHARS', 'replaceMacros', 'buildMessageFormatPrompt',
-    'RichMessages', 'Features', 'Platforms', 'activePlatformMemo', 'getActivePlatform', 'getActiveFeatures', 'platformHas', 'Stickers', 'stickerPresets', 'stickerLibrary', 'getStickerLibrary', 'getCharacterStickerNames', 'getModelFeatures', 'getReactionIds',
+    'RichMessages', 'Features', 'Platforms', 'activePlatformMemo', 'getActivePlatform', 'getActiveFeatures', 'platformHas', 'Stickers', 'stickerPresets', 'stickerLibrary', 'getStickerLibrary', 'stickerSetsFor', 'getCharacterStickerNames', 'getModelFeatures', 'getReactionIds',
     'getActiveWorldInfoEntries', 'buildMemoryContext', 'summariesOn', 'ChatSummaries', 'resolveHistoryMessageText', 'getContextMessageText', 'buildTextingStyleContext', 'buildBehaviorContext', 'buildMoodRules', 'inGroupSession',
     'DailyLife', 'dailyLifeActive', 'activeSchedule', 'activeLife', 'buildDailyLifeContext', 'buildScheduleContext', 'phoneOverride', 'buildLifeRules', 'getEmotionHistory',
     'stripThinkingTags', 'getStripTagsRegex', 'STRIP_TAGS_DEFAULTS', 'SPECIAL_PATTERNS', '_stripTagsRegex', '_stripTagsListHash'];
