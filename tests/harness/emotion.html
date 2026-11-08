@@ -2396,6 +2396,68 @@
         res.socialCloses = openMenus().length === 0;
         r.closeSocial();
 
+        // Scrolling the list: a message's menus stay beside the message, on every look
+        s.chatHistory['mira.png'] = Array.from({ length: 40 }, (_, i) => ({ is_user: i % 2 === 0, mes: `line ${i}`, send_date: Date.now() - (40 - i) * 60000 }));
+        const scrollFails = [];
+        for (const look of ['echotext', 'wechat', 'instagram']) {
+            s.defaultPlatform = look;
+            r.renderMessages(s.chatHistory['mira.png']);
+            r.syncPlatformChrome();
+            await sleep(300);
+            const list = document.getElementById('et-messages');
+            list.style.scrollBehavior = 'auto';
+            list.scrollTop = list.scrollHeight;
+            const openings = {
+                bubble: [i => r.toggleDotsMenu(jQuery(row(i)), i, false, null), '.et-dots-menu'],
+                react: [i => r.toggleReactOverlay(jQuery(row(i)), i, 0), '.et-react-overlay'],
+            };
+            function row(i) { return panel.querySelector(`[data-et-role~="message"][data-index="${i}"] [data-et-role~="bubble"]`); }
+            for (const [name, [open, sel]] of Object.entries(openings)) {
+                clear();
+                list.scrollTop = list.scrollHeight - list.clientHeight - 200;
+                const box = list.getBoundingClientRect();
+                const i = [...panel.querySelectorAll('[data-et-role~="message"]')]
+                    .map(m => +m.dataset.index)
+                    .filter(n => n % 2 === 1)
+                    .find(n => { const b = row(n)?.getBoundingClientRect(); return b && b.top > box.top + box.height * 0.45 && b.bottom < box.bottom - 40; });
+                open(i);
+                await sleep(30);
+                const m = document.querySelector(sel);
+                const gap = () => m.getBoundingClientRect().top - row(i).getBoundingClientRect().top;
+                const before = gap();
+                const height = list.scrollHeight;
+                list.scrollTop -= 90;
+                await sleep(30);
+                if (m.parentElement !== list) scrollFails.push(`${look} ${name}: not in the list`);
+                if (Math.abs(gap() - before) > 1) scrollFails.push(`${look} ${name}: ${before} → ${gap()}`);
+                if (list.scrollHeight !== height) scrollFails.push(`${look} ${name}: list grew`);
+            }
+            list.style.scrollBehavior = '';
+        }
+        res.messageMenusScroll = scrollFails.length === 0 || scrollFails;
+        // The header's menu stays on the panel
+        clear();
+        openers.avatar();
+        await sleep(30);
+        res.headerMenuOnPanel = document.querySelector('.et-avatar-menu').parentElement === panel;
+        // A sticker set's menu goes along with its tab as the row scrolls sideways
+        clear();
+        if (!document.querySelector('#et-attach-panel .et-sticker-tab')) r.toggleStickerPanel();
+        await sleep(30);
+        const strip = document.querySelector('#et-attach-panel .et-sticker-tabs');
+        const tab = strip.querySelector('.et-sticker-tab');
+        strip.style.cssText = 'width: 40px; padding-right: 200px; box-sizing: content-box';
+        r.openStickerSetMenu(tab);
+        await sleep(30);
+        const tabMenu = document.querySelector('.et-sticker-set-menu');
+        const tabGap = () => tabMenu.getBoundingClientRect().left - tab.getBoundingClientRect().left;
+        const tabBefore = tabGap();
+        strip.scrollLeft = 12;
+        strip.dispatchEvent(new Event('scroll')); // a page without frames gets none of its own
+        await sleep(30);
+        res.stickerMenuFollows = strip.scrollLeft === 12 && Math.abs(tabGap() - tabBefore) <= 1 || [strip.scrollLeft, tabBefore, tabGap()];
+        strip.style.cssText = '';
+
         clear();
         if (document.querySelector('#et-attach-panel')) r.toggleStickerPanel();
         Object.assign(env, stubs);
@@ -2441,7 +2503,10 @@
                 && !menu().querySelector('[data-action="edit"]');
             out.tapbacks = !row() && (id === 'wechat') === !menu().querySelector('[data-action="react"]');
             const m = menu().getBoundingClientRect(), b = photo.getBoundingClientRect();
-            out.under = m.top >= b.bottom - 1 || m.bottom <= b.top + 1;
+            // Beside the bubble; with no room above or below it (a tall photo), inside the visible list
+            const shown = document.getElementById('et-messages').getBoundingClientRect();
+            const noRoom = b.top - shown.top < m.height + 6 && shown.bottom - b.bottom < m.height + 6;
+            out.under = m.top >= b.bottom - 1 || m.bottom <= b.top + 1 || (noRoom && m.top >= shown.top && m.bottom <= shown.bottom);
             press(photoEl, 'pointerup');
             photoEl.click();
             out.clickSwallowed = photoEl.getAttribute('aria-expanded') !== 'true';

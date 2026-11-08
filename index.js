@@ -5032,15 +5032,18 @@
         }
         const menu = jQuery(`<div class="et-dots-menu et-avatar-menu">${items.map(([id, icon, label]) =>
             `<button class="et-dots-item" data-avatar="${id}"><i class="${icon.startsWith('fa-brands') ? icon : `fa-solid ${icon}`}"></i><span>${escapeHtml(label)}</span></button>`).join('')}</div>`);
-        jQuery('#et-panel').append(menu);
+        // A message's avatar: the menu scrolls with the list; the header's stays on the panel
+        const inList = anchor.closest('#et-messages');
+        jQuery(inList || '#et-panel').append(menu);
 
         const a = anchor.getBoundingClientRect();
         const p = document.getElementById('et-panel').getBoundingClientRect();
-        const left = Math.max(8, Math.min(a.left - p.left, p.width - menu.outerWidth() - 8));
+        const area = inList ? listMenuArea() : { x: p.left, y: p.top, top: 8, bottom: p.height - 8, width: p.width };
+        const left = Math.max(8, Math.min(a.left - area.x, area.width - menu.outerWidth() - 8));
         const height = menu.outerHeight();
-        const below = a.bottom - p.top + 6;
-        const fitsBelow = below + height < p.height - 8;
-        const top = Math.max(8, Math.min(fitsBelow ? below : a.top - p.top - 6 - height, p.height - height - 8));
+        const below = a.bottom - area.y + 6;
+        const fitsBelow = below + height < area.bottom;
+        const top = Math.max(area.top, Math.min(fitsBelow ? below : a.top - area.y - 6 - height, area.bottom - height));
         menu.css({ left: left + 'px', top: top + 'px', bottom: 'auto', 'transform-origin': fitsBelow ? 'top left' : 'bottom left' });
         requestAnimationFrame(() => menu.addClass('et-dots-menu-open'));
 
@@ -5816,6 +5819,14 @@
         const left = Math.max(8, Math.min(panelRect.width - menu.outerWidth() - 8, tabRect.left - panelRect.left));
         menu.css({ left: left + 'px', bottom: (panelRect.bottom - tabRect.top + 6) + 'px', top: 'auto', 'transform-origin': 'bottom left' });
         requestAnimationFrame(() => menu.addClass('et-dots-menu-open'));
+        // The row of tabs scrolls sideways: the menu goes with its tab
+        const strip = tab.closest('.et-sticker-tabs');
+        const stripFrom = strip.scrollLeft;
+        const followTab = () => {
+            if (!menu[0].isConnected) { strip.removeEventListener('scroll', followTab); return; }
+            menu.css('left', (left - (strip.scrollLeft - stripFrom)) + 'px');
+        };
+        strip.addEventListener('scroll', followTab, { passive: true });
         setTimeout(() => {
             jQuery(document).one('click.et-sticker-set-outside', function (e) {
                 if (!jQuery(e.target).closest('.et-sticker-set-menu').length) closeAllDotMenus();
@@ -6000,21 +6011,21 @@
                 <button class="et-dots-item" data-accept="1"><i class="fa-solid fa-circle-check"></i><span>Accept ${escapeHtml(RichMessages.formatAmount(amount))}</span></button>
                 <button class="et-dots-item et-dots-item-delete" data-accept="0"><i class="fa-solid fa-arrow-rotate-left"></i><span>Decline</span></button>
             </div>`);
-        jQuery('#et-panel').append(menu);
+        jQuery('#et-messages').append(menu);
 
         const cardRect = card[0].getBoundingClientRect();
-        const panelRect = document.getElementById('et-panel').getBoundingClientRect();
+        const area = listMenuArea();
         const menuW = 160;
         const menuH = menu.outerHeight() || 90;
-        const left = Math.max(8, Math.min(panelRect.width - menuW - 8, cardRect.left - panelRect.left));
-        let top = cardRect.bottom - panelRect.top + 6;
-        if (top + menuH > panelRect.height - 8) {
-            top = cardRect.top - panelRect.top - menuH - 6;
+        const left = Math.max(8, Math.min(area.width - menuW - 8, cardRect.left - area.x));
+        let top = cardRect.bottom - area.y + 6;
+        if (top + menuH > area.bottom) {
+            top = cardRect.top - area.y - menuH - 6;
             menu.css('transform-origin', 'bottom left');
         } else {
             menu.css('transform-origin', 'top left');
         }
-        menu.css({ left: left + 'px', top: Math.max(8, top) + 'px' });
+        menu.css({ left: left + 'px', top: Math.max(area.top, top) + 'px' });
         requestAnimationFrame(() => menu.addClass('et-dots-menu-open'));
 
         setTimeout(() => {
@@ -8352,6 +8363,24 @@
         closeMenus();
     }
 
+    /**
+     * Where a menu opened from a message can go. It's a child of the scrolling list, so it
+     * stays beside its message as the list scrolls. `x`/`y` turn a screen position into
+     * the list's own coordinates; `top`/`bottom` are the visible part in those, below
+     * what covers the list's top (Instagram's header), `width` its width.
+     */
+    function listMenuArea() {
+        const list = document.getElementById('et-messages');
+        const box = list.getBoundingClientRect();
+        return {
+            x: box.left + list.clientLeft,
+            y: box.top + list.clientTop - list.scrollTop,
+            top: list.scrollTop + Math.max(8, parseFloat(getComputedStyle(list).paddingTop) || 0),
+            bottom: list.scrollTop + list.clientHeight - 8,
+            width: list.clientWidth,
+        };
+    }
+
     function closeAllDotMenus() {
         jQuery('#et-attach-btn').removeClass('et-attach-open');
         jQuery('.et-dots-menu').each(function () {
@@ -8419,24 +8448,24 @@
             </div>
         `);
 
-        jQuery('#et-panel').append(menu);
+        jQuery('#et-messages').append(menu);
 
         // Under the bubble, lined up with its outer edge (yours on the right, theirs on the
-        // left); above it when there's no room below, and within the panel either way
+        // left); above it when there's no room below, and within the visible list either way
         const anchor = btn[0].getBoundingClientRect();
-        const panelRect = document.getElementById('et-panel').getBoundingClientRect();
+        const area = listMenuArea();
         const menuW = menu.outerWidth() || 160;
         const menuH = menu.outerHeight() || 160;
         const side = isUser ? 'right' : 'left';
-        let left = isUser ? anchor.right - panelRect.left - menuW : anchor.left - panelRect.left;
-        left = Math.max(8, Math.min(panelRect.width - menuW - 8, left));
-        let top = anchor.bottom - panelRect.top + 6;
+        let left = (isUser ? anchor.right - menuW : anchor.left) - area.x;
+        left = Math.max(8, Math.min(area.width - menuW - 8, left));
+        let top = anchor.bottom - area.y + 6;
         let origin = `top ${side}`;
-        if (top + menuH > panelRect.height - 8) {
-            top = anchor.top - panelRect.top - menuH - 6;
+        if (top + menuH > area.bottom) {
+            top = anchor.top - area.y - menuH - 6;
             origin = `bottom ${side}`;
         }
-        top = Math.max(8, Math.min(panelRect.height - menuH - 8, top));
+        top = Math.max(area.top, Math.min(area.bottom - menuH, top));
         menu.css({ left: left + 'px', top: top + 'px', 'transform-origin': origin });
         requestAnimationFrame(() => menu.addClass('et-dots-menu-open'));
 
@@ -8822,21 +8851,21 @@
         `);
 
         // Position overlay above the react button
-        jQuery('#et-panel').append(overlay);
+        jQuery('#et-messages').append(overlay);
 
         const btnRect = reactBtn[0].getBoundingClientRect();
-        const panelRect = document.getElementById('et-panel').getBoundingClientRect();
+        const area = listMenuArea();
         // Its own size, as the platform draws it (Instagram's bar is lower than Echogram's)
         const overlayW = overlay.outerWidth() || 340;
         const overlayH = overlay.outerHeight() || 72;
 
         // Right on the bubble's top edge; under it when there's no room above
-        let left = btnRect.left - panelRect.left;
-        let top = btnRect.top - panelRect.top - overlayH - 4;
+        let left = btnRect.left - area.x;
+        let top = btnRect.top - area.y - overlayH - 4;
 
-        // Clamp within panel
-        left = Math.max(8, Math.min(panelRect.width - overlayW - 8, left));
-        if (top < 8) top = btnRect.top - panelRect.top + btnRect.height + 4;
+        // Clamp within the list
+        left = Math.max(8, Math.min(area.width - overlayW - 8, left));
+        if (top < area.top) top = btnRect.bottom - area.y + 4;
 
         overlay.css({ left: left + 'px', top: top + 'px' });
 

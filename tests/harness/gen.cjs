@@ -27,7 +27,7 @@ const WANT = [
     'syncPlatformChrome', 'sharedFillFrame', 'updateSharedFill', 'queueSharedFill', 'watchSharedFill', 'fitTextsFrame', 'textGap', 'fitTexts', 'fitLyrics', 'queueFitTexts', 'watchTextFit', 'songArtTimer', 'requestSongArt', 'queueSongArtRefresh', 'populatePlatformSelects', 'bindPlatformSelects', 'onPlatformChoiceChanged', 'getColorScheme', 'getReactionIds', 'userRunStart', 'startInlineEdit', 'getActiveFeatures', 'platformHas',
     'getMessageDisplayParts', 'getMessageReactions', 'staggeredMessageKeys', 'shouldStaggerReveal', 'staggerRevealParts',
     // html
-    'escapeHtml', 'convertEmoticonsToEmojis', 'formatMessageText', 'buildAvatarHtml', 'applyMemoryHighlights', '_highlightTextNode',
+    'listMenuArea', 'escapeHtml', 'convertEmoticonsToEmojis', 'formatMessageText', 'buildAvatarHtml', 'applyMemoryHighlights', '_highlightTextNode',
     // rendering and actions
     'renderMessages', 'showPrevSwipe', 'showNextSwipe', 'openImageAttachment', 'MESSAGE_ACTIONS', 'onMessageAction', 'bindMessageActions', 'onBubbleTap',
     'BUBBLE_HOLD_MS', 'BUBBLE_HOLD_SLOP', 'bubbleHold', 'bubbleHeld', 'bubbleTarget', 'onBubblePointerDown', 'onBubblePointerMove', 'cancelBubbleHold', 'onBubbleContextMenu', 'swallowHeldClick', 'openBubbleMenu', 'bubbleRef', 'findBubble', 'closeMenus', 'closeMenusForKeyboard', 'KEYBOARD_MIN_PX',

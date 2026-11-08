@@ -1104,6 +1104,7 @@ html.et-bg-light {
 
 /* --- Messages Area --- */
 .et-messages {
+    position: relative;
     flex: 1;
     overflow-y: auto;
     overflow-x: hidden;
@@ -3133,6 +3134,12 @@ html.et-bg-light {
     transform: scale(0.75) translateY(6px);
     pointer-events: none;
     transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+/* A menu opened from a message scrolls with the list: over the bubbles, under Instagram's header */
+.et-messages > .et-dots-menu,
+.et-messages > .et-react-overlay {
+    z-index: 5;
 }
 
 .et-react-overlay-inner {
