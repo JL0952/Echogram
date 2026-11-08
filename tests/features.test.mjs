@@ -19,10 +19,11 @@ const REACTIONS = ['heart', 'haha', 'wow', 'sad', 'fire', 'like', 'star', 'bolt'
 // index.js's MESSAGES line
 const FORMAT_RULES = [
     "- <photo>what the photo shows</photo>: Me sees it as an actual picture. A short, neutral caption of what is visible, people by name (Mira, Me), with no I/me/my/you; never Mira's own actions. Send one when asked for a picture.",
-    "- <react>name</react>, name one of: heart, haha, wow, sad, fire, like, star, bolt: a tapback, right after a <reply> quoting the message of Me's it is on — always both: <reply>Me: the quoted words</reply> (a photo by its note), then <react>heart</react>. Me's <react> is on the message their <reply> right before it quotes.",
+    "- <reply>Me: the quoted words</reply> then <react>name</react> right after it: a tapback on that message, name one of: heart, haha, wow, sad, fire, like, star, bolt; always both, even for Me's latest message (a photo by its note). Me's <react> is on the message their <reply> right before it quotes.",
     "- <transfer>amount</transfer>, the amount a plain number: money to Me. To Me's <transfer>, Mira can answer <transfer_accept/> or <transfer_decline/>, or leave it pending for now; theirs mean they accepted or declined Mira's.",
 ];
-const tagOf = rule => rule.match(/^- <(\w+)>/)[1];
+// The tag a rule is for: the first one, but the tapback's line leads with the quote it goes with
+const tagOf = rule => (rule.startsWith('- <reply>') && rule.includes('<react>name</react>') ? 'react' : rule.match(/^- <(\w+)>/)[1]);
 
 test('the format rules read exactly as written', () => {
     assert.deepEqual(buildFeaturePrompts(['photo', 'react', 'transfer'], { charName: 'Mira', userName: 'Me', reactionIds: REACTIONS }), FORMAT_RULES);
@@ -38,7 +39,7 @@ test('format rules list only the enabled features, in a fixed order', () => {
     const ctx = { charName: 'Mira', userName: 'Me', reactionIds: ['heart', 'like'] };
     assert.deepEqual(buildFeaturePrompts(NO_REACT, ctx).map(tagOf), ['photo', 'transfer']);
     assert.deepEqual(buildFeaturePrompts(['transfer', 'photo'], ctx).map(tagOf), ['photo', 'transfer']);
-    assert.match(buildFeaturePrompts(['react'], ctx)[0], /name one of: heart, like: /);
+    assert.match(buildFeaturePrompts(['react'], ctx)[0], /name one of: heart, like; always both, even for Me's latest message/);
     assert.deepEqual(buildFeaturePrompts(NONE, ctx), []);
     assert.deepEqual(buildFeaturePrompts(['music', 'link', 'file', 'transfer', 'location', 'voice', 'reply', 'react', 'photo'], ctx).map(tagOf),
         ['photo', 'voice', 'location', 'react', 'reply', 'transfer', 'file', 'link', 'music']);
