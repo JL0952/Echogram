@@ -71,7 +71,8 @@
 }
 
 /* Remove drag cursor â€” panel isn't draggable on mobile */
-.et-panel-header {
+.et-panel-header,
+.et-panel [data-et-drag] {
     cursor: default !important;
 }
 

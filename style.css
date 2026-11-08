@@ -477,6 +477,22 @@ html.et-bg-light {
     cursor: grabbing;
 }
 
+/* A page over the panel (the social account) drags it by its own bar, and its
+   resize corners stay above it */
+.et-panel [data-et-drag] {
+    cursor: grab;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+.et-panel [data-et-drag]:active {
+    cursor: grabbing;
+}
+
+.et-panel:has(.et-social) .et-resize-handle {
+    z-index: 62;
+}
+
 .et-header-left {
     display: flex;
     align-items: center;
@@ -3279,6 +3295,14 @@ html.et-bg-light {
     flex-shrink: 0;
 }
 
+[data-platform="echotext"] .et-input-bar:not(.et-input-bar-tall) {
+    align-items: center;
+}
+
+[data-platform="echotext"] .et-input-bar:not(.et-input-bar-tall) .et-send-btn {
+    margin-bottom: 0;
+}
+
 .et-input-wrap {
     flex: 1;
     background: var(--et-input-bg) !important;
@@ -3335,8 +3359,8 @@ html.et-bg-light {
     color: var(--et-text-muted);
 }
 
-/* Level with a one-line field (48px): the bar lines things up at the bottom, so the
-   button sits half the difference up; a field that grows keeps it at the bottom */
+/* Past one line the bar lines things up at the bottom: the button sits about level with a
+   one-line field's middle (48px); on one line it's centred on the field, whatever its height */
 .et-send-btn {
     margin-bottom: 3px;
     width: 42px;

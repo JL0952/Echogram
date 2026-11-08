@@ -31,9 +31,9 @@
 /*
  * The character's social account (docs/platform-plan.md 17a) through the real code:
  * lib/social.js, the X theme, and index.js's way in (the avatar menu, WeChat's "+" panel).
- *   ?view=profile (default) | detail | empty   shows that page for a screenshot
+ *   ?view=profile (default) | detail | empty | edit   shows that page for a screenshot
  *   ?platform=echotext | wechat | instagram     the chat look underneath
- *   runSocialTest()                              the checks
+ *   runSocialTest(), runEditTest(), runFrameTest()   the checks
  */
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const params = new URLSearchParams(location.search);
@@ -76,15 +76,41 @@ function mockSettings() {
 
 const platform = params.get('platform') || 'echotext';
 const history = JSON.parse(JSON.stringify(window.EchoTextScenarios[0].history));
+let saves = 0;
 const env = {
     settings: { ...window.EchoTextScenarios[0].settings, ...mockSettings(), autoScroll: true, defaultPlatform: platform },
     groupManager: null, FA_REACTIONS: window.EchoTextScenarioReactions, showTypingIndicator: false, BASE_URL: '../..', VERSION_QUERY: '',
     getCurrentCharacter: () => ({ name: 'Mira', avatar: 'mira.png' }), getCharacterName: () => 'Mira', isTetheredMode: () => true,
     getUserName: () => '我', getCharacterKey: () => 'mira.png', _pickerAvatarBg: () => '#7c6f9c',
     isMobileDevice: () => false, getChatHistory: () => history, getUserAvatarUrl: () => null, isCombinedGroupMode: () => false,
-    closeAllDotMenus: () => jQuery('.et-dots-menu').remove(), panelOpen: true, saveSettings: () => {},
+    closeAllDotMenus: () => jQuery('.et-dots-menu').remove(), panelOpen: true, saveSettings: () => { saves++; },
+    pickImageFile: () => Promise.resolve(window.__nextFile || null),
 };
-window.SillyTavern.getContext = () => ({ getThumbnailUrl: () => AVATAR });
+// The crop dialog and the image endpoints, stubbed: uploads get a picture of their own as their path
+const crops = [];
+const imageRequests = [];
+let failUpload = false;
+window.SillyTavern.getContext = () => ({
+    getThumbnailUrl: () => AVATAR, POPUP_TYPE: { CROP: 5 }, getRequestHeaders: () => ({ 'Content-Type': 'application/json' }),
+    callGenericPopup: async (content, type, input, opts) => { crops.push(opts.cropAspect); return type === 5 ? opts.cropImage : null; },
+});
+const realFetch = window.fetch.bind(window);
+window.fetch = async (url, init) => {
+    if (!String(url).startsWith('/api/images/')) return realFetch(url, init);
+    const body = JSON.parse(init.body);
+    imageRequests.push([url, body.filename ? body.filename.replace(/\d+$/, 'N') : body.path]);
+    if (url === '/api/images/upload') {
+        if (failUpload) return { ok: false, status: 500, json: async () => ({}) };
+        return { ok: true, json: async () => ({ path: `user/images/Mira/${body.filename}.jpg` }) };
+    }
+    return { ok: true, json: async () => ({}) };
+};
+async function imageFile(w, h, color) {
+    const c = document.createElement('canvas');
+    c.width = w; c.height = h;
+    const x = c.getContext('2d'); x.fillStyle = color; x.fillRect(0, 0, w, h);
+    return new File([await new Promise(res => c.toBlob(res, 'image/png'))], 'pic.png', { type: 'image/png' });
+}
 const r = window.EchoTextHarness.chrome(env);
 document.getElementById('host').innerHTML = r.buildPanelHtml();
 r.bindAttachPanel();
@@ -193,6 +219,189 @@ window.runSocialTest = async function () {
     return res;
 };
 
+/**
+ * Edit profile (17b) through index.js's real openSocial and pickSocialImage: the fields,
+ * the counters, a new avatar and banner (cropped, uploaded on Save), taking them off,
+ * Escape and back, a failed upload, and defaults left unset.
+ */
+window.runEditTest = async function () {
+    const res = {};
+    const panel = document.getElementById('et-panel');
+    const modal = () => panel.querySelector('.et-social-modal');
+    const field = name => modal().querySelector(`[data-social-field="${name}"]`);
+    const click = async (sel, wait = 50) => { (modal() || panel).querySelector(sel).click(); await sleep(wait); };
+    const typeInto = (name, value) => { const el = field(name); el.value = value; el.dispatchEvent(new Event('input', { bubbles: true })); };
+    const stored = () => env.settings.socialAccounts['mira.png'];
+    env.settings.defaultPlatform = 'echotext';
+    await sleep(0);
+    r.syncPlatformChrome();
+    env.settings.socialAccounts = mockSettings().socialAccounts;
+    r.openSocial();
+    await sleep(200);
+
+    // Opens with the account's values
+    await click('.et-social [data-social-action="edit"]');
+    res.opens = !!modal() && modal().getBoundingClientRect().height === panel.clientHeight;
+    res.values = [field('name').value, field('handle').value, field('bio').value, field('followers').value, field('following').value].join('|')
+        === 'm.|mira_after_dark|晚上才上线\n不认识的别加 / no DMs|23800|312';
+    res.counters = modal().querySelector('[data-social-count="name"]').textContent === '2' && !modal().querySelector('[data-social-count="handle"]');
+    typeInto('name', 'Mira 的小号');
+    res.counterFollows = modal().querySelector('[data-social-count="name"]').textContent === '8';
+    res.ownAvatarDrop = !modal().querySelector('[data-social-action="edit-avatar-drop"]');
+
+    // A new avatar and banner: cropped square and 3:1, shown before Save, what's typed kept
+    window.__nextFile = await imageFile(900, 900, '#c33');
+    await click('[data-social-action="edit-avatar"]', 400);
+    window.__nextFile = await imageFile(1800, 600, '#3a7');
+    await click('[data-social-action="edit-banner"]', 400);
+    res.cropped = crops.join(',') === '1,3';
+    res.previews = modal().querySelector('.x-edit-avatar-img').getAttribute('src').startsWith('data:image/jpeg') && modal().querySelector('.x-edit-banner img')?.getAttribute('src').startsWith('data:image/jpeg');
+    res.typedKept = field('name').value === 'Mira 的小号';
+    res.nothingUploadedYet = imageRequests.length === 0 && !stored().avatar;
+    const bannerImg = new Image();
+    bannerImg.src = modal().querySelector('.x-edit-banner img').getAttribute('src');
+    await bannerImg.decode();
+    res.bannerSize = `${bannerImg.naturalWidth}x${bannerImg.naturalHeight}` === '1500x500';
+
+    // Save: uploaded, kept, the profile redrawn
+    typeInto('handle', '@New Handle!');
+    typeInto('followers', '1,200');
+    typeInto('following', '');
+    const savesBefore = saves;
+    await click('[data-social-action="edit-save"]', 300);
+    res.uploads = JSON.stringify(imageRequests) === JSON.stringify([['/api/images/upload', 'echogram-social-avatar-N'], ['/api/images/upload', 'echogram-social-banner-N']]);
+    const st = stored();
+    res.stored = st.name === 'Mira 的小号' && st.handle === 'NewHandle' && st.followers === 1200 && !('following' in st)
+        && /echogram-social-avatar-\d+\.jpg$/.test(st.avatar) && /echogram-social-banner-\d+\.jpg$/.test(st.banner) && st.posts.length === 1 && st.theme === 'x';
+    res.saved = saves === savesBefore + 1 && !modal();
+    const page = panel.querySelector('.et-social');
+    res.redrawn = page.querySelector('.x-profile-name').textContent === 'Mira 的小号' && page.querySelector('.x-profile-handle').textContent === '@NewHandle'
+        && page.querySelector('.x-banner img')?.getAttribute('src') === st.banner && page.querySelector('.x-profile-avatar').getAttribute('src') === st.avatar
+        && page.querySelector('.x-profile-follows').textContent.replace(/\s+/g, ' ').trim() === '0 Following 1,200 Followers';
+
+    // Back to Echogram's avatar, banner off: the old files deleted after Save
+    imageRequests.length = 0;
+    await click('.et-social [data-social-action="edit"]');
+    res.dropShown = !!modal().querySelector('[data-social-action="edit-avatar-drop"]') && !!modal().querySelector('[data-social-action="edit-banner-drop"]');
+    const oldAvatar = st.avatar, oldBanner = st.banner;
+    await click('[data-social-action="edit-avatar-drop"]');
+    await click('[data-social-action="edit-banner-drop"]');
+    res.dropPreview = modal().querySelector('.x-edit-avatar-img').getAttribute('src') === AVATAR && !modal().querySelector('.x-edit-banner img');
+    await click('[data-social-action="edit-save"]', 200);
+    res.dropped = !stored().avatar && !stored().banner && JSON.stringify(imageRequests) === JSON.stringify([['/api/images/delete', oldAvatar], ['/api/images/delete', oldBanner]]);
+    res.echogramAvatar = panel.querySelector('.et-social .x-profile-avatar').getAttribute('src') === AVATAR && !panel.querySelector('.et-social .x-banner img');
+
+    // Escape and back close without keeping anything
+    await click('.et-social [data-social-action="edit"]');
+    typeInto('name', 'nope');
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await sleep(50);
+    res.escape = !modal() && stored().name === 'Mira 的小号' && !!panel.querySelector('.et-social');
+    await click('.et-social [data-social-action="edit"]');
+    typeInto('name', 'nope');
+    await click('[data-social-action="edit-close"]');
+    res.backDiscards = !modal() && stored().name === 'Mira 的小号';
+
+    // A failed upload: said so, nothing changed, the dialog stays
+    imageRequests.length = 0;
+    failUpload = true;
+    await click('.et-social [data-social-action="edit"]');
+    typeInto('name', 'changed');
+    window.__nextFile = await imageFile(300, 300, '#00f');
+    await click('[data-social-action="edit-avatar"]', 400);
+    await click('[data-social-action="edit-save"]', 200);
+    res.failed = !!modal() && /Could not save the image/.test(modal().querySelector('.x-edit-error')?.textContent || '') && stored().name === 'Mira 的小号' && !stored().avatar
+        && field('name').value === 'changed' && !modal().querySelector('.x-save-btn').disabled;
+    failUpload = false;
+    await click('[data-social-action="edit-close"]');
+
+    // Saved unchanged, a blank account keeps following the character
+    delete env.settings.socialAccounts['mira.png'];
+    r.closeSocial();
+    r.openSocial();
+    await sleep(100);
+    await click('.et-social [data-social-action="edit"]');
+    res.blankValues = field('name').value === 'Mira' && field('handle').value === 'mira' && field('followers').value === '';
+    await click('[data-social-action="edit-save"]', 100);
+    res.defaultsUnset = JSON.stringify(stored()) === '{}';
+    r.closeSocial();
+    res.closesWithPage = !modal();
+
+    res.allPass = Object.values(res).every(v => v === true);
+    return res;
+};
+
+/**
+ * The panel around the page (2026-11-08): dragged by the X page's top bar and resized
+ * by its corners as by the chat's; Echogram's send button centred on a one-line field
+ * whatever its height, at the bottom once it grows; on a computer above SillyTavern's top bar.
+ */
+window.runFrameTest = async function () {
+    const res = {};
+    const panel = document.getElementById('et-panel');
+    env.settings.defaultPlatform = 'echotext';
+    await sleep(0);
+    r.renderMessages(history);
+    r.syncPlatformChrome();
+    r.makePanelDraggable();
+    r.makePanelResizable();
+    r.openSocial();
+    await sleep(200);
+    const center = el => { const b = el.getBoundingClientRect(); return b.top + b.height / 2; };
+    const mouse = (el, type, x, y) => el.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, button: 0, clientX: x, clientY: y }));
+
+    // Dragged by the top bar, not by its back button
+    const bar = panel.querySelector('.et-social .x-topbar');
+    const b = bar.getBoundingClientRect();
+    panel.style.left = '16px';
+    mouse(bar, 'mousedown', b.right - 20, b.top + 20);
+    mouse(document, 'mousemove', b.right + 20, b.top + 50);
+    mouse(document, 'mouseup', b.right + 20, b.top + 50);
+    res.dragsByBar = panel.style.left === '56px' && env.settings.panelLeft === 56;
+    panel.style.left = '16px';
+    const back = bar.querySelector('[data-social-action="back"]');
+    mouse(back, 'mousedown', 30, 30);
+    mouse(document, 'mousemove', 90, 90);
+    mouse(document, 'mouseup', 90, 90);
+    res.backDoesntDrag = panel.style.left === '16px';
+    res.grabCursor = getComputedStyle(bar).cursor === 'grab';
+
+    // The corners are on top of the page (inside the rounded edge, which clips them as on the chat)
+    await sleep(50);
+    const p = panel.getBoundingClientRect();
+    const corners = [[p.left + 10, p.top + 10], [p.right - 10, p.top + 10], [p.left + 10, p.bottom - 10], [p.right - 10, p.bottom - 10]];
+    res.cornersOnTop = corners.every(([x, y]) => document.elementFromPoint(x, y)?.classList.contains('et-resize-handle'));
+    r.closeSocial();
+
+    // The send button: centred on a one-line field, at its usual height and a taller one
+    const wrap = panel.querySelector('.et-input-wrap');
+    const input = document.getElementById('et-input');
+    const send = document.getElementById('et-send-btn');
+    res.centred48 = Math.abs(center(wrap) - center(send)) < 0.6;
+    wrap.style.setProperty('min-height', '56px');
+    res.centred56 = Math.abs(center(wrap) - center(send)) < 0.6;
+    wrap.style.removeProperty('min-height');
+    input.value = '一行';
+    r.fitInputHeight(input);
+    res.oneLineNotTall = !panel.querySelector('.et-input-bar').classList.contains('et-input-bar-tall') && Math.abs(center(wrap) - center(send)) < 0.6;
+    input.value = '第一行\n第二行\n第三行';
+    r.fitInputHeight(input);
+    const sendBox = send.getBoundingClientRect(), wrapBox = wrap.getBoundingClientRect();
+    res.grownAtBottom = panel.querySelector('.et-input-bar').classList.contains('et-input-bar-tall') && Math.abs(wrapBox.bottom - sendBox.bottom - 3) < 0.6 && wrapBox.height > 70;
+    input.value = '';
+    r.fitInputHeight(input);
+    res.clearedBack = !panel.querySelector('.et-input-bar').classList.contains('et-input-bar-tall') && input.style.height === 'auto' && Math.abs(center(wrap) - center(send)) < 0.6;
+
+    // Echogram's layer, on a computer, above SillyTavern's top bar (3005; 4005 with a drawer open)
+    document.getElementById(r.ET_PORTAL_ID)?.remove();
+    const portal = r.ensurePortal();
+    res.portalAboveTopBar = Number(portal.style.zIndex) > 4005;
+    portal.remove();
+
+    res.allPass = Object.values(res).every(v => v === true);
+    return res;
+};
+
 // A page to look at
 (async () => {
     const which = params.get('view');
@@ -200,6 +409,10 @@ window.runSocialTest = async function () {
     await sleep(100);
     const v = view(which === 'empty' ? {} : mockSettings());
     v.open();
+    if (which === 'edit') {
+        await sleep(200);
+        document.querySelector('#et-panel [data-social-action="edit"]').click();
+    }
     if (which === 'detail') {
         await sleep(200);
         document.querySelector('#et-panel .x-post[data-post-id="a"]').click();

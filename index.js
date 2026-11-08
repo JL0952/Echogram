@@ -210,9 +210,10 @@
         if (!portal) {
             portal = document.createElement('div');
             portal.id = ET_PORTAL_ID;
-            // Max z-index, fixed fullscreen, tracking dynamic viewport (dvh/dvw)
+            // Fixed fullscreen, tracking dynamic viewport (dvh/dvw). On a phone the max z-index;
+            // on a computer above SillyTavern's top bar (3005, 4005 while one of its drawers is open)
             // We use color:initial and text-align:initial to ensureST defaults don't bleed in.
-            portal.style.cssText = `position:fixed; top:0; left:0; width:100dvw; height:100dvh; z-index:${isMobileDevice() ? '2147483647' : '1500'}; pointer-events:none; display:block !important; border:none !important; margin:0 !important; padding:0 !important;`;
+            portal.style.cssText = `position:fixed; top:0; left:0; width:100dvw; height:100dvh; z-index:${isMobileDevice() ? '2147483647' : '4010'}; pointer-events:none; display:block !important; border:none !important; margin:0 !important; padding:0 !important;`;
             
             // Try appending to html first to escape body bugs
             try {
@@ -900,6 +901,20 @@
      * Sets the input's placeholder from what it says without a platform's own ("Text Mira..."),
      * kept so a platform switch can word it again (onPlatformChoiceChanged).
      */
+    /**
+     * The field grows with what's typed, up to 92px; the bar is marked while it's past one
+     * line (et-input-bar-tall), so a look can centre its send button on a one-line field
+     * whatever that field's height and keep it at the bottom once it grows.
+     */
+    function fitInputHeight(el) {
+        if (!el) return;
+        el.style.height = 'auto';
+        const lineHeight = parseFloat(getComputedStyle(el).lineHeight) || 20;
+        const tall = el.value !== '' && el.scrollHeight > lineHeight * 1.5;
+        el.style.height = el.value === '' ? 'auto' : Math.min(el.scrollHeight + 2, 92) + 'px';
+        jQuery(el).closest('[data-et-role~="input-bar"]').toggleClass('et-input-bar-tall', tall);
+    }
+
     function setInputPlaceholder(text) {
         jQuery('#et-input').attr('placeholder', inputPlaceholder(text)).data('et-text-placeholder', text);
     }
@@ -4823,8 +4838,7 @@
                 clearReplyDraft();
             }
         }).on('input', function () {
-            this.style.height = 'auto';
-            this.style.height = Math.min(this.scrollHeight + 2, 92) + 'px';
+            fitInputHeight(this);
             // Still typing: the character keeps waiting
             noteTyping();
             if (isGenerating) updateSendButton(true);
@@ -4898,15 +4912,35 @@
         if (!socialView) {
             socialView = Social.createSocialView({
                 getSettings: () => settings,
+                saveSettings,
                 getCharacterKey,
                 getCharacterName,
                 getAvatarUrl: getCharAvatarUrl,
                 getContainer: () => document.getElementById('et-panel'),
                 stylesheetUrl: (theme, file) => `${BASE_URL}/social/${theme}/${file}${VERSION_QUERY}`,
                 now: () => Date.now(),
+                pickImage: pickSocialImage,
+                uploadImage: (dataUrl, kind) => uploadUserImage(dataUrl, getCharacterName(), `echogram-social-${kind}`),
+                deleteImage: deleteUserImage,
             });
         }
         socialView.open();
+    }
+
+    // The account's banner, as X keeps one: 3:1, 1500 px wide at most
+    const SOCIAL_BANNER_WIDTH = 1500;
+
+    /** The account's new avatar (square, as Echogram's) or banner (3:1), cropped in SillyTavern's dialog; null if cancelled. */
+    async function pickSocialImage(kind) {
+        // Before any await: a file dialog must open within the tap
+        const file = await pickImageFile();
+        if (!file) return null;
+        const context = SillyTavern.getContext();
+        const banner = kind === 'banner';
+        const cropped = await context.callGenericPopup('', context.POPUP_TYPE.CROP, '',
+            { cropAspect: banner ? 3 : 1, cropImage: await readFileAsDataUrl(file) });
+        if (!cropped) return null;
+        return banner ? (await fitImageDataUrl(cropped, SOCIAL_BANNER_WIDTH)).dataUrl : shrinkImageDataUrl(cropped, AVATAR_SIZE);
     }
 
     function closeSocial() {
@@ -5295,7 +5329,8 @@
             clearReplyDraft();
         }
 
-        input.val('').css('height', 'auto');
+        input.val('');
+        fitInputHeight(input[0]);
         // A photo or transfer is one message; voice from the voice button stays on until switched back, as in WeChat
         if (mode && !isVoiceButtonMode()) setComposeMode(null);
         if (isGenerating) updateSendButton(true);
@@ -5965,15 +6000,18 @@
         if (isMobileDevice()) return;
 
         const panel = document.getElementById('et-panel');
-        const handle = document.getElementById('et-panel-drag-handle');
-        if (!panel || !handle) return;
+        if (!panel) return;
 
+        // The header drags the panel, and so does any bar a page over it marks
+        // data-et-drag (the social account's top bar), its buttons aside
+        const DRAG_AREAS = '#et-panel-drag-handle, [data-et-drag]';
+        const NOT_DRAG = '.et-header-btn, button, input, select, textarea, #et-char-name, #et-panel-status-trigger';
         let isDragging = false;
         let startX, startY, origLeft, origTop;
 
-        handle.addEventListener('mousedown', (e) => {
+        panel.addEventListener('mousedown', (e) => {
             if (e.button !== 0) return;
-            if (e.target.closest('.et-header-btn, button, input, select, textarea, #et-char-name, #et-panel-status-trigger')) return;
+            if (!e.target.closest(DRAG_AREAS) || e.target.closest(NOT_DRAG)) return;
             isDragging = true;
             startX = e.clientX; startY = e.clientY;
             const rect = panel.getBoundingClientRect();
@@ -5984,8 +6022,8 @@
             e.preventDefault();
         });
 
-        handle.addEventListener('touchstart', (e) => {
-            if (e.target.closest('.et-header-btn, button, input, select, textarea, #et-char-name, #et-panel-status-trigger')) return;
+        panel.addEventListener('touchstart', (e) => {
+            if (!e.target.closest(DRAG_AREAS) || e.target.closest(NOT_DRAG)) return;
             const t = e.touches[0];
             isDragging = true;
             startX = t.clientX; startY = t.clientY;
@@ -5994,7 +6032,7 @@
             panel.style.transition = 'none';
         }, { passive: true });
 
-        handle.addEventListener('touchmove', (e) => {
+        panel.addEventListener('touchmove', (e) => {
             if (!isDragging) return;
             const t = e.touches[0];
             const dx = t.clientX - startX, dy = t.clientY - startY;
@@ -6002,7 +6040,7 @@
             panel.style.top = Math.max(0, Math.min(window.innerHeight - 60, origTop + dy)) + 'px';
         }, { passive: true });
 
-        handle.addEventListener('touchend', () => {
+        panel.addEventListener('touchend', () => {
             if (!isDragging) return;
             isDragging = false;
             panel.style.transition = '';

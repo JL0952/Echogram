@@ -32,7 +32,7 @@
     }
 
     function topBar(title, subtitle, ctx) {
-        return `<div class="x-topbar">
+        return `<div class="x-topbar" data-et-drag>
             <button class="x-topbar-back" type="button" data-social-action="back" aria-label="Back">${icon('back')}</button>
             <div class="x-topbar-title">
                 <span class="x-topbar-name">${ctx.esc(title)}</span>
@@ -113,6 +113,7 @@
         <div class="x-profile">
             <div class="x-profile-top">
                 ${avatar(a.avatarUrl, a.avatarFallback, 'x-profile-avatar', ctx)}
+                <button class="x-edit-btn" type="button" data-social-action="edit">Edit profile</button>
             </div>
             <div class="x-profile-name">${ctx.esc(a.name)}</div>
             <div class="x-profile-handle">@${ctx.esc(a.handle)}</div>
@@ -147,12 +148,68 @@
         <div class="x-replies">${post.replies.map(reply => replyCard(reply, ctx)).join('')}</div>`;
     }
 
+    function field(label, name, value, ctx, { max = 0, area = false, numeric = false, prefix = '' } = {}) {
+        const attrs = `data-social-field="${name}"${max ? ` maxlength="${max}"` : ''}${numeric ? ' inputmode="numeric"' : ''} autocomplete="off" spellcheck="false"`;
+        const input = area
+            ? `<textarea class="x-field-input" rows="3" ${attrs}>${ctx.esc(value)}</textarea>`
+            : `<span class="x-field-row">${prefix ? `<span class="x-field-prefix">${prefix}</span>` : ''}<input class="x-field-input" type="text" value="${ctx.esc(value)}" ${attrs}></span>`;
+        return `<label class="x-field">
+            <span class="x-field-label">${label}</span>
+            ${input}
+            ${max && name !== 'handle' ? `<span class="x-field-count"><span data-social-count="${name}">${String(value).length}</span>/${max}</span>` : ''}
+        </label>`;
+    }
+
+    /** Edit profile (vertsan's EditProfileModal): banner and avatar to change, then the fields. */
+    function editProfile(view, ctx) {
+        const e = view.edit;
+        const imageButton = (action, label) => `<button class="x-edit-image-btn" type="button" data-social-action="${action}" aria-label="${label}">${icon('image')}</button>`;
+        const dropButton = (action, label) => `<button class="x-edit-image-btn x-edit-image-drop" type="button" data-social-action="${action}" aria-label="${label}">×</button>`;
+        return `<div class="x-modal-backdrop" data-social-action="edit-backdrop">
+            <div class="x-modal" role="dialog" aria-label="Edit profile">
+                <header class="x-modal-head" data-et-drag>
+                    <div class="x-modal-title">
+                        <button class="x-topbar-back" type="button" data-social-action="edit-close" aria-label="Close">${icon('back')}</button>
+                        <span>Edit profile</span>
+                    </div>
+                    <button class="x-save-btn" type="button" data-social-action="edit-save"${e.saving ? ' disabled' : ''}>${e.saving ? 'Saving...' : 'Save'}</button>
+                </header>
+                <div class="x-modal-body">
+                    <div class="x-edit-images">
+                        <div class="x-edit-banner">
+                            ${e.bannerUrl ? `<img src="${ctx.esc(e.bannerUrl)}" alt="">` : ''}
+                            <div class="x-edit-image-veil">
+                                ${imageButton('edit-banner', 'Change banner')}
+                                ${e.bannerUrl ? dropButton('edit-banner-drop', 'Remove banner') : ''}
+                            </div>
+                        </div>
+                        <div class="x-edit-avatar">
+                            ${avatar(e.avatarUrl, e.avatarFallback, 'x-edit-avatar-img', ctx)}
+                            <div class="x-edit-image-veil">
+                                ${imageButton('edit-avatar', 'Change avatar')}
+                                ${e.ownAvatar ? dropButton('edit-avatar-drop', 'Use Echogram avatar') : ''}
+                            </div>
+                        </div>
+                    </div>
+                    <div class="x-edit-fields">
+                        ${e.error ? `<p class="x-edit-error">${ctx.esc(e.error)}</p>` : ''}
+                        ${field('Name', 'name', e.name, ctx, { max: e.maxName })}
+                        ${field('Username', 'handle', e.handle, ctx, { max: e.maxHandle, prefix: '@' })}
+                        ${field('Bio', 'bio', e.bio, ctx, { max: e.maxBio, area: true })}
+                        ${field('Followers', 'followers', e.followers, ctx, { numeric: true })}
+                        ${field('Following', 'following', e.following, ctx, { numeric: true })}
+                    </div>
+                </div>
+            </div>
+        </div>`;
+    }
+
     window.EchoTextSocialThemes = window.EchoTextSocialThemes || {};
     window.EchoTextSocialThemes.x = {
         id: 'x',
         label: 'X',
         icon: 'fa-brands fa-x-twitter',
         stylesheet: 'theme.css',
-        templates: { profile, detail },
+        templates: { profile, detail, editProfile },
     };
 })();

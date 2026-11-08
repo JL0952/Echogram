@@ -2,7 +2,8 @@
    vertsan/x-clone-ui-freeapi (tailwind.config.ts, globals.css); the profile header's
    sizes are the v0 template's phone ones; posts and replies are vertsan's Post.tsx. */
 
-.et-social[data-social-theme="x"] {
+.et-social[data-social-theme="x"],
+.et-social-modal[data-social-theme="x"] {
     --x-bg: #000;
     --x-text: #e7e9ea;
     --x-gray: #71767b;
@@ -12,6 +13,11 @@
     --x-pink: #f91880;
     --x-hover: #080808;
     --x-banner: #333639;
+    --x-input: #202327;
+    --x-hover-strong: #16181c;
+}
+
+.et-social[data-social-theme="x"] {
     position: absolute;
     inset: 0;
     z-index: 60;
@@ -35,11 +41,15 @@
 
 .et-social[data-social-theme="x"] *,
 .et-social[data-social-theme="x"] *::before,
-.et-social[data-social-theme="x"] *::after {
+.et-social[data-social-theme="x"] *::after,
+.et-social-modal[data-social-theme="x"] *,
+.et-social-modal[data-social-theme="x"] *::before,
+.et-social-modal[data-social-theme="x"] *::after {
     box-sizing: border-box;
 }
 
-.et-social[data-social-theme="x"] .x-icon {
+.et-social[data-social-theme="x"] .x-icon,
+.et-social-modal[data-social-theme="x"] .x-icon {
     width: 18px;
     height: 18px;
     fill: currentColor;
@@ -62,7 +72,8 @@
     -webkit-backdrop-filter: blur(12px);
 }
 
-.et-social[data-social-theme="x"] .x-topbar-back {
+.et-social[data-social-theme="x"] .x-topbar-back,
+.et-social-modal[data-social-theme="x"] .x-topbar-back {
     display: grid;
     place-items: center;
     margin: 0 0 0 -8px;
@@ -74,12 +85,14 @@
     cursor: pointer;
 }
 
-.et-social[data-social-theme="x"] .x-topbar-back .x-icon {
+.et-social[data-social-theme="x"] .x-topbar-back .x-icon,
+.et-social-modal[data-social-theme="x"] .x-topbar-back .x-icon {
     width: 20px;
     height: 20px;
 }
 
-.et-social[data-social-theme="x"] .x-topbar-back:hover {
+.et-social[data-social-theme="x"] .x-topbar-back:hover,
+.et-social-modal[data-social-theme="x"] .x-topbar-back:hover {
     background: rgba(231, 233, 234, 0.1);
 }
 
@@ -140,11 +153,34 @@
     background: var(--x-banner);
 }
 
-.et-social[data-social-theme="x"] .x-avatar-fallback {
+.et-social[data-social-theme="x"] .x-avatar-fallback,
+.et-social-modal[data-social-theme="x"] .x-avatar-fallback {
     display: grid;
     place-items: center;
     color: #fff;
     font-weight: 700;
+}
+
+.et-social[data-social-theme="x"] .x-edit-btn {
+    align-self: flex-start;
+    margin-top: 12px;
+    padding: 6px 20px;
+    border: 1px solid var(--x-border);
+    border-radius: 9999px;
+    color: var(--x-text);
+    background: transparent;
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 0.2s, transform 0.1s;
+}
+
+.et-social[data-social-theme="x"] .x-edit-btn:hover {
+    background: var(--x-hover-strong);
+}
+
+.et-social[data-social-theme="x"] .x-edit-btn:active {
+    transform: scale(0.95);
 }
 
 .et-social[data-social-theme="x"] .x-profile-avatar.x-avatar-fallback {
@@ -457,4 +493,245 @@
     padding: 4px 0;
     border-top: 1px solid var(--x-border);
     margin-bottom: 0;
+}
+
+/* ── Edit profile (vertsan's EditProfileModal; it fills the panel, as on a phone) ── */
+
+.et-social-modal[data-social-theme="x"] {
+    position: absolute;
+    inset: 0;
+    z-index: 61;
+    color: var(--x-text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font-size: 15px;
+    line-height: 1.5;
+    text-align: left;
+    -webkit-font-smoothing: antialiased;
+    border-radius: inherit;
+    overflow: hidden;
+}
+
+.et-social-modal[data-social-theme="x"] .x-modal-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.7);
+}
+
+.et-social-modal[data-social-theme="x"] .x-modal {
+    position: absolute;
+    inset: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    background: var(--x-bg);
+    scrollbar-width: none;
+    animation: x-modal-in 0.2s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.et-social-modal[data-social-theme="x"] .x-modal::-webkit-scrollbar {
+    display: none;
+}
+
+@keyframes x-modal-in {
+    from { opacity: 0; transform: scale(0.96) translateY(8px); }
+    to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+.et-social-modal[data-social-theme="x"] .x-modal-head {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 20px;
+    background: rgba(0, 0, 0, 0.8);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+}
+
+.et-social-modal[data-social-theme="x"] .x-modal-title {
+    display: flex;
+    align-items: center;
+    gap: 24px;
+    font-size: 18px;
+    font-weight: 700;
+}
+
+.et-social-modal[data-social-theme="x"] .x-save-btn {
+    padding: 8px 20px;
+    border: 0;
+    border-radius: 9999px;
+    color: #000;
+    background: #fff;
+    font: inherit;
+    font-size: 14px;
+    font-weight: 700;
+    line-height: 20px;
+    cursor: pointer;
+}
+
+.et-social-modal[data-social-theme="x"] .x-save-btn:hover {
+    filter: brightness(0.9);
+}
+
+.et-social-modal[data-social-theme="x"] .x-save-btn:disabled {
+    opacity: 0.6;
+    cursor: default;
+}
+
+.et-social-modal[data-social-theme="x"] .x-modal-body {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+    padding: 0 20px 20px;
+}
+
+.et-social-modal[data-social-theme="x"] .x-edit-images {
+    position: relative;
+}
+
+.et-social-modal[data-social-theme="x"] .x-edit-banner {
+    position: relative;
+    aspect-ratio: 3 / 1;
+    overflow: hidden;
+    background: var(--x-banner);
+}
+
+.et-social-modal[data-social-theme="x"] .x-edit-banner img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.et-social-modal[data-social-theme="x"] .x-edit-image-veil {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    background: rgba(0, 0, 0, 0.3);
+}
+
+.et-social-modal[data-social-theme="x"] .x-edit-avatar .x-edit-image-veil {
+    background: rgba(0, 0, 0, 0.4);
+}
+
+.et-social-modal[data-social-theme="x"] .x-edit-image-btn {
+    display: grid;
+    place-items: center;
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    border: 0;
+    border-radius: 9999px;
+    color: var(--x-blue);
+    background: rgba(0, 0, 0, 0.7);
+    cursor: pointer;
+}
+
+.et-social-modal[data-social-theme="x"] .x-edit-image-btn:hover {
+    background: rgba(0, 0, 0, 0.8);
+}
+
+.et-social-modal[data-social-theme="x"] .x-edit-image-btn .x-icon {
+    width: 20px;
+    height: 20px;
+}
+
+.et-social-modal[data-social-theme="x"] .x-edit-image-drop {
+    color: #fff;
+    font-size: 20px;
+    line-height: 1;
+}
+
+.et-social-modal[data-social-theme="x"] .x-edit-avatar {
+    position: absolute;
+    left: 16px;
+    bottom: 0;
+    width: 96px;
+    height: 96px;
+    overflow: hidden;
+    border: 4px solid var(--x-bg);
+    border-radius: 9999px;
+    background: #d1d5db;
+    transform: translateY(50%);
+}
+
+.et-social-modal[data-social-theme="x"] .x-edit-avatar-img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.et-social-modal[data-social-theme="x"] .x-edit-avatar .x-avatar-fallback {
+    font-size: 24px;
+}
+
+.et-social-modal[data-social-theme="x"] .x-edit-fields {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    margin-top: 40px;
+}
+
+.et-social-modal[data-social-theme="x"] .x-edit-error {
+    margin: 0;
+    padding: 8px 12px;
+    border: 1px solid rgba(239, 68, 68, 0.4);
+    border-radius: 6px;
+    color: #f87171;
+    background: rgba(239, 68, 68, 0.1);
+    font-size: 14px;
+}
+
+.et-social-modal[data-social-theme="x"] .x-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 8px 12px;
+    border: 1px solid var(--x-border);
+    border-radius: 6px;
+}
+
+.et-social-modal[data-social-theme="x"] .x-field:focus-within {
+    border-color: var(--x-blue);
+    box-shadow: 0 0 0 1px rgba(29, 155, 240, 0.4);
+}
+
+.et-social-modal[data-social-theme="x"] .x-field-label,
+.et-social-modal[data-social-theme="x"] .x-field-count {
+    color: var(--x-gray);
+    font-size: 12px;
+    line-height: 16px;
+}
+
+.et-social-modal[data-social-theme="x"] .x-field-count {
+    align-self: flex-end;
+}
+
+.et-social-modal[data-social-theme="x"] .x-field-row {
+    display: flex;
+    align-items: baseline;
+}
+
+.et-social-modal[data-social-theme="x"] .x-field-prefix {
+    color: var(--x-gray);
+}
+
+.et-social-modal[data-social-theme="x"] .x-field-input {
+    width: 100%;
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    outline: none;
+    color: var(--x-text);
+    background: transparent;
+    box-shadow: none;
+    font: inherit;
+    font-size: 16px;
+    resize: none;
 }
