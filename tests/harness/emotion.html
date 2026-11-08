@@ -2274,6 +2274,137 @@
     };
 
     // A bubble's menu (held down or right-clicked) on all three looks, through the real code
+    /**
+     * Menus one at a time (2026-11-08): opening any of the panel's menus closes the others;
+     * a change of look, the X page, the sticker panel coming up or going down and the
+     * phone's keyboard coming up close them all; the emotion popup stays. This page
+     * stubs closeAllDotMenus and closeCharacterPicker: here they're stood in for by removing
+     * the menus and counting the calls.
+     */
+    window.runMenusTest = async function () {
+        const res = {};
+        const s = env.settings;
+        const platformBefore = s.defaultPlatform;
+        const stubs = { closeAllDotMenus: env.closeAllDotMenus, closeCharacterPicker: env.closeCharacterPicker };
+        let pickerCloses = 0;
+        env.closeAllDotMenus = () => jQuery('.et-dots-menu').addClass('et-dots-menu-closing');
+        env.closeCharacterPicker = () => { pickerCloses++; };
+        s.defaultPlatform = 'echotext';
+        s.chatHistory['mira.png'] = [
+            { is_user: true, mes: 'hey', send_date: Date.now() - 120000 },
+            { is_user: false, mes: 'hi\nwhat\'s up', send_date: Date.now() - 60000 },
+        ];
+        r.renderMessages(s.chatHistory['mira.png']);
+        r.syncPlatformChrome();
+        await sleep(300);
+        const bubble = () => panel.querySelector('[data-et-role~="message"][data-index="1"] [data-et-role~="bubble"]');
+        const clear = () => { document.querySelectorAll('.et-dots-menu, .et-react-overlay').forEach(m => m.remove()); jQuery('#et-overflow-menu').removeClass('et-overflow-menu-open'); };
+        const openMenus = () => [
+            ...[...document.querySelectorAll('.et-dots-menu:not(.et-dots-menu-closing)')].map(m => m.classList.contains('et-avatar-menu') ? 'avatar' : m.classList.contains('et-sticker-set-menu') ? 'sticker' : m.classList.contains('et-attach-menu') ? 'attach' : 'bubble'),
+            ...[...document.querySelectorAll('.et-react-overlay:not(.et-react-overlay-closing)')].map(() => 'react'),
+            ...(jQuery('#et-overflow-menu').hasClass('et-overflow-menu-open') ? ['overflow'] : []),
+        ];
+        const openers = {
+            bubble: () => r.toggleDotsMenu(jQuery(bubble()), 1, false, null),
+            react: () => r.toggleReactOverlay(jQuery(bubble()), 1, 0),
+            avatar: () => r.openAvatarMenu(panel.querySelector('#et-char-avatar-wrap') || panel),
+            attach: () => r.toggleAttachMenu(jQuery('#et-attach-btn')),
+            sticker: () => { if (!document.querySelector('#et-attach-panel .et-sticker-tab')) r.toggleStickerPanel(); r.openStickerSetMenu(document.querySelector('#et-attach-panel .et-sticker-tab')); },
+        };
+        // The ⋯ menu opens in the panel's own click handler (not on this page): opened by hand, as a first menu only
+        const firsts = { ...openers, overflow: () => jQuery('#et-overflow-menu').addClass('et-overflow-menu-open') };
+        const pairs = [];
+        for (const [a, openA] of Object.entries(firsts)) {
+            for (const [b, openB] of Object.entries(openers)) {
+                if (a === b) continue;
+                clear();
+                openA();
+                await sleep(30);
+                const first = openMenus().join();
+                openB();
+                await sleep(30);
+                const now = openMenus().join();
+                if (first !== a || now !== b) pairs.push(`${a}→${b}: ${first} then ${now}`);
+            }
+        }
+        res.oneAtATime = pairs.length === 0 || pairs;
+        res.pickerClosedToo = pickerCloses > 0;
+        clear();
+
+        // The emotion popup isn't a menu: opening one leaves it
+        const popup = open();
+        await sleep(100);
+        openers.bubble();
+        await sleep(50);
+        res.emotionStays = !!document.getElementById('et-emotion-popup') && !popup.classList.contains('et-emotion-popup-closing') && openMenus().join() === 'bubble';
+        emo.closeEmotionPopup();
+        clear();
+
+        // Another look: the menus close
+        clear();
+        openers.bubble();
+        await sleep(30);
+        s.defaultPlatform = 'instagram';
+        r.onPlatformChoiceChanged();
+        await sleep(50);
+        res.lookCloses = openMenus().length === 0;
+        s.defaultPlatform = 'echotext';
+        r.onPlatformChoiceChanged();
+        await sleep(50);
+
+        // The sticker panel coming up or going down moves the list: the menus close
+        if (document.querySelector('#et-attach-panel')) r.toggleStickerPanel();
+        await sleep(300);
+        clear();
+        openers.bubble();
+        await sleep(30);
+        r.toggleStickerPanel();
+        await sleep(50);
+        res.panelUpCloses = openMenus().length === 0 && !!document.querySelector('#et-attach-panel');
+        clear();
+        openers.avatar();
+        await sleep(30);
+        r.toggleStickerPanel();
+        await sleep(50);
+        res.panelDownCloses = openMenus().length === 0;
+        await sleep(300);
+
+        // The phone's keyboard coming up (the visible height dropping 120px or more): the menus close;
+        // a smaller change (the browser's bars), the keyboard going down, or typing in a menu's own field: they stay
+        clear();
+        openers.bubble();
+        await sleep(30);
+        r.closeMenusForKeyboard(800, 750);
+        res.smallShiftStays = openMenus().join() === 'bubble';
+        r.closeMenusForKeyboard(500, 800);
+        res.keyboardDownStays = openMenus().join() === 'bubble';
+        const field = document.createElement('input');
+        document.querySelector('.et-dots-menu:not(.et-dots-menu-closing)').appendChild(field);
+        field.focus();
+        r.closeMenusForKeyboard(800, 480);
+        res.menuFieldStays = openMenus().join() === 'bubble';
+        field.remove();
+        r.closeMenusForKeyboard(800, 480);
+        res.keyboardUpCloses = openMenus().length === 0;
+
+        // The X page: the menus close, the ⋯ one too
+        clear();
+        openers.avatar();
+        jQuery('#et-overflow-menu').addClass('et-overflow-menu-open');
+        r.openSocial();
+        await sleep(100);
+        res.socialCloses = openMenus().length === 0;
+        r.closeSocial();
+
+        clear();
+        if (document.querySelector('#et-attach-panel')) r.toggleStickerPanel();
+        Object.assign(env, stubs);
+        s.defaultPlatform = platformBefore;
+        r.renderMessages(s.chatHistory['mira.png']);
+        res.ok = Object.values(res).every(v => v === true);
+        return res;
+    };
+
     window.runHoldTest = async function () {
         const res = {};
         const s = env.settings;

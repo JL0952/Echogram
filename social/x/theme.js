@@ -132,7 +132,7 @@
         </div>`;
     }
 
-    /** New posts (vertsan's compose modal): how many, then Generate. */
+    /** New posts (vertsan's compose modal): how many, then Generate; while it writes, Cancel. */
     function compose(view, ctx) {
         const a = view.account;
         const c = view.compose;
@@ -145,12 +145,14 @@
                 </div>
                 <div class="x-compose-center">
                     ${avatar(a.avatarUrl, a.avatarFallback, 'x-post-avatar', ctx)}
-                    <div class="x-compose-what">Freestyle</div>
+                    <div class="x-compose-what">${c.generating ? 'Generating...' : 'Freestyle'}</div>
                 </div>
                 ${c.error ? `<p class="x-edit-error">${ctx.esc(c.error)}</p>` : ''}
                 <div class="x-compose-bottom">
                     <div class="x-counts">${counts}</div>
-                    <button class="x-compose-go" type="button" data-social-action="compose-go"${c.generating ? ' disabled' : ''}>${c.generating ? 'Generating...' : 'Generate'}</button>
+                    ${c.generating
+                        ? '<button class="x-compose-cancel" type="button" data-social-action="compose-cancel">Cancel</button>'
+                        : '<button class="x-compose-go" type="button" data-social-action="compose-go">Generate</button>'}
                 </div>
             </div>
         </div>`;

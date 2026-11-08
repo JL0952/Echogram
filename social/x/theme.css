@@ -929,3 +929,25 @@
     cursor: default;
     background: rgba(29, 155, 240, 0.5);
 }
+
+/* While it writes: Cancel, outlined as X's secondary buttons (vertsan's Edit profile) */
+.et-social-modal[data-social-theme="x"] .x-compose-cancel {
+    padding: 7px 20px;
+    border: 1px solid var(--x-border);
+    border-radius: 9999px;
+    color: var(--x-text);
+    background: transparent;
+    font: inherit;
+    font-weight: 700;
+    line-height: 20px;
+    cursor: pointer;
+    transition: background-color 0.2s, transform 0.1s;
+}
+
+.et-social-modal[data-social-theme="x"] .x-compose-cancel:hover {
+    background: var(--x-hover-strong);
+}
+
+.et-social-modal[data-social-theme="x"] .x-compose-cancel:active {
+    transform: scale(0.98);
+}

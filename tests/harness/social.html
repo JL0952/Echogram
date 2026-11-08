@@ -469,7 +469,8 @@ window.runComposeTest = async function () {
     res.account = sys.includes('Name: m.\nHandle: @mira_after_dark\nBio: 晚上才上线 / 不认识的别加 / no DMs\nFollowers: 23,800\nFollowing: 312') && sys.includes('an account with 23,800 followers');
     const lines = sys.split('Its latest posts, oldest first:\n')[1].split('\n\n')[0].split('\n');
     res.latestPosts = lines.length === 4 && lines[0].startsWith('[Sep') && lines[2] === '[5d ago, with a photo] 周末的展。' && lines[3].startsWith('[2h ago] 今天又在他面前装了一整天没事人。 回家路上');
-    res.generating = modal().querySelector('.x-compose-go').disabled && modal().querySelector('.x-compose-go').textContent === 'Generating...' && modal().querySelector('.x-count').disabled;
+    res.generating = !modal().querySelector('.x-compose-go') && modal().querySelector('.x-compose-cancel')?.textContent === 'Cancel'
+        && modal().querySelector('.x-compose-what').textContent === 'Generating...' && modal().querySelector('.x-count').disabled;
 
     // The answer: thinking dropped, three of four kept, times between the latest post and now, oldest first
     const replies = Array.from({ length: 12 }, (_, i) => `<reply name="路人${i}" handle="lurker_${i}" likes="${20 - i}">回复${i}</reply>`).join('\n');
@@ -507,6 +508,24 @@ ${replies}
     await click('[data-social-action="compose-go"]', 150);
     res.failed = !!modal() && /Could not write the posts: the model sent back no posts/.test(modal().querySelector('.x-edit-error')?.textContent || '')
         && env.settings.socialPosts['mira.png'].length === 6 && !modal().querySelector('.x-compose-go').disabled;
+
+    // A request that throws (the connection failing): said so, nothing kept, try again
+    window.__answer = Promise.reject(new Error('HTTP 502'));
+    await click('[data-social-action="compose-go"]', 150);
+    res.throws = !!modal() && modal().querySelector('.x-edit-error')?.textContent === 'Could not write the posts: HTTP 502'
+        && env.settings.socialPosts['mira.png'].length === 6 && !!modal().querySelector('.x-compose-go');
+
+    // Cancel while it writes: the request stopped, the dialog stays to try again, what comes back not kept
+    let cancelled;
+    window.__answer = new Promise(res => { cancelled = res; });
+    await click('[data-social-action="compose-go"]');
+    const cancelSignal = modelRequests.at(-1).signal;
+    await click('[data-social-action="compose-cancel"]');
+    res.cancel = !!modal() && cancelSignal.aborted && !!modal().querySelector('.x-compose-go') && !modal().querySelector('.x-edit-error')
+        && modal().querySelector('.x-compose-what').textContent === 'Freestyle' && !modal().querySelector('.x-count').disabled;
+    cancelled('<post ago="1m"><text>cancelled one</text></post>');
+    await sleep(100);
+    res.cancelledNotKept = env.settings.socialPosts['mira.png'].length === 6 && !!modal() && !modal().querySelector('.x-edit-error');
 
     // Closed while it writes: the request stopped, what comes back not kept
     let late;

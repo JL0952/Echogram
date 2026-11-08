@@ -30,7 +30,7 @@ const WANT = [
     'escapeHtml', 'convertEmoticonsToEmojis', 'formatMessageText', 'buildAvatarHtml', 'applyMemoryHighlights', '_highlightTextNode',
     // rendering and actions
     'renderMessages', 'showPrevSwipe', 'showNextSwipe', 'openImageAttachment', 'MESSAGE_ACTIONS', 'onMessageAction', 'bindMessageActions', 'onBubbleTap',
-    'BUBBLE_HOLD_MS', 'BUBBLE_HOLD_SLOP', 'bubbleHold', 'bubbleHeld', 'bubbleTarget', 'onBubblePointerDown', 'onBubblePointerMove', 'cancelBubbleHold', 'onBubbleContextMenu', 'swallowHeldClick', 'openBubbleMenu', 'bubbleRef', 'findBubble',
+    'BUBBLE_HOLD_MS', 'BUBBLE_HOLD_SLOP', 'bubbleHold', 'bubbleHeld', 'bubbleTarget', 'onBubblePointerDown', 'onBubblePointerMove', 'cancelBubbleHold', 'onBubbleContextMenu', 'swallowHeldClick', 'openBubbleMenu', 'bubbleRef', 'findBubble', 'closeMenus', 'closeMenusForKeyboard', 'KEYBOARD_MIN_PX',
     'renderedViews', 'renderedFrame', 'getRenderFrame', 'updateMessageList', 'replaceMessageElement', 'scrollMessagesToEnd',
     'getChatViewOptions', 'getMessageRenderContext', 'getCharacterUsername', 'findMessageElement', 'decorateMessage', 'refreshMessages',
     'renderedEntry', 'tapbackMarks', 'keepInPlace',
@@ -51,7 +51,7 @@ const FUNC_STUBS = [
     'openTransferResponseMenu', 'openGeneratedImageLightbox', 'bindBubbleTouchSwipe',
     'showMemorySaveModal', 'showMemoryRemoveModal', 'setComposeMode', 'saveSettings',
     'getAvatarUrlForCharacter', 'isCombinedGroupMode', 'getUserAvatarUrl', 'pickImageFile', 'error', 'warn', 'getCustomCharAvatarUrl',
-    'drawStatusBars', 'syncSendButton', 'updatePanelStatusRow',
+    'drawStatusBars', 'syncSendButton', 'updatePanelStatusRow', 'closeCharacterPicker',
 ];
 
 for (const name of (process.env.EXTRA || '').split(',').filter(Boolean)) WANT.push(name);

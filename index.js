@@ -843,6 +843,7 @@
     function applySelectedCharacterToPanel() {
         if (!panelOpen) return;
         closeSocial();
+        closeMenus();
 
         // ── Combine mode: show all members in header ──────────────────
         if (groupManager && groupManager.isGroupSession() && groupManager.isCombineMode()) {
@@ -930,10 +931,16 @@
 
     function getAllCharactersForPicker() { return characterPicker.getAllCharactersForPicker(); }
     function getAvatarUrlForCharacter(char) { return characterPicker.getAvatarUrlForCharacter(char); }
-    function openCharacterPicker(centerInPanel = false) { characterPicker.openCharacterPicker(centerInPanel); }
+    function openCharacterPicker(centerInPanel = false) {
+        closeMenus();
+        characterPicker.openCharacterPicker(centerInPanel);
+    }
     function openEmbeddedCharacterPicker() { characterPicker.openEmbeddedCharacterPicker(); }
     function closeCharacterPicker() { characterPicker.closeCharacterPicker(); }
-    function toggleCharacterPicker() { characterPicker.toggleCharacterPicker(); }
+    function toggleCharacterPicker() {
+        if (!jQuery('#et-char-picker').length) closeMenus();
+        characterPicker.toggleCharacterPicker();
+    }
     function _pickerAvatarBg(name) { return characterPicker ? characterPicker._pickerAvatarBg(name) : 'var(--et-theme-color)'; }
 
     function updatePanelStatusRow(options = {}) {
@@ -4384,6 +4391,8 @@
      */
     function switchGroupChar(charKey, charObj) {
         if (!charObj) return;
+        closeSocial();
+        closeMenus();
         groupManager.setActiveCharKey(charKey);
 
         // Clear unread for the newly selected char and refresh indicators
@@ -4621,7 +4630,7 @@
             _panelEl._vvCleanup = null;
         }
 
-        closeCharacterPicker();
+        closeMenus();
         // On a computer the emotion popup sits beside the panel, so it doesn't go with it
         if (emotionSystem) emotionSystem.closeEmotionPopup();
 
@@ -4663,6 +4672,7 @@
             e.stopPropagation();
             const menu = jQuery('#et-overflow-menu');
             const isOpen = menu.hasClass('et-overflow-menu-open');
+            if (!isOpen) closeMenus();
             menu.toggleClass('et-overflow-menu-open', !isOpen);
             updateTogetherItem();
         });
@@ -4720,6 +4730,7 @@
         jQuery('#et-overflow-settings').on('click', (e) => {
             e.stopPropagation();
             closeOverflowMenu();
+            closeMenus();
             settingsModal.openSettingsModal();
             moveModalToPortal('.et-settings-modal');
         });
@@ -4727,6 +4738,7 @@
         jQuery('#et-overflow-gallery').on('click', (e) => {
             e.stopPropagation();
             closeOverflowMenu();
+            closeMenus();
             if (gallery) gallery.openGalleryModal();
             moveModalToPortal('.et-gallery-overlay');
         });
@@ -4874,8 +4886,11 @@
         if (window.visualViewport && isMobileDevice()) {
             const panelEl = document.getElementById('et-panel');
             if (panelEl) {
+                let lastHeight = window.visualViewport.height;
                 const onVVResize = () => {
                     if (!panelOpen) return;
+                    closeMenusForKeyboard(lastHeight, window.visualViewport.height);
+                    lastHeight = window.visualViewport.height;
                     panelEl.style.height = window.visualViewport.height + 'px';
                     panelEl.style.top    = window.visualViewport.offsetTop  + 'px';
                 };
@@ -4916,9 +4931,8 @@
     }
 
     function openSocial() {
-        // The chat's menus (the header's ⋯ among them) go with the chat it covers
-        jQuery('#et-overflow-menu').removeClass('et-overflow-menu-open');
-        closeAllDotMenus();
+        // The page is a window over the chat: the chat's menus close
+        closeMenus();
         if (!socialView) {
             socialView = Social.createSocialView({
                 getSettings: () => settings,
@@ -5002,7 +5016,7 @@
             closeAllDotMenus();
             return;
         }
-        closeAllDotMenus();
+        closeMenus();
         const items = [];
         if (getCharAvatarUrl()) items.push(['view', 'fa-expand', 'View Avatar']);
         items.push(['change', 'fa-image', 'Change Avatar']);
@@ -5653,7 +5667,7 @@
             closeAllDotMenus();
             return;
         }
-        closeAllDotMenus();
+        closeMenus();
         const items = shareTypes().map(type =>
             `<button class="et-dots-item${type.id === shareType ? ' et-dots-item-current' : ''}" data-share-type="${type.id}"><i class="fa-solid ${type.icon}"></i><span>${escapeHtml(shareTypeLabel(type))}</span></button>`
         ).join('');
@@ -5695,7 +5709,7 @@
             closeAllDotMenus();
             return;
         }
-        closeAllDotMenus();
+        closeMenus();
         // A platform with its own voice or photo button (the mic and the picture in Instagram's field) leaves them out of the menu
         const platform = getActivePlatform();
         const itemsHtml = Object.entries(Features.getComposerModes(getActiveFeatures()))
@@ -5793,7 +5807,7 @@
         const charKey = getCharacterKey();
         const set = getStickerLibrary().find(s => s.id === tab.dataset.stickerSet);
         if (!charKey || !set) return;
-        closeAllDotMenus();
+        closeMenus();
         const on = stickerSetsFor(charKey).includes(set.id);
         const menu = jQuery(`<div class="et-dots-menu et-sticker-set-menu"><button class="et-dots-item${on ? ' et-dots-item-current' : ''}" data-sticker-set-for="${on ? 'off' : 'on'}"><i class="fa-solid ${on ? 'fa-check' : 'fa-user-plus'}"></i><span>${escapeHtml(`${set.name} · ${getCharacterName()}`)}</span></button></div>`);
         jQuery('#et-panel').append(menu);
@@ -5825,7 +5839,8 @@
             closeAttachPanel();
             return;
         }
-        closeAllDotMenus();
+        // The list moves up: open menus close rather than float where it was
+        closeMenus();
         const html = kind === 'stickers' ? stickerPanelHtml() : attachPanelHtml();
         if (!html) return;
         // Where the list stands before the panel changes
@@ -5926,6 +5941,8 @@
     function closeAttachPanel() {
         const panel = jQuery('#et-attach-panel');
         if (!panel.length) return;
+        // The list moves down (and a sticker set's menu loses its tab): open menus close
+        closeMenus();
         // Shrinks away the same way, then goes; a new "+" meanwhile opens a fresh one
         const fromBottom = messagesFromBottom();
         panel.removeAttr('id').css('height', '0px');
@@ -5976,7 +5993,7 @@
 
     /** Accept / Decline menu for a pending transfer from the character, anchored to its card. */
     function openTransferResponseMenu(card) {
-        closeAllDotMenus();
+        closeMenus();
         const amount = card.attr('data-amount') || '';
         const menu = jQuery(`
             <div class="et-dots-menu et-transfer-menu">
@@ -7962,6 +7979,7 @@
 
     /** A platform choice changed: re-render the chat with it (the history stays as it is). */
     function onPlatformChoiceChanged() {
+        closeMenus();
         saveSettings();
         activePlatformMemo = null;
         populatePlatformSelects();
@@ -8305,6 +8323,35 @@
     // 3-DOT BUBBLE MENU
     // ============================================================
 
+    /**
+     * The panel's menus: the ⋯ menu, a bubble's, the avatar's, the "+" and file-type menus,
+     * the tapback row, a transfer's, a sticker set's, and the character list. At most one
+     * is open: opening one closes the rest, and so does a window opening (settings,
+     * archives, the gallery, the X page) or the panel's content changing (another
+     * character or look, the panel closing). The emotion popup isn't one: it stays.
+     */
+    function closeMenus() {
+        closeAllDotMenus();
+        closeAllReactOverlays();
+        jQuery('#et-overflow-menu').removeClass('et-overflow-menu-open');
+        closeCharacterPicker();
+    }
+
+    // The visible height dropping by more than this is the on-screen keyboard coming up
+    const KEYBOARD_MIN_PX = 120;
+
+    /**
+     * The phone's keyboard coming up (the visible height dropping by `KEYBOARD_MIN_PX` or
+     * more) moves the panel's content: open menus close rather than stay where it was.
+     * Not when it's for a field in a menu (the character list's search). Its going down
+     * doesn't: a tap on "+" while typing does that, as its menu opens.
+     */
+    function closeMenusForKeyboard(before, after) {
+        if (before - after < KEYBOARD_MIN_PX) return;
+        if (document.activeElement?.closest?.('.et-dots-menu, #et-char-picker')) return;
+        closeMenus();
+    }
+
     function closeAllDotMenus() {
         jQuery('#et-attach-btn').removeClass('et-attach-open');
         jQuery('.et-dots-menu').each(function () {
@@ -8326,7 +8373,7 @@
         const partKey = partIndex === null ? 'main' : partIndex;
         const existing = jQuery(`.et-dots-menu[data-for="${msgIndex}"][data-is-user="${isUser ? 1 : 0}"][data-part="${partKey}"]`);
         if (existing.length) { closeAllDotMenus(); return; }
-        closeAllDotMenus();
+        closeMenus();
 
         const msg = getChatHistory()[msgIndex];
         const partCount = msg ? getMessageDisplayParts(msg).length : 1;
@@ -8756,7 +8803,7 @@
             return;
         }
 
-        closeAllReactOverlays();
+        closeMenus();
 
         const chosen = ChatViewModel.getUserTapbacks(msg, partCount, getReactionIds())[part] || [];
         const emojiHtml = FA_REACTIONS.map(r =>
@@ -9303,6 +9350,7 @@
     // ============================================================
 
     function openSaveLoadModal() {
+        closeMenus();
         if (saveLoadModal) saveLoadModal.openSaveLoadModal();
         moveModalToPortal('#et-sl-overlay');
     }
@@ -9701,6 +9749,7 @@
         });
 
         jQuery(document).on('click', '#et-open-settings-btn', () => {
+            closeMenus();
             settingsModal.openSettingsModal();
             moveModalToPortal('.et-settings-modal');
         });
