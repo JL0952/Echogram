@@ -23,13 +23,14 @@ const body = (iife.expression.callee || iife.expression.expression.callee).body.
 
 const WANT = [
     // data / view model
-    'RichMessages', 'Features', 'Stickers', 'stickerPresets', 'stickerLibrary', 'getStickerLibrary', 'ChatViewModel', 'Platform', 'Platforms', 'PLATFORM_IDS', 'activePlatformMemo', 'getActivePlatform',
+    'RichMessages', 'Features', 'Stickers', 'stickerPresets', 'stickerLibrary', 'getStickerLibrary', 'getModelFeatures', 'getCharacterStickerNames', 'stickerSetsFor', 'ChatViewModel', 'Platform', 'Platforms', 'PLATFORM_IDS', 'activePlatformMemo', 'getActivePlatform',
     'syncPlatformChrome', 'sharedFillFrame', 'updateSharedFill', 'queueSharedFill', 'watchSharedFill', 'fitTextsFrame', 'textGap', 'fitTexts', 'fitLyrics', 'queueFitTexts', 'watchTextFit', 'songArtTimer', 'requestSongArt', 'queueSongArtRefresh', 'populatePlatformSelects', 'bindPlatformSelects', 'onPlatformChoiceChanged', 'getColorScheme', 'getReactionIds', 'userRunStart', 'startInlineEdit', 'getActiveFeatures', 'platformHas',
     'getMessageDisplayParts', 'getMessageReactions', 'staggeredMessageKeys', 'shouldStaggerReveal', 'staggerRevealParts',
     // html
     'escapeHtml', 'convertEmoticonsToEmojis', 'formatMessageText', 'buildAvatarHtml', 'applyMemoryHighlights', '_highlightTextNode',
     // rendering and actions
     'renderMessages', 'showPrevSwipe', 'showNextSwipe', 'openImageAttachment', 'MESSAGE_ACTIONS', 'onMessageAction', 'bindMessageActions', 'onBubbleTap',
+    'BUBBLE_HOLD_MS', 'BUBBLE_HOLD_SLOP', 'bubbleHold', 'bubbleHeld', 'bubbleTarget', 'onBubblePointerDown', 'onBubblePointerMove', 'cancelBubbleHold', 'onBubbleContextMenu', 'swallowHeldClick', 'openBubbleMenu',
     'renderedViews', 'renderedFrame', 'getRenderFrame', 'updateMessageList', 'replaceMessageElement', 'scrollMessagesToEnd',
     'getChatViewOptions', 'getMessageRenderContext', 'getCharacterUsername', 'findMessageElement', 'decorateMessage', 'refreshMessages',
     'renderedEntry', 'tapbackMarks', 'keepInPlace',

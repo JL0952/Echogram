@@ -37,28 +37,6 @@
     pointer-events: none !important;
 }
 
-/* A bubble's controls ("⋯", and the tapback button on the character's) stay
-   hidden until the bubble is tapped: the core marks the tapped bubble
-   data-et-revealed, and a second tap or a tap elsewhere in the list clears it.
-   Hover is overridden: iOS leaves :hover on the last thing tapped, and a hover
-   that changed what's visible would also cost a double tap. */
-.et-bubble:hover > .et-bubble-tools {
-    opacity: 0 !important;
-    pointer-events: none !important;
-}
-
-.et-bubble[data-et-revealed] > .et-bubble-tools {
-    opacity: 1 !important;
-    pointer-events: auto !important;
-}
-
-/* Easier to hit with a finger */
-.et-bubble-tool {
-    width: 28px;
-    height: 28px;
-    font-size: 0.85rem;
-}
-
 /* ============================================================
    FLOATING PANEL â€” full-screen on mobile
    The JS openPanel() mobile branch skips setting width/height/

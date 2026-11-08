@@ -7394,19 +7394,10 @@
      * data-is-user / data-part at or around the clicked element.
      */
     const MESSAGE_ACTIONS = {
-        // A bubble's tapback button, or the tapbacks already on it
+        // The tapbacks already on a bubble (its menu is a hold or right-click on the bubble: openBubbleMenu)
         'react': ({ el, msgIndex, partIndex }) => {
             closeAllDotMenus();
             toggleReactOverlay(jQuery(el), msgIndex, partIndex);
-        },
-        // The footer menu acts on the whole message, a bubble's menu on that bubble
-        'menu': ({ el, msgIndex, isUser }) => {
-            closeAllReactOverlays();
-            toggleDotsMenu(jQuery(el), msgIndex, isUser, null);
-        },
-        'part-menu': ({ el, msgIndex, isUser, partIndex }) => {
-            closeAllReactOverlays();
-            toggleDotsMenu(jQuery(el), msgIndex, isUser, partIndex);
         },
         'swipe-prev': ({ msgIndex }) => {
             closeAllDotMenus();
@@ -7489,27 +7480,94 @@
     function bindMessageActions() {
         const inner = jQuery('#et-messages-inner');
         inner.off('click.et-actions').on('click.et-actions', '[data-et-action]', onMessageAction);
-        // Capture phase: a tap on a photo or card inside a bubble counts too, though
-        // its own action stops the click from bubbling
+        // A bubble held down, or right-clicked, opens its menu
         const el = inner[0];
-        if (el && !el._etBubbleTapBound) {
-            el._etBubbleTapBound = true;
-            el.addEventListener('click', onBubbleTap, true);
+        if (el && !el._etBubbleHoldBound) {
+            el._etBubbleHoldBound = true;
+            el.addEventListener('pointerdown', onBubblePointerDown);
+            el.addEventListener('pointermove', onBubblePointerMove, { passive: true });
+            for (const type of ['pointerup', 'pointercancel', 'pointerleave']) el.addEventListener(type, cancelBubbleHold);
+            el.addEventListener('contextmenu', onBubbleContextMenu);
+            // Capture phase: the click that ends a hold does nothing else (a photo's, a voice message's)
+            el.addEventListener('click', swallowHeldClick, true);
         }
     }
 
-    /**
-     * A tap on a bubble marks it data-et-revealed (and unmarks the rest); a second
-     * tap on it, or a tap elsewhere in the list, unmarks it. Platforms use it to show
-     * a bubble's controls on touch screens only when asked (WeChat's "⋯").
-     */
-    function onBubbleTap(e) {
-        // A revealed control itself
-        if (e.target.closest('[data-et-action="menu"], [data-et-action="part-menu"], [data-et-action="react"], [data-et-action="avatar"]')) return;
-        const bubble = e.target.closest('[data-et-role~="bubble"]');
-        const wasRevealed = !!bubble?.hasAttribute('data-et-revealed');
-        this.querySelectorAll('[data-et-revealed]').forEach(b => b.removeAttribute('data-et-revealed'));
-        if (bubble && !wasRevealed) bubble.setAttribute('data-et-revealed', '');
+    // ── A bubble's menu: held down (touch, or a mouse button) or right-clicked ──
+    // As in messaging apps: where the platform has tapbacks, a character's bubble gets
+    // the tapback row above it; the menu (Reply, Copy, Edit, Delete…) goes under it.
+    // A message's last bubble's menu covers the whole message, the others' their bubble.
+    const BUBBLE_HOLD_MS = 500;
+    // A finger moving further than this is scrolling, not holding
+    const BUBBLE_HOLD_SLOP = 10;
+    let bubbleHold = null;
+    // The bubble a hold just opened the menu of, until the click that ends it goes by
+    let bubbleHeld = null;
+
+    /** The bubble a press on `target` holds, or null (one being edited, its controls, a tapback, an avatar). */
+    function bubbleTarget(target) {
+        if (!target?.closest) return null;
+        if (target.closest('[contenteditable="true"], [data-et-role="edit-save"], [data-et-role="edit-cancel"], [data-et-action="swipe-prev"], [data-et-action="swipe-next"], [data-et-action="react"], [data-et-action="avatar"]')) return null;
+        return target.closest('[data-et-role~="bubble"]');
+    }
+
+    function onBubblePointerDown(e) {
+        bubbleHeld = null;
+        cancelBubbleHold();
+        if (e.pointerType === 'mouse' && e.button !== 0) return;
+        const bubble = bubbleTarget(e.target);
+        if (!bubble) return;
+        bubbleHold = {
+            x: e.clientX,
+            y: e.clientY,
+            timer: setTimeout(() => {
+                bubbleHold = null;
+                bubbleHeld = bubble;
+                openBubbleMenu(bubble);
+            }, BUBBLE_HOLD_MS),
+        };
+    }
+
+    function onBubblePointerMove(e) {
+        if (bubbleHold && Math.hypot(e.clientX - bubbleHold.x, e.clientY - bubbleHold.y) > BUBBLE_HOLD_SLOP) cancelBubbleHold();
+    }
+
+    function cancelBubbleHold() {
+        if (bubbleHold) clearTimeout(bubbleHold.timer);
+        bubbleHold = null;
+    }
+
+    /** A right-click (or a touch screen's own long-press menu) opens the bubble's menu instead of the browser's. */
+    function onBubbleContextMenu(e) {
+        const bubble = bubbleTarget(e.target);
+        if (!bubble) return;
+        e.preventDefault();
+        cancelBubbleHold();
+        if (bubbleHeld === bubble) return;
+        openBubbleMenu(bubble);
+    }
+
+    function swallowHeldClick(e) {
+        if (!bubbleHeld || !bubbleHeld.contains(e.target)) return;
+        e.stopPropagation();
+        e.preventDefault();
+        bubbleHeld = null;
+    }
+
+    /** A bubble's menu, and above a character's bubble the tapback row where the platform has tapbacks. */
+    function openBubbleMenu(bubble) {
+        const msgEl = bubble.closest('[data-et-role~="message"]');
+        const msgIndex = parseInt(msgEl?.dataset.index, 10);
+        const msg = getChatHistory()[msgIndex];
+        if (!msg) return;
+        const bubbles = [...msgEl.querySelectorAll('[data-et-role~="bubble"]')];
+        const part = bubble.matches('[data-et-role~="main"]') || bubbles.indexOf(bubble) === bubbles.length - 1 ? null : bubbles.indexOf(bubble);
+        closeAllReactOverlays();
+        toggleDotsMenu(jQuery(bubble), msgIndex, !!msg.is_user, part);
+        // Opened (a second hold on the same bubble closes it)
+        if (!msg.is_user && platformHas('react') && jQuery('.et-dots-menu:not(.et-dots-menu-closing)').length) {
+            toggleReactOverlay(jQuery(bubble), msgIndex, part);
+        }
     }
 
     /**
@@ -7686,7 +7744,7 @@
         jQuery('#et-voice-btn').prop('hidden', !(platform.voiceButton && modes.voice));
         // A mode the platform lacks ends; one it has is redrawn (voice moves between "+" and the voice button)
         if (composeMode) setComposeMode(modes[composeMode] ? composeMode : null);
-        if (!platform.composerPanel) closeAttachPanel();
+        if (!platform.composerPanel && jQuery('#et-attach-panel').attr('data-et-panel') !== 'stickers') closeAttachPanel();
         // Stickers: the button where the platform has them; their panel goes where it hasn't
         const stickers = platform.features.includes('sticker');
         jQuery('#et-sticker-btn').prop('hidden', !stickers);
@@ -8139,34 +8197,31 @@
 
         jQuery('#et-panel').append(menu);
 
-        // Position relative to button
-        const btnRect = btn[0].getBoundingClientRect();
+        // Under the bubble, lined up with its outer edge (yours on the right, theirs on the
+        // left); above it when there's no room below, and within the panel either way
+        const anchor = btn[0].getBoundingClientRect();
         const panelRect = document.getElementById('et-panel').getBoundingClientRect();
-        const menuW = 160;
+        const menuW = menu.outerWidth() || 160;
         const menuH = menu.outerHeight() || 160;
-
-        let left = btnRect.left - panelRect.left - menuW + btnRect.width + 4;
-        let top = btnRect.top - panelRect.top - 8;
-
+        const side = isUser ? 'right' : 'left';
+        let left = isUser ? anchor.right - panelRect.left - menuW : anchor.left - panelRect.left;
         left = Math.max(8, Math.min(panelRect.width - menuW - 8, left));
-
-        if (top + menuH > panelRect.height) {
-            top = btnRect.bottom - panelRect.top - menuH + 4;
-            menu.css('transform-origin', 'bottom right');
-        } else {
-            menu.css('transform-origin', 'top right');
+        let top = anchor.bottom - panelRect.top + 6;
+        let origin = `top ${side}`;
+        if (top + menuH > panelRect.height - 8) {
+            top = anchor.top - panelRect.top - menuH - 6;
+            origin = `bottom ${side}`;
         }
-
-        top = Math.max(8, top);
-
-        menu.css({ left: left + 'px', top: top + 'px' });
+        top = Math.max(8, Math.min(panelRect.height - menuH - 8, top));
+        menu.css({ left: left + 'px', top: top + 'px', 'transform-origin': origin });
         requestAnimationFrame(() => menu.addClass('et-dots-menu-open'));
 
         // Close on outside click (once)
         setTimeout(() => {
             jQuery(document).one('click.et-dots-outside', function (e) {
-                if (!jQuery(e.target).closest('.et-dots-menu, [data-et-action="menu"], [data-et-action="part-menu"]').length) {
+                if (!jQuery(e.target).closest('.et-dots-menu').length) {
                     closeAllDotMenus();
+                    closeAllReactOverlays();
                 }
             });
         }, 0);
@@ -8174,6 +8229,8 @@
         // Bind actions
         menu.find('.et-dots-item').on('click', function (e) {
             e.stopPropagation();
+            // The tapback row opened with it goes
+            closeAllReactOverlays();
             const action = jQuery(this).data('action');
             handleDotsAction(action, msgIndex, isUser, jQuery(this), targetPart);
         });
@@ -8544,7 +8601,7 @@
         const overlayW = 340;
         const overlayH = 72;
 
-        let left = btnRect.left - panelRect.left - overlayW + btnRect.width;
+        let left = btnRect.left - panelRect.left;
         let top = btnRect.top - panelRect.top - overlayH - 8;
 
         // Clamp within panel
@@ -8564,6 +8621,8 @@
             const emoji = jQuery(this).data('emoji');
             addReaction(msgIndex, emoji, part);
             closeAllReactOverlays();
+            // The bubble's menu opened with it goes too
+            closeAllDotMenus();
         });
     }
 

@@ -250,11 +250,7 @@
         const last = m.parts.length - 1;
 
         const rows = m.parts.map((p, j) => {
-            // A bubble's own menu, except the last row, whose menu covers the whole message
-            const menu = j === last
-                ? `data-et-action="menu" data-index="${m.index}"`
-                : `data-et-action="part-menu" data-index="${m.index}" data-part="${j}"`;
-            return `<div class="wx-row wx-row-${side}" data-et-role="bubble${j === last ? ' main' : ''}" title="${tip}">${avatarHtml}<div class="wx-bubble-wrap">${senderHtml}${part(p, ctx, m)}${replyQuote(p, ctx)}${j === last ? imageAttachment(m.imageAttachment) : ''}</div><button class="wx-more" ${menu} data-is-user="${m.isUser ? 1 : 0}" title="更多">⋯</button></div>`;
+            return `<div class="wx-row wx-row-${side}" data-et-role="bubble${j === last ? ' main' : ''}" title="${tip}">${avatarHtml}<div class="wx-bubble-wrap">${senderHtml}${part(p, ctx, m)}${replyQuote(p, ctx)}${j === last ? imageAttachment(m.imageAttachment) : ''}</div></div>`;
         }).join('');
 
         const swipe = m.swipe

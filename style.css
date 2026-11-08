@@ -11053,6 +11053,150 @@ textarea.et-mem-save-snippet-edit::placeholder {
     cursor: default;
 }
 
+/* The sticker button, at the field's end: a keyboard while its panel is up */
+.et-sticker-btn {
+    -webkit-appearance: none;
+    appearance: none;
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    margin: 0 -6px 0 8px !important;
+    padding: 0 !important;
+    border: none !important;
+    background: none !important;
+    box-shadow: none !important;
+    color: var(--et-text-muted);
+    font-size: 1.05rem;
+    cursor: pointer;
+    transition: color 0.2s;
+}
+
+.et-sticker-btn:hover:not(:disabled),
+.et-sticker-btn.et-sticker-btn-active {
+    color: var(--et-theme-color);
+}
+
+.et-sticker-btn.et-sticker-btn-active i::before {
+    content: "\f11c";
+}
+
+.et-sticker-btn:disabled {
+    opacity: 0.4;
+    cursor: default;
+}
+
+.et-sticker-btn[hidden] {
+    display: none !important;
+}
+
+/* ── Sticker panel (Echogram's own look): rises under the input bar, as WeChat's;
+   the add button and a tab per set along the top, the set's stickers four to a row ── */
+.et-attach-panel {
+    flex-shrink: 0;
+    box-sizing: border-box;
+    overflow: hidden;
+    border-top: 1px solid var(--et-border);
+    background: var(--et-header-bg);
+    transition: height 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.et-sticker-tabs {
+    display: flex;
+    gap: 4px;
+    padding: 6px 10px;
+    overflow-x: auto;
+    scrollbar-width: none;
+    border-bottom: 1px solid var(--et-border);
+}
+
+.et-sticker-add,
+.et-sticker-tab {
+    display: grid;
+    flex-shrink: 0;
+    place-items: center;
+    width: 44px;
+    height: 36px;
+    padding: 0;
+    border: 0;
+    border-radius: 10px;
+    background: none;
+    color: var(--et-text);
+    cursor: pointer;
+}
+
+.et-sticker-add svg {
+    width: 22px;
+    height: 22px;
+}
+
+.et-sticker-add:disabled {
+    opacity: 0.4;
+}
+
+.et-sticker-tab {
+    -webkit-touch-callout: none;
+    user-select: none;
+}
+
+.et-sticker-tab img {
+    width: 28px;
+    height: 28px;
+    object-fit: contain;
+}
+
+.et-sticker-tab-active {
+    background: color-mix(in srgb, var(--et-theme-color) 18%, transparent);
+}
+
+.et-sticker-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    align-content: start;
+    gap: 6px 4px;
+    box-sizing: border-box;
+    height: 240px;
+    padding: 10px 10px max(env(safe-area-inset-bottom, 0px), 10px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+
+.et-sticker-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
+    padding: 4px 0;
+    border: 0;
+    border-radius: 10px;
+    background: none;
+    cursor: pointer;
+}
+
+.et-sticker-item:hover,
+.et-sticker-item:active {
+    background: color-mix(in srgb, var(--et-text) 6%, transparent);
+}
+
+.et-sticker-item img {
+    width: 60px;
+    height: 60px;
+    object-fit: contain;
+}
+
+.et-sticker-item span {
+    max-width: 100%;
+    overflow: hidden;
+    color: var(--et-text-muted);
+    font-size: 11px;
+    line-height: 14px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
 /* The platform has nothing to attach / records voice another way / not sharing a file */
 .et-attach-btn[hidden],
 .et-voice-btn[hidden],
@@ -11474,6 +11618,21 @@ html.et-bg-light .et-music-play {
     padding: 0;
 }
 
+/* A sticker: the image on its own, 120px at most (a sticker's 240px image at 2×); with
+   no image, its name in brackets as a note */
+.et-sticker img {
+    display: block;
+    max-width: 120px;
+    max-height: 120px;
+    object-fit: contain;
+}
+
+.et-sticker:empty::before {
+    content: attr(data-name);
+    color: var(--et-text-muted);
+    font-size: 0.85rem;
+}
+
 /* Name, time and actions sit under a message's last bubble, outside it */
 .et-message .et-message-footer {
     border-top: none;
@@ -11490,60 +11649,14 @@ html.et-bg-light .et-music-play {
     color: var(--et-theme-color, #4da6ff);
 }
 
-/* A bubble's own controls: "⋯", and beside it on the character's bubbles the
-   tapback button. The same on every bubble, just outside it (right of the
-   character's, left of yours), with no box of their own. They show on hover, or
-   once the bubble is tapped (data-et-revealed; on a phone, mobile-style.css shows
-   them only then). The padding bridges the gap to the bubble, so the pointer
-   can cross it without losing the hover. */
-.et-bubble-tools {
-    position: absolute;
-    top: 50%;
-    left: 100%;
-    transform: translateY(-50%);
-    display: flex;
-    align-items: center;
-    gap: 2px;
-    padding-left: 4px;
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity 0.15s;
-    z-index: 5;
-}
-
-.et-message-user .et-bubble-tools {
-    left: auto;
-    right: 100%;
-    padding-left: 0;
-    padding-right: 4px;
-}
-
-.et-bubble:hover > .et-bubble-tools,
-.et-bubble[data-et-revealed] > .et-bubble-tools,
-.et-bubble-tools:focus-within {
-    opacity: 1;
-    pointer-events: auto;
-}
-
-.et-bubble-tool {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 22px;
-    height: 22px;
-    padding: 0;
-    border: none;
-    border-radius: 50%;
-    background: transparent;
-    color: var(--et-text-muted);
-    font-size: 0.78rem;
-    cursor: pointer;
-    transition: color 0.15s, background 0.15s;
-}
-
-.et-bubble-tool:hover {
-    color: var(--et-theme-color);
-    background: rgba(255, 255, 255, 0.06);
+/* A bubble held down (or right-clicked) opens its menu: on touch screens, no callout,
+   magnifier or text selection while it's held (Copy is in the menu) */
+@media (hover: none) and (pointer: coarse) {
+    [data-et-role~="bubble"] {
+        -webkit-touch-callout: none;
+        -webkit-user-select: none;
+        user-select: none;
+    }
 }
 
 /* The message a bubble answers (<reply>): a faded one-line quote above it, as

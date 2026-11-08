@@ -172,9 +172,20 @@
     }
 
     /** Inner content of one bubble: formatted text, a photo card, a voice message, a place, a file, link or song card, or a transfer card. */
+    /**
+     * A sticker: the image on its own (its bubble is a card's, with no surface), or the
+     * name in brackets when the library has nothing close or the image won't load (style.css).
+     */
+    function sticker(p, ctx) {
+        const name = ctx.escapeHtml(p.name);
+        const img = p.url ? `<img src="${ctx.escapeHtml(p.url)}" alt="${name}" draggable="false" onerror="this.remove()">` : '';
+        return `<div class="et-sticker" data-name="[${name}]">${img}</div>`;
+    }
+
     function part(p, ctx) {
         if (p.type === 'photo') return photoCard(p, ctx);
         if (p.type === 'voice') return voiceNote(p, ctx);
+        if (p.type === 'sticker') return sticker(p, ctx);
         if (p.type === 'location') return locationCard(p, ctx);
         if (p.type === 'file') return fileCard(p, ctx);
         if (p.type === 'link') return linkCard(p, ctx);
@@ -193,22 +204,6 @@
         return ` et-bubble-card et-bubble-${kind}`;
     }
 
-    /**
-     * A bubble's own controls, the same on every bubble: "⋯", and beside it on the
-     * character's bubbles the tapback button. They sit outside the bubble, with no
-     * box of their own, and show once the bubble is tapped (style.css). The main
-     * bubble's menu also covers the whole message.
-     */
-    function bubbleTools(m, j, main, ctx) {
-        const menu = main
-            ? `data-et-action="menu" data-index="${m.index}"`
-            : `data-et-action="part-menu" data-index="${m.index}" data-part="${j}"`;
-        const react = !m.isUser && ctx.has('react')
-            ? `<button class="et-bubble-tool" data-et-action="react" data-index="${m.index}" data-part="${j}" title="React"><i class="fa-regular fa-face-smile"></i></button>`
-            : '';
-        return `<div class="et-bubble-tools"><button class="et-bubble-tool" ${menu} data-is-user="${m.isUser ? 1 : 0}" title="More options"><i class="fa-solid fa-ellipsis-vertical"></i></button>${react}</div>`;
-    }
-
     /** The message a bubble answers (<reply>), above it: a faded one-line quote, as iMessage shows a reply's original. */
     function replyQuote(p, ctx) {
         if (!p.replyTo) return '';
@@ -223,7 +218,7 @@
      */
     function leadingBubbles(m, sideClass, ctx) {
         return m.parts.slice(0, -1).map((p, j) =>
-            `${replyQuote(p, ctx)}<div class="et-bubble ${sideClass} et-bubble-part${partBubbleClass(p)}${tapbackClass(m, p, j, ctx)}" data-et-role="bubble">${part(p, ctx)}${tapbackBadge(bubbleTapbacks(p), m, j, ctx)}${bubbleTools(m, j, false, ctx)}</div>`
+            `${replyQuote(p, ctx)}<div class="et-bubble ${sideClass} et-bubble-part${partBubbleClass(p)}${tapbackClass(m, p, j, ctx)}" data-et-role="bubble">${part(p, ctx)}${tapbackBadge(bubbleTapbacks(p), m, j, ctx)}</div>`
         ).join('');
     }
 
@@ -300,7 +295,6 @@
                 <div class="et-bubble et-bubble-user et-bubble-main${mainCardClass}" data-et-role="bubble main">
                     ${part(mainPart, ctx)}
                     ${mainTapback}
-                    ${bubbleTools(m, last, true, ctx)}
                 </div>
                 <div class="et-message-footer">
                     <span class="et-message-time" title="${fullDateToolip}">${time}</span>
@@ -331,7 +325,6 @@
                         ${part(mainPart, ctx)}
                         ${imageAttachment(m.imageAttachment)}
                         ${mainTapback}
-                        ${bubbleTools(m, last, true, ctx)}
                     </div>
                     ${swipeNavHtml}
                     <div class="et-message-footer">
@@ -396,7 +389,7 @@
         id: 'echotext',
         name: 'Echogram',
         // Rich-message features this look supports (lib/features.js)
-        features: ['photo', 'voice', 'location', 'react', 'reply', 'transfer', 'file', 'link', 'music'],
+        features: ['photo', 'voice', 'sticker', 'location', 'react', 'reply', 'transfer', 'file', 'link', 'music'],
         templates: {
             message,
             part,

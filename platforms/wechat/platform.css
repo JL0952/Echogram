@@ -1526,44 +1526,6 @@
     color: #fff;
 }
 
-/* ── EchoText controls (WeChat has none; kept quiet) ────────── */
-
-/* More options: shows on hover; on touch screens, once the bubble is tapped */
-[data-platform="wechat"] .wx-more {
-    flex: 0 0 auto;
-    align-self: center;
-    padding: 4px;
-    border: 0;
-    background: none;
-    color: var(--wx-muted);
-    font-size: 16px;
-    line-height: 1;
-    opacity: 0;
-    cursor: pointer;
-    transition: opacity 0.15s;
-}
-
-[data-platform="wechat"] .wx-row:hover .wx-more,
-[data-platform="wechat"] .wx-more:focus-visible {
-    opacity: 1;
-}
-
-/* Touch screens: hidden (and untappable) until its bubble is tapped, which the
-   core marks data-et-revealed; a tap elsewhere hides it again. Hover is overridden
-   because iOS leaves :hover on whatever was tapped last */
-@media (hover: none) {
-    [data-platform="wechat"] .wx-more,
-    [data-platform="wechat"] .wx-row:hover .wx-more {
-        opacity: 0;
-        pointer-events: none;
-    }
-
-    [data-platform="wechat"] .wx-row[data-et-revealed] .wx-more {
-        opacity: 1;
-        pointer-events: auto;
-    }
-}
-
 /* Versions of the last reply: under its bubbles, aligned with them */
 [data-platform="wechat"] .wx-swipe {
     display: flex;

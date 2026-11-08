@@ -444,8 +444,8 @@
    EchoText's own input elements: the blue camera button is "+" (it opens the
    photo / voice / transfer menu, and shows the mode's icon while composing), the
    textarea is the round field, the voice button the mic, the send button
-   "Send" (a stop button while a reply is generated). Photo and sticker are
-   drawn, not buttons. */
+   "Send" (a stop button while a reply is generated). The photo glyph is drawn;
+   the sticker one is the sticker button where the look has stickers. */
 
 [data-platform="instagram"] [data-et-role~="input-bar"] {
     position: relative;
@@ -485,6 +485,7 @@
 [data-platform="instagram"] #et-attach-btn,
 [data-platform="instagram"] #et-input,
 [data-platform="instagram"] #et-voice-btn,
+[data-platform="instagram"] #et-sticker-btn,
 [data-platform="instagram"] #et-send-btn,
 [data-platform="instagram"] [data-et-role~="input-bar"]::before,
 [data-platform="instagram"] [data-et-role~="input-bar"]::after {
@@ -613,10 +614,56 @@
     margin-right: 12px;
 }
 
+/* The smile is the sticker button itself, where the look has stickers; a keyboard while its panel is up */
+[data-platform="instagram"] [data-et-role~="input-bar"]:has(#et-sticker-btn:not([hidden]))::after {
+    display: none;
+}
+
+[data-platform="instagram"] #et-sticker-btn {
+    grid-column: 2;
+    justify-self: end;
+    align-self: end;
+    z-index: 1;
+    display: grid;
+    place-items: center;
+    width: 24px;
+    height: 24px;
+    margin: 0 12px 10px 0 !important;
+    padding: 0;
+    border: 0;
+    color: var(--ig-text);
+    background: none;
+    cursor: pointer;
+}
+
+[data-platform="instagram"] #et-sticker-btn[hidden] {
+    display: none;
+}
+
+[data-platform="instagram"] #et-sticker-btn > i {
+    display: none;
+}
+
+[data-platform="instagram"] #et-sticker-btn::before {
+    content: "";
+    display: block;
+    width: 24px;
+    height: 24px;
+    background: currentColor;
+    -webkit-mask: var(--ig-icon-smile) center / contain no-repeat;
+    mask: var(--ig-icon-smile) center / contain no-repeat;
+}
+
+[data-platform="instagram"] #et-sticker-btn.et-sticker-btn-active::before {
+    -webkit-mask-image: var(--ig-icon-keyboard);
+    mask-image: var(--ig-icon-keyboard);
+}
+
 /* Composing a photo or transfer: the field takes the whole width, without the
    icons; in voice mode only the mic stays, as a keyboard to switch back */
 [data-platform="instagram"] [data-et-role~="input-bar"]:has(.et-input-wrap-compose)::before,
 [data-platform="instagram"] [data-et-role~="input-bar"]:has(.et-input-wrap-compose)::after,
+[data-platform="instagram"] [data-et-role~="input-bar"]:has(.et-input-wrap-compose) #et-sticker-btn,
 [data-platform="instagram"] [data-et-role~="input-bar"]:has(.et-input-wrap-compose:not([data-et-compose="voice"])) #et-voice-btn {
     display: none;
 }
@@ -681,6 +728,8 @@
 }
 
 [data-platform="instagram"] [data-et-role~="input-bar"]:has(#et-input:not(:placeholder-shown)) #et-voice-btn,
+[data-platform="instagram"] [data-et-role~="input-bar"]:has(#et-input:not(:placeholder-shown)) #et-sticker-btn,
+[data-platform="instagram"] [data-et-role~="input-bar"]:has(#et-send-btn.et-send-stop) #et-sticker-btn,
 [data-platform="instagram"] [data-et-role~="input-bar"]:has(#et-input:not(:placeholder-shown))::before,
 [data-platform="instagram"] [data-et-role~="input-bar"]:has(#et-input:not(:placeholder-shown))::after,
 [data-platform="instagram"] [data-et-role~="input-bar"]:has(#et-send-btn.et-send-stop) #et-voice-btn,
@@ -1658,46 +1707,6 @@
     display: none;
 }
 
-/* ── A bubble's own controls: shown on hover, or once it's tapped ── */
-
-[data-platform="instagram"] .ig-tools {
-    display: flex;
-    align-items: center;
-    gap: 2px;
-    align-self: center;
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity 0.15s;
-}
-
-[data-platform="instagram"] .ig-row-me .ig-tools {
-    flex-direction: row-reverse;
-}
-
-[data-platform="instagram"] .ig-row:hover .ig-tools,
-[data-platform="instagram"] .ig-row[data-et-revealed] .ig-tools,
-[data-platform="instagram"] .ig-tools:focus-within {
-    opacity: 1;
-    pointer-events: auto;
-}
-
-[data-platform="instagram"] .ig-tools .et-bubble-tool {
-    color: var(--ig-muted);
-}
-
-/* Touch screens: only once tapped (iOS leaves :hover on whatever was tapped last) */
-@media (hover: none) {
-    [data-platform="instagram"] .ig-row:hover .ig-tools {
-        opacity: 0;
-        pointer-events: none;
-    }
-
-    [data-platform="instagram"] .ig-row[data-et-revealed] .ig-tools {
-        opacity: 1;
-        pointer-events: auto;
-    }
-}
-
 /* ── A generated image, or its placeholder ──────────────────── */
 
 [data-platform="instagram"] .ig-image {
@@ -1770,3 +1779,42 @@
 [data-platform="instagram"] .ig-edit-btn-primary {
     color: #8b5cf6;
 }
+
+/* ── Stickers: in a message the image on its own, no bubble (the name in brackets
+   without one); the panel in Instagram's colours (layout from style.css) ── */
+[data-platform="instagram"] .ig-sticker img {
+    display: block;
+    max-width: 120px;
+    max-height: 120px;
+    object-fit: contain;
+}
+
+[data-platform="instagram"] .ig-sticker:empty::before {
+    content: attr(data-name);
+    color: var(--ig-muted);
+    font-size: 13px;
+}
+
+[data-platform="instagram"] .et-attach-panel {
+    border-top: 0;
+    background: var(--ig-bg);
+    font-family: var(--ig-font);
+}
+
+[data-platform="instagram"] .et-sticker-tabs {
+    border-bottom: 0.5px solid var(--ig-in);
+}
+
+[data-platform="instagram"] .et-sticker-add {
+    color: var(--ig-text);
+}
+
+[data-platform="instagram"] .et-sticker-tab-active,
+[data-platform="instagram"] .et-sticker-item:active {
+    background: var(--ig-in);
+}
+
+[data-platform="instagram"] .et-sticker-item span {
+    color: var(--ig-muted);
+}
+

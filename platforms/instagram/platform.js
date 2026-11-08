@@ -152,9 +152,20 @@
     }
 
     /** One bubble's content: text, a photo, a voice message, a place, a link card or a song. */
+    /**
+     * A sticker, as Instagram sends one: the image on its own, no bubble; the name in
+     * brackets when there's no image for it (platform.css).
+     */
+    function sticker(p, ctx) {
+        const name = ctx.escapeHtml(p.name);
+        const img = p.url ? `<img src="${ctx.escapeHtml(p.url)}" alt="${name}" draggable="false" onerror="this.remove()">` : '';
+        return `<div class="ig-sticker" data-name="[${name}]">${img}</div>`;
+    }
+
     function part(p, ctx) {
         if (p.type === 'photo') return photo(p, ctx);
         if (p.type === 'voice') return voice(p, ctx);
+        if (p.type === 'sticker') return sticker(p, ctx);
         if (p.type === 'location') return locationCard(p, ctx);
         if (p.type === 'link') return linkCard(p, ctx);
         if (p.type === 'music') return p.lyrics?.length ? lyricsCard(p, ctx) : musicCard(p, ctx);
@@ -197,21 +208,6 @@
         return `<div class="ig-reactions${isNew}" data-et-role="tapback" title="${label}"${action}>${known.map(id => `<span>${EMOJI[id]}</span>`).join('')}</div>`;
     }
 
-    /**
-     * A bubble's own controls, shown once it's hovered or tapped: "⋯" (the main
-     * bubble's covers the whole message), and on the character's bubbles the
-     * tapback button. EchoText's own buttons (style.css .et-bubble-tool).
-     */
-    function tools(m, j, main, ctx) {
-        const menu = main
-            ? `data-et-action="menu" data-index="${m.index}"`
-            : `data-et-action="part-menu" data-index="${m.index}" data-part="${j}"`;
-        const react = !m.isUser && ctx.has('react')
-            ? `<button class="et-bubble-tool" data-et-action="react" data-index="${m.index}" data-part="${j}" title="React"><i class="fa-regular fa-face-smile"></i></button>`
-            : '';
-        return `<div class="ig-tools"><button class="et-bubble-tool" ${menu} data-is-user="${m.isUser ? 1 : 0}" title="More options"><i class="fa-solid fa-ellipsis-vertical"></i></button>${react}</div>`;
-    }
-
     function imageAttachment(attachment) {
         if (!attachment || attachment.type !== 'image') return '';
         if (attachment.status === 'error') return `<div class="ig-placeholder">${attachment.error || 'Couldn\'t send the photo'}</div>`;
@@ -244,7 +240,7 @@
             const reacted = ids.some(id => EMOJI[id]) ? ' ig-row-reacted' : '';
             const face = m.isUser ? '' : `<div class="ig-avatar-slot">${main ? avatar(m, ctx) : ''}</div>`;
             const kind = p.type === 'photo' ? ' ig-col-photo' : '';
-            return `<div class="ig-row ig-row-${side}${reacted}" data-pos="${position(j, m.parts.length)}" data-et-role="bubble${main ? ' main' : ''}" title="${tip}">${face}<div class="ig-col${kind}">${replyQuote(p, m, ctx)}${part(p, ctx)}${reactions(ids, m, j, ctx)}${main ? imageAttachment(m.imageAttachment) : ''}</div>${tools(m, j, main, ctx)}</div>`;
+            return `<div class="ig-row ig-row-${side}${reacted}" data-pos="${position(j, m.parts.length)}" data-et-role="bubble${main ? ' main' : ''}" title="${tip}">${face}<div class="ig-col${kind}">${replyQuote(p, m, ctx)}${part(p, ctx)}${reactions(ids, m, j, ctx)}${main ? imageAttachment(m.imageAttachment) : ''}</div></div>`;
         }).join('');
 
         const swipe = m.swipe
@@ -297,7 +293,7 @@
         id: 'instagram',
         name: 'Instagram',
         // Links show as a preview card; Instagram has no files or transfers
-        features: ['photo', 'voice', 'location', 'react', 'reply', 'link', 'music'],
+        features: ['photo', 'voice', 'sticker', 'location', 'react', 'reply', 'link', 'music'],
         stylesheet: 'platform.css',
         // Your bubbles share one gradient across the visible list (index.js updateSharedFill)
         sharedFill: '.ig-row-me .ig-bubble',

@@ -430,17 +430,17 @@
         ];
         r.renderMessages(chat());
         const draft = () => document.getElementById('et-reply-draft');
-        const menuItems = (sel, msgIndex, isUser, part) => {
-            document.querySelectorAll('.et-dots-menu').forEach(m => m.remove());
-            r.toggleDotsMenu(jQuery(document.querySelector(sel)), msgIndex, isUser, part);
+        const menuItems = (msgIndex, part) => {
+            document.querySelectorAll('.et-dots-menu, .et-react-overlay').forEach(m => m.remove());
+            r.openBubbleMenu(bubbleOf(msgIndex, part));
             return [...document.querySelectorAll('.et-dots-menu .et-dots-item')];
         };
 
         // Every bubble's menu starts with Reply; a card is quoted as its note
-        const items = menuItems('[data-et-action="part-menu"][data-index="1"][data-part="1"]', 1, false, 1);
+        const items = menuItems(1, 1);
         res.replyFirst = items.map(i => i.dataset.action).join(',') === 'reply,copy_part,add_memory,delete';
-        res.mainReplyFirst = menuItems('[data-et-action="menu"][data-index="0"]', 0, true, null)[0]?.dataset.action === 'reply';
-        menuItems('[data-et-action="part-menu"][data-index="1"][data-part="1"]', 1, false, 1)[0].click();
+        res.mainReplyFirst = menuItems(0, null)[0]?.dataset.action === 'reply';
+        menuItems(1, 1)[0].click();
         res.draftShown = !draft().hidden && draft().querySelector('.et-reply-draft-name')?.textContent === 'Mira'
             && draft().querySelector('.et-reply-draft-text')?.textContent === '[Photo: a ticket]';
 
@@ -509,8 +509,7 @@
         const msgEl = () => panel.querySelector(`[data-et-role="message"][data-index="${idx}"]`);
         const bubbles = () => [...msgEl().querySelectorAll('[data-et-role~="bubble"]')];
         const pick = async (part, id) => {
-            const btn = bubbles()[part].querySelector('[data-et-action="react"]');
-            r.toggleReactOverlay(jQuery(btn), idx, part);
+            r.toggleReactOverlay(jQuery(bubbles()[part]), idx, part);
             const emoji = document.querySelector(`.et-react-overlay [data-emoji="${id}"]`);
             const on = emoji.classList.contains('et-overlay-emoji-on');
             emoji.click();
@@ -578,9 +577,12 @@
         { is_user: true, mes: '我知道你是谁', send_date: Date.now() - 120000, memoryHighlights: [{ text: '你是谁', category: 'custom', label: 'x' }] },
         { is_user: false, mes: '哈？\n我在便利店上夜班\nlook', send_date: Date.now() - 60000 },
     ];
-    const bubbleMenu = (sel, msgIndex, isUser, part) => {
-        document.querySelectorAll('.et-dots-menu').forEach(m => m.remove());
-        r.toggleDotsMenu(jQuery(document.querySelector(sel)), msgIndex, isUser, part);
+    // A message's bubble by part (null: its last, whose menu covers the whole message)
+    const bubbleOf = (msgIndex, part) => { const all = [...document.querySelectorAll(`[data-et-role~="message"][data-index="${msgIndex}"] [data-et-role~="bubble"]`)]; return all[part ?? all.length - 1]; };
+    // A bubble's menu, as holding it down opens it
+    const bubbleMenu = (msgIndex, part) => {
+        document.querySelectorAll('.et-dots-menu, .et-react-overlay').forEach(m => m.remove());
+        r.openBubbleMenu(bubbleOf(msgIndex, part));
         return [...document.querySelectorAll('.et-dots-menu .et-dots-item')];
     };
     let settingsModal = null;
@@ -615,20 +617,19 @@
         r.renderMessages(env.settings.chatHistory['mira.png']);
 
         // Every bubble's menu has Add Memory, after Copy; old highlight marks are gone
-        const part = '[data-et-action="part-menu"][data-index="1"][data-part="1"]';
-        res.partMenu = bubbleMenu(part, 1, false, 1).map(i => i.dataset.action).join(',') === 'reply,copy_part,add_memory,delete';
-        res.userMenu = bubbleMenu('[data-et-action="menu"][data-index="0"]', 0, true, null).some(i => i.dataset.action === 'add_memory');
+        res.partMenu = bubbleMenu(1, 1).map(i => i.dataset.action).join(',') === 'reply,copy_part,add_memory,delete';
+        res.userMenu = bubbleMenu(0, null).some(i => i.dataset.action === 'add_memory');
         res.noMarks = !panel.querySelector('mark');
 
         // It saves that bubble's words, with the keywords typed
-        bubbleMenu(part, 1, false, 1).find(i => i.dataset.action === 'add_memory').click();
+        bubbleMenu(1, 1).find(i => i.dataset.action === 'add_memory').click();
         res.modalText = jQuery('#et-mem-save-content-edit').val() === '我在便利店上夜班';
         jQuery('#et-mem-save-modal .et-mem-save-keys').val('夜班， 便利店');
         jQuery('#et-mem-save-confirm').trigger('click');
         res.saved = mems().length === 1 && mems()[0].content === '我在便利店上夜班' && JSON.stringify(mems()[0].keys) === '["夜班","便利店"]';
         await sleep(300);
         // The main menu saves the last bubble
-        bubbleMenu('[data-et-action="menu"][data-index="1"]', 1, false, null).find(i => i.dataset.action === 'add_memory').click();
+        bubbleMenu(1, null).find(i => i.dataset.action === 'add_memory').click();
         res.mainSavesLast = jQuery('#et-mem-save-content-edit').val() === 'look';
         jQuery('#et-mem-save-dismiss').trigger('click');
         await sleep(300);
@@ -671,7 +672,7 @@
         // Off: nothing in the prompt, no Add Memory
         env.settings.memoryEnabled = false;
         res.off = env.memorySystem.buildMemoryContext(['夜班']) === '';
-        res.offHidesMenu = !bubbleMenu(part, 1, false, 1).some(i => i.dataset.action === 'add_memory');
+        res.offHidesMenu = !bubbleMenu(1, 1).some(i => i.dataset.action === 'add_memory');
         env.settings.memoryEnabled = true;
         document.querySelectorAll('.et-dots-menu').forEach(m => m.remove());
         host.remove();
@@ -865,8 +866,8 @@
         window.SillyTavern.getContext = () => ({ getRequestHeaders: () => ({ 'Content-Type': 'application/json' }) });
         const photoMenu = () => {
             // (a menu still open, or still closing, from before would take the click)
-            document.querySelectorAll('.et-dots-menu').forEach(m => m.remove());
-            msg(2).querySelectorAll('.ig-row')[1].querySelector('[data-et-action="part-menu"]').click();
+            document.querySelectorAll('.et-dots-menu, .et-react-overlay').forEach(m => m.remove());
+            r.openBubbleMenu(msg(2).querySelectorAll('.ig-row')[1]);
             return [...document.querySelectorAll('.et-dots-menu .et-dots-item')];
         };
         const pick = (items, action) => items.find(b => b.dataset.action === action);
@@ -889,19 +890,15 @@
         delete env.pickImageFile;
         window.SillyTavern.getContext = contextBefore;
 
-        // The controls show once a bubble is tapped; the menu starts with Reply
+        // No controls beside a bubble; held down, the menu starts with Reply, Instagram's emoji bar above it
         const row = rows(2)[0];
-        row.setAttribute('data-et-revealed', '');
-        await sleep(250);
-        // (another row shows them too while the pointer happens to be over it)
-        const other = rows(2)[1];
-        res.toolsShow = css(row.querySelector('.ig-tools'), 'opacity') === '1' && (other.matches(':hover') || css(other.querySelector('.ig-tools'), 'opacity') === '0');
-        row.querySelector('[data-et-action="part-menu"]').click();
-        res.menu = document.querySelector('.et-dots-menu .et-dots-item')?.dataset.action === 'reply';
-        document.querySelectorAll('.et-dots-menu').forEach(m => m.remove());
+        res.noTools = !panel.querySelector('.ig-tools, .et-bubble-tool');
+        // (the page stubs closeAllReactOverlays: one left from the photo's menu goes here)
+        document.querySelectorAll('.et-dots-menu, .et-react-overlay').forEach(m => m.remove());
+        r.openBubbleMenu(row);
+        res.menu = document.querySelector('.et-dots-menu .et-dots-item')?.dataset.action === 'reply' && !!document.querySelector('.et-react-overlay');
 
         // A tapback on the first bubble shows as emoji on its lower edge, popping in
-        rows(2)[0].querySelector('.ig-tools [data-et-action="react"]').click();
         // The picker is Instagram's emoji bar
         const heartBtn = document.querySelector('.et-react-overlay [data-emoji="heart"]');
         res.pickerEmoji = getComputedStyle(heartBtn, '::before').content === '"❤️"' && css(heartBtn.querySelector('i'), 'display') === 'none'
@@ -2004,7 +2001,7 @@
     };
 
     // Settings that depend on another: greyed out and fixed while it's off, saying what's needed
-    // Stickers (6b, 6c) through the real code: the button only on WeChat, the panel (the add
+    // Stickers (6b, 6c) through the real code: the button on every look, the panel (the add
     // button, a tab per set, the stickers with their names, a tap sending one with the panel
     // staying up, the "+" panel taking its place and back), a ZIP imported from the settings
     // (its file names, the uploads, a new tab), which characters a set is on for (none at
@@ -2033,7 +2030,9 @@
         await sleep(300);
         const btn = () => document.getElementById('et-sticker-btn');
         const open = () => document.getElementById('et-attach-panel');
-        res.hiddenElsewhere = btn().hidden;
+        // Every look has stickers: the button in Echogram's own field and on Instagram too
+        const shownOn = async id => { s.defaultPlatform = id; r.renderMessages(chat()); await sleep(300); return !btn().hidden && getComputedStyle(btn()).display !== 'none'; };
+        res.shownEverywhere = await shownOn('echotext') && await shownOn('instagram');
         s.defaultPlatform = 'wechat';
         r.renderMessages(chat());
         await sleep(300);
@@ -2254,6 +2253,80 @@
         s.defaultPlatform = platformBefore;
         r.renderMessages(chat());
         res.ok = Object.entries(res).every(([k, v]) => k === 'importedNames' && params.get('zip') ? true : v === true);
+        return res;
+    };
+
+    // A bubble's menu (held down or right-clicked) on all three looks, through the real code
+    window.runHoldTest = async function () {
+        const res = {};
+        const s = env.settings;
+        const platformBefore = s.defaultPlatform;
+        const chat = () => s.chatHistory['mira.png'];
+        s.chatHistory['mira.png'] = [
+            { is_user: true, mes: 'hey', send_date: Date.now() - 120000 },
+            { is_user: false, mes: 'hi\n<photo>a cat</photo>\nwhat\'s up', send_date: Date.now() - 60000 },
+        ];
+        r.bindMessageActions();
+        const menu = () => document.querySelector('.et-dots-menu:not(.et-dots-menu-closing)');
+        const row = () => document.querySelector('.et-react-overlay:not(.et-react-overlay-closing)');
+        const clear = () => document.querySelectorAll('.et-dots-menu, .et-react-overlay').forEach(m => m.remove());
+        const bubbles = i => [...panel.querySelectorAll(`[data-et-role~="message"][data-index="${i}"] [data-et-role~="bubble"]`)];
+        const press = (el, type, extra = {}) => {
+            const box = el.getBoundingClientRect();
+            el.dispatchEvent(new PointerEvent(type, { bubbles: true, cancelable: true, pointerType: 'touch', isPrimary: true, clientX: box.left + 10, clientY: box.top + 10, ...extra }));
+        };
+        for (const id of ['echotext', 'wechat', 'instagram']) {
+            s.defaultPlatform = id;
+            r.renderMessages(chat());
+            await sleep(400);
+            clear();
+            const out = {};
+            out.noTools = !panel.querySelector('.et-bubble-tool, .ig-tools, .wx-more, [data-et-action="menu"], [data-et-action="part-menu"]');
+            // The photo bubble held: its menu (Add Photo: that bubble's), the tapback row above where there are tapbacks
+            const photo = bubbles(1)[1];
+            const photoEl = photo.querySelector('[data-et-action="photo-toggle"]');
+            press(photoEl, 'pointerdown');
+            await sleep(300);
+            out.notYet = !menu();
+            await sleep(350);
+            out.opened = !!menu() && [...menu().querySelectorAll('.et-dots-item')].some(i => i.dataset.action === 'photo_add')
+                && !menu().querySelector('[data-action="edit"]');
+            out.tapbacks = id === 'wechat' ? !row() : !!row();
+            const m = menu().getBoundingClientRect(), b = photo.getBoundingClientRect();
+            out.under = m.top >= b.bottom - 1 || m.bottom <= b.top + 1;
+            press(photoEl, 'pointerup');
+            photoEl.click();
+            out.clickSwallowed = photoEl.getAttribute('aria-expanded') !== 'true';
+            photoEl.click();
+            out.nextClickWorks = photoEl.getAttribute('aria-expanded') === 'true';
+            photoEl.click();
+            clear();
+            // Moving is a scroll; letting go early is a tap
+            const text = bubbles(1)[0];
+            press(text, 'pointerdown');
+            await sleep(100);
+            press(text, 'pointermove', { clientX: text.getBoundingClientRect().left + 40 });
+            await sleep(600);
+            out.moveCancels = !menu();
+            press(text, 'pointerdown');
+            await sleep(200);
+            press(text, 'pointerup');
+            await sleep(500);
+            out.tapNoMenu = !menu();
+            // Right-click: at once; the last bubble's covers the whole message; your own: no tapback row
+            const last = bubbles(1).at(-1);
+            last.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 5, clientY: 5 }));
+            out.rightClick = !!menu() && !!menu().querySelector('[data-action="edit"]');
+            clear();
+            bubbles(0)[0].dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+            out.yoursNoRow = !!menu() && !row();
+            clear();
+            out.ok = Object.values(out).every(Boolean);
+            res[id] = out;
+        }
+        s.defaultPlatform = platformBefore;
+        r.renderMessages(chat());
+        res.ok = ['echotext', 'wechat', 'instagram'].every(id => res[id].ok);
         return res;
     };
 
@@ -3149,7 +3222,7 @@
         res.ownOverDefault = on() === 'short';
         // The bubble menu no longer has it: the character's last message's menu, as it is now
         r.renderMessages(env.settings.chatHistory['mira.png']);
-        const actions = bubbleMenu('[data-et-action="menu"][data-index="1"]', 1, false, null).map(i => i.dataset.action);
+        const actions = bubbleMenu(1, null).map(i => i.dataset.action);
         res.notInMenu = actions.includes('regen') && !actions.includes('verbosity');
         document.querySelectorAll('.et-dots-menu').forEach(m => m.remove());
         document.getElementById('et-emotion-popup')?.remove();
@@ -3321,7 +3394,8 @@
         const target = await window.runTargetTest();
         const typingTest = await window.runTypingTest();
         const stickerTest = await window.runStickerTest();
-        fetch('/__log', { method: 'POST', body: JSON.stringify({ runChatMemoryTest: chatMemory, runControlsTest: controls, runTogetherTest: together, runStoryPauseTest: storyPause, runTargetTest: target, runTypingTest: typingTest, runStickerTest: stickerTest, runReplyLengthTest: replyLength, runLifeReportTest: lifeReport, runUnseenTest: unseen, runCatchUpTest: catchUp, runPlanTest: plan, runLifeMemoryTest: lifeMemory, runRenameTest: rename, runEmotionTest: result, runAutoTest: auto, runReplyTest: reply, runTapbackTest: tapback, runMemoryTest: memory, runSummaryTest: summary, runInstagramTest: instagram, runScheduleTest: schedule, runLifeTest: life }) }).catch(() => {});
+        const holdTest = await window.runHoldTest();
+        fetch('/__log', { method: 'POST', body: JSON.stringify({ runChatMemoryTest: chatMemory, runControlsTest: controls, runTogetherTest: together, runStoryPauseTest: storyPause, runTargetTest: target, runTypingTest: typingTest, runStickerTest: stickerTest, runHoldTest: holdTest, runReplyLengthTest: replyLength, runLifeReportTest: lifeReport, runUnseenTest: unseen, runCatchUpTest: catchUp, runPlanTest: plan, runLifeMemoryTest: lifeMemory, runRenameTest: rename, runEmotionTest: result, runAutoTest: auto, runReplyTest: reply, runTapbackTest: tapback, runMemoryTest: memory, runSummaryTest: summary, runInstagramTest: instagram, runScheduleTest: schedule, runLifeTest: life }) }).catch(() => {});
     } else if (params.has('memory')) {
         // Two memories, one pinned, the other in the last prompt; Add Memory open on a bubble
         env.settings.characterMemories = { 'mira.png': [
@@ -3338,7 +3412,7 @@
         host.querySelector('.et-nav-item[data-section="memory"]').click();
         jQuery('#et_memory_add_form').show();
         render();
-        bubbleMenu('[data-et-action="part-menu"][data-index="2"][data-part="1"]', 2, false, 1).find(i => i.dataset.action === 'add_memory').click();
+        bubbleMenu(2, 1).find(i => i.dataset.action === 'add_memory').click();
         // The harness's closeAllDotMenus is a stub
         document.querySelectorAll('.et-dots-menu').forEach(m => m.remove());
     }
