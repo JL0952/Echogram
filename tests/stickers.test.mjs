@@ -19,22 +19,22 @@ const presets = presetSets(BASE);
 const cats = { id: 'cats', name: 'cats', stickers: [{ name: '小猫摸摸头', url: '/u/1.gif' }, { name: '小猫摸摸头2', url: '/u/2.gif' }, { name: '上班累死猫', url: '/u/3.jpg' }] };
 const library = [...presets, cats];
 
-test('月薪喵 is the built-in set: 27 stickers, each one\'s file named after it in the extension\'s folder', () => {
+test('月薪喵 is the built-in set: 37 stickers, each one\'s file named after it in the extension\'s folder', () => {
     assert.equal(presets.length, 1);
     const [set] = presets;
-    assert.deepEqual([set.id, set.name, set.builtIn, set.stickers.length], ['yuexinmiao', '月薪喵', true, 27]);
+    assert.deepEqual([set.id, set.name, set.builtIn, set.stickers.length], ['yuexinmiao', '月薪喵', true, 37]);
     assert.equal(set.stickers[0].url, `${BASE}/assets/stickers/yuexinmiao/${encodeURIComponent('安慰')}.gif`);
     for (const { name } of set.stickers) {
         assert.ok(existsSync(new URL(`../assets/stickers/yuexinmiao/${name}.gif`, import.meta.url)), name);
     }
-    assert.equal(new Set(set.stickers.map(s => s.name)).size, 27);
+    assert.equal(new Set(set.stickers.map(s => s.name)).size, 37);
 });
 
 test('the character can use the stickers of the sets turned on for them, in tab order; none at first', () => {
     assert.deepEqual(characterNames(library), []);
     assert.deepEqual(characterNames(library, ['cats']), ['小猫摸摸头', '小猫摸摸头2', '上班累死猫']);
     const both = characterNames(library, ['cats', 'yuexinmiao']);
-    assert.equal(both.length, 30);
+    assert.equal(both.length, 40);
     assert.deepEqual(both.slice(0, 2), ['安慰', '好的']);
     assert.deepEqual(both.slice(-3), ['小猫摸摸头', '小猫摸摸头2', '上班累死猫']);
     assert.deepEqual(characterNames(library, ['gone']), []);
@@ -46,7 +46,9 @@ test('a written name finds its sticker: the same, the same without extension and
     assert.equal(name(' 安慰 '), '安慰');
     assert.equal(name('安慰.gif'), '安慰');
     assert.equal(name('「被迫上班」'), '被迫上班');
-    assert.equal(name('角落 画圈圈'), '角落画圈圈');
+    assert.equal(name('角落 画圈'), '角落画圈');
+    // A chat from before 2026-11-08, when it was 角落画圈圈
+    assert.equal(name('角落画圈圈'), '角落画圈');
     assert.equal(name('安慰你'), '安慰');
     assert.equal(name('月薪喵 被迫上班'), '被迫上班');
     assert.equal(name('摸摸头'), '小猫摸摸头');

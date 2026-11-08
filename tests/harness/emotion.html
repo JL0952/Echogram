@@ -2055,13 +2055,13 @@
         await sleep(300);
         res.shownOnWeChat = !btn().hidden && getComputedStyle(btn()).display !== 'none';
 
-        // The panel: 月薪喵's tab and its 27 stickers with their names; the button turns into a keyboard
+        // The panel: 月薪喵's tab and its 37 stickers with their names; the button turns into a keyboard
         r.toggleStickerPanel();
         await sleep(400);
         const items = () => [...open().querySelectorAll('.et-sticker-item')];
         res.panel = open()?.dataset.etPanel === 'stickers' && open().querySelectorAll('.et-sticker-tab').length === 1
             && open().querySelector('.et-sticker-tabs > :first-child').classList.contains('et-sticker-add')
-            && items().length === 27 && items()[0].textContent === '安慰' && !!items()[0].querySelector('img');
+            && items().length === 37 && items()[0].textContent === '安慰' && !!items()[0].querySelector('img');
         res.panelHeight = open().getBoundingClientRect().height > 250;
         res.keyboard = btn().classList.contains('et-sticker-btn-active');
 
@@ -2082,7 +2082,7 @@
         res.toTiles = open() === element && element.dataset.etPanel === 'attach' && !!element.querySelector('.et-attach-panel-item') && !btn().classList.contains('et-sticker-btn-active');
         r.toggleStickerPanel();
         await sleep(400);
-        res.backToStickers = open() === element && items().length === 27 && btn().classList.contains('et-sticker-btn-active');
+        res.backToStickers = open() === element && items().length === 37 && btn().classList.contains('et-sticker-btn-active');
 
         // Import a ZIP from the settings: uploads stubbed
         const { host } = await mountSettingsPanel();
