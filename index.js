@@ -4944,6 +4944,7 @@
                 stylesheetUrl: (theme, file) => `${BASE_URL}/social/${theme}/${file}${VERSION_QUERY}`,
                 now: () => Date.now(),
                 pickImage: pickSocialImage,
+                pickPhoto: pickSocialPhoto,
                 generatePosts: generateSocialPosts,
                 uploadImage: (dataUrl, kind) => uploadUserImage(dataUrl, getCharacterName(), `echogram-social-${kind}`),
                 deleteImage: deleteUserImage,
@@ -4968,6 +4969,22 @@
         return banner ? (await fitImageDataUrl(cropped, SOCIAL_BANNER_WIDTH)).dataUrl : shrinkImageDataUrl(cropped, AVATAR_SIZE);
     }
 
+    /** An image for a post's photo, saved to the user's images; null if cancelled or it failed (a toast says so). */
+    async function pickSocialPhoto() {
+        // Before any await: a file dialog must open within the tap
+        const file = await pickImageFile();
+        if (!file) return null;
+        try {
+            const image = await fitImageDataUrl(await readFileAsDataUrl(file), PHOTO_SIZE);
+            const path = await uploadUserImage(image.dataUrl, getCharacterName(), 'echogram-social-photo');
+            return { path, width: image.width, height: image.height };
+        } catch (err) {
+            error('Could not add the photo:', err);
+            toastr.error(`Could not add the photo: ${err.message}`, 'Echogram');
+            return null;
+        }
+    }
+
     /**
      * New posts on the open character's social account (docs/platform-plan.md 17c): one
      * request with the account's fixed system prompt (lib/social.js), the card and world
@@ -4975,7 +4992,7 @@
      * resolves with how many. Throws when the model sends back none, or when `signal`
      * stops it (nothing is kept then).
      */
-    async function generateSocialPosts({ count, signal = new AbortController().signal } = {}) {
+    async function generateSocialPosts({ count, outlines = null, signal = new AbortController().signal } = {}) {
         const char = getCurrentCharacter();
         const key = getCharacterKey();
         if (!char || !key) throw new Error('no character is open');
@@ -4989,6 +5006,7 @@
             account: Social.getAccount(settings, key, { name }),
             posts,
             count,
+            outlines,
             now: Date.now(),
         });
         const systemPrompt = withRefusalFrame(request.systemPrompt);
@@ -4999,7 +5017,10 @@
         // An answer that comes after all (the default connection can't be stopped)
         if (signal.aborted) throw signal.reason ?? new DOMException('Aborted', 'AbortError');
         const now = Date.now();
-        const added = Social.parsePosts(stripThinkingTags(String(raw ?? '')), { now, after: posts[0]?.at || 0, count: request.count });
+        const answer = stripThinkingTags(String(raw ?? ''));
+        const added = request.outlines
+            ? Social.parseOutlinedPosts(answer, { outlines: request.outlines, now })
+            : Social.parsePosts(answer, { now, after: posts[0]?.at || 0, count: request.count });
         if (!added.length) throw new Error('the model sent back no posts');
         Social.addChatPosts(settings, key, added, `p${now}`);
         saveSettings();

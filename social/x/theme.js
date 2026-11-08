@@ -63,8 +63,20 @@
         </div>`;
     }
 
-    function media(image, ctx) {
-        return image ? `<div class="x-media">${icon('image', 'x-media-icon')}<div class="x-media-text">${ctx.esc(image)}</div></div>` : '';
+    /** A photo as a photo bubble is: a blank frame or the real image; a tap shows the words and its image buttons. */
+    function media(post, ctx) {
+        if (!post.image) return '';
+        const photo = post.photo;
+        const id = ctx.esc(post.id);
+        return `<div class="x-media" role="button" tabindex="0" aria-expanded="false" data-social-action="photo-toggle"${photo ? ` style="aspect-ratio:${photo.ratio}"` : ''}>
+            ${photo ? `<img class="x-media-img" src="${ctx.esc(photo.url)}" alt="" draggable="false" onerror="this.remove()">` : ''}
+            ${icon('image', 'x-media-icon')}
+            <div class="x-media-text"><span>${ctx.esc(post.image)}</span></div>
+            <div class="x-media-tools">
+                <button class="x-media-btn" type="button" data-social-action="photo-add" data-post-id="${id}" aria-label="${photo ? 'Change photo' : 'Add photo'}">${icon('image')}</button>
+                ${photo ? `<button class="x-media-btn x-media-drop" type="button" data-social-action="photo-drop" data-post-id="${id}" aria-label="Remove photo">×</button>` : ''}
+            </div>
+        </div>`;
     }
 
     /** A post in the list (vertsan's Post): the avatar beside it, the name, handle and time on one line. */
@@ -79,7 +91,7 @@
                         <span class="x-post-meta">@${ctx.esc(account.handle)} · ${ctx.esc(post.time)}</span>
                     </div>
                     <div class="x-post-text">${ctx.esc(post.text)}</div>
-                    ${media(post.image, ctx)}
+                    ${media(post, ctx)}
                     ${actions(post.counts)}
                 </div>
             </div>
@@ -132,7 +144,33 @@
         </div>`;
     }
 
-    /** New posts (vertsan's compose modal): how many, then Generate; while it writes, Cancel. */
+    /** One scripted post: what the user fixes, the model writing only its words and replies. */
+    function outlineCard(outline, i, c, ctx) {
+        const opts = { disabled: c.generating };
+        const name = key => `outline-${i}-${key}`;
+        return `<section class="x-outline">
+            ${c.count > 1 ? `<div class="x-outline-title">Post ${i + 1}</div>` : ''}
+            ${field('Topic', name('topic'), outline.topic, ctx, { ...opts, area: true, rows: 2 })}
+            <div class="x-outline-row x-outline-when">
+                ${field('Time', name('time'), outline.time, ctx, { ...opts, type: 'datetime-local', latest: c.latestTime })}
+                <label class="x-field x-field-check">
+                    <span class="x-field-label">Photo</span>
+                    <input type="checkbox" data-social-field="${name('photo')}"${outline.photo ? ' checked' : ''}${c.generating ? ' disabled' : ''}>
+                </label>
+            </div>
+            <div class="x-outline-row x-outline-numbers">
+                ${field('Likes', name('likes'), outline.likes, ctx, { ...opts, numeric: true })}
+                ${field('Reposts', name('reposts'), outline.reposts, ctx, { ...opts, numeric: true })}
+                ${field('Views', name('views'), outline.views, ctx, { ...opts, numeric: true })}
+            </div>
+            <div class="x-outline-row x-outline-replies">
+                ${field('Replies', name('replies'), outline.replies, ctx, { ...opts, numeric: true })}
+                ${field('Reply style', name('replyStyle'), outline.replyStyle, ctx, opts)}
+            </div>
+        </section>`;
+    }
+
+    /** New posts (vertsan's compose modal): freestyle or scripted, how many, then Generate; while it writes, Cancel. */
     function compose(view, ctx) {
         const a = view.account;
         const c = view.compose;
@@ -145,8 +183,12 @@
                 </div>
                 <div class="x-compose-center">
                     ${avatar(a.avatarUrl, a.avatarFallback, 'x-post-avatar', ctx)}
-                    <div class="x-compose-what">${c.generating ? 'Generating...' : 'Freestyle'}</div>
+                    ${c.generating
+                        ? '<div class="x-compose-what">Generating...</div>'
+                        : `<div class="x-modes">${[['freestyle', 'Freestyle'], ['scripted', 'Scripted']].map(([id, label]) =>
+                            `<button class="x-mode${c.mode === id ? ' x-mode-on' : ''}" type="button" data-social-action="compose-mode" data-mode="${id}">${label}</button>`).join('')}</div>`}
                 </div>
+                ${c.mode === 'scripted' ? `<div class="x-compose-body" data-social-scroll>${c.outlines.map((outline, i) => outlineCard(outline, i, c, ctx)).join('')}</div>` : ''}
                 ${c.error ? `<p class="x-edit-error">${ctx.esc(c.error)}</p>` : ''}
                 <div class="x-compose-bottom">
                     <div class="x-counts">${counts}</div>
@@ -172,18 +214,18 @@
                 </div>
             </div>
             <div class="x-status-text">${ctx.esc(post.text)}</div>
-            ${media(post.image, ctx)}
+            ${media(post, ctx)}
             <div class="x-status-time">${ctx.esc(post.fullTime)}</div>
             ${actions(post.counts)}
         </article>
         <div class="x-replies">${post.replies.map(reply => replyCard(reply, ctx)).join('')}</div>`;
     }
 
-    function field(label, name, value, ctx, { max = 0, area = false, numeric = false, prefix = '' } = {}) {
-        const attrs = `data-social-field="${name}"${max ? ` maxlength="${max}"` : ''}${numeric ? ' inputmode="numeric"' : ''} autocomplete="off" spellcheck="false"`;
+    function field(label, name, value, ctx, { max = 0, area = false, rows = 3, numeric = false, prefix = '', type = 'text', latest = '', disabled = false } = {}) {
+        const attrs = `data-social-field="${name}"${max ? ` maxlength="${max}"` : ''}${numeric ? ' inputmode="numeric"' : ''}${latest ? ` max="${latest}"` : ''}${disabled ? ' disabled' : ''} autocomplete="off" spellcheck="false"`;
         const input = area
-            ? `<textarea class="x-field-input" rows="3" ${attrs}>${ctx.esc(value)}</textarea>`
-            : `<span class="x-field-row">${prefix ? `<span class="x-field-prefix">${prefix}</span>` : ''}<input class="x-field-input" type="text" value="${ctx.esc(value)}" ${attrs}></span>`;
+            ? `<textarea class="x-field-input" rows="${rows}" ${attrs}>${ctx.esc(value)}</textarea>`
+            : `<span class="x-field-row">${prefix ? `<span class="x-field-prefix">${prefix}</span>` : ''}<input class="x-field-input" type="${type}" value="${ctx.esc(value)}" ${attrs}></span>`;
         return `<label class="x-field">
             <span class="x-field-label">${label}</span>
             ${input}

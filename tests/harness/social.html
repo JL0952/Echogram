@@ -33,7 +33,7 @@
  * lib/social.js, the X theme, and index.js's way in (the avatar menu, WeChat's "+" panel).
  *   ?view=profile (default) | detail | empty | edit | compose   shows that page for a screenshot
  *   ?platform=echotext | wechat | instagram     the chat look underneath
- *   runSocialTest(), runEditTest(), runFrameTest(), runComposeTest()   the checks
+ *   runSocialTest(), runEditTest(), runFrameTest(), runComposeTest(), runScriptedTest(), runPhotoTest()   the checks
  */
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const params = new URLSearchParams(location.search);
@@ -107,7 +107,7 @@ window.fetch = async (url, init) => {
     imageRequests.push([url, body.filename ? body.filename.replace(/\d+$/, 'N') : body.path]);
     if (url === '/api/images/upload') {
         if (failUpload) return { ok: false, status: 500, json: async () => ({}) };
-        return { ok: true, json: async () => ({ path: `user/images/Mira/${body.filename}.jpg` }) };
+        return { ok: true, json: async () => ({ path: window.__uploadPath || `user/images/Mira/${body.filename}.jpg` }) };
     }
     return { ok: true, json: async () => ({}) };
 };
@@ -522,7 +522,7 @@ ${replies}
     const cancelSignal = modelRequests.at(-1).signal;
     await click('[data-social-action="compose-cancel"]');
     res.cancel = !!modal() && cancelSignal.aborted && !!modal().querySelector('.x-compose-go') && !modal().querySelector('.x-edit-error')
-        && modal().querySelector('.x-compose-what').textContent === 'Freestyle' && !modal().querySelector('.x-count').disabled;
+        && modal().querySelector('.x-mode-on').textContent === 'Freestyle' && !modal().querySelector('.x-count').disabled;
     cancelled('<post ago="1m"><text>cancelled one</text></post>');
     await sleep(100);
     res.cancelledNotKept = env.settings.socialPosts['mira.png'].length === 6 && !!modal() && !modal().querySelector('.x-edit-error');
@@ -549,6 +549,196 @@ ${replies}
     return res;
 };
 
+/**
+ * New posts, scripted (17d): the outlines in the dialog, what the model is sent, and that
+ * only its words and repliers are kept from the answer.
+ */
+window.runScriptedTest = async function () {
+    const res = {};
+    const panel = document.getElementById('et-panel');
+    const page = () => panel.querySelector('.et-social');
+    const modal = () => panel.querySelector('.et-social-modal');
+    const click = async (sel, wait = 60) => { (modal() || page()).querySelector(sel).click(); await sleep(wait); };
+    const field = (i, key) => modal().querySelector(`[data-social-field="outline-${i}-${key}"]`);
+    const type = (i, key, value) => { field(i, key).value = value; };
+    const realNow = Date.now();
+    const H = 3600000;
+    const local = at => new Date(at - new Date(at).getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+    env.settings.defaultPlatform = 'echotext';
+    env.settings.ctxWorldInfo = true;
+    env.settings.socialAccounts = mockSettings().socialAccounts;
+    env.settings.socialPosts = { 'mira.png': [] };
+    r.closeSocial();
+    r.openSocial();
+    await sleep(200);
+
+    // Freestyle first, no fields; Scripted shows one outline per post asked for
+    await click('[data-social-action="compose"]');
+    res.freestyleFirst = modal().querySelector('.x-mode-on').textContent === 'Freestyle' && !modal().querySelector('.x-outline');
+    await click('[data-social-action="compose-mode"][data-mode="scripted"]');
+    res.oneOutline = modal().querySelectorAll('.x-outline').length === 1 && !modal().querySelector('.x-outline-title');
+    type(0, 'topic', '他今天又问我累不累');
+    await click('[data-social-action="compose-count"][data-count="2"]');
+    res.typedKept = modal().querySelectorAll('.x-outline').length === 2 && field(0, 'topic').value === '他今天又问我累不累';
+    await click('[data-social-action="compose-mode"][data-mode="freestyle"]');
+    await click('[data-social-action="compose-mode"][data-mode="scripted"]');
+    res.keptThroughModes = field(0, 'topic').value === '他今天又问我累不累';
+
+    // Inside the dialog, however tall: it ends within the panel and its fields scroll
+    const box = modal().querySelector('.x-compose').getBoundingClientRect();
+    res.fitsPanel = box.bottom <= panel.getBoundingClientRect().bottom;
+
+    // The outlines: the first posted later than the second, a photo on one, a capped reply count
+    type(0, 'time', local(realNow - 2 * H));
+    type(0, 'likes', '1.2K');
+    type(0, 'reposts', '30');
+    type(0, 'views', '40,000');
+    type(0, 'replies', '210');
+    type(0, 'replyStyle', '都在嘲讽他');
+    type(1, 'time', local(realNow - 26 * H));
+    field(1, 'photo').checked = true;
+    type(1, 'likes', '7');
+    type(1, 'replies', '1');
+    let answer;
+    window.__answer = new Promise(ok => { answer = ok; });
+    await click('[data-social-action="compose-go"]');
+    const req = modelRequests.at(-1);
+    const sys = req.systemPrompt;
+    res.disabled = field(0, 'topic').disabled && modal().querySelector('.x-compose-what').textContent === 'Generating...';
+    res.rules = sys.includes('Write each post to its outline') && sys.includes('Make up a display name and handle for each replier') && !/\{\{\w+\}\}/.test(sys);
+    res.notFreestyle = !sys.includes('fit an account with') && !sys.includes('ago="5h"') && sys.includes('<post n="1">');
+    const prompt = req.rawPrompt;
+    res.outlinesOldestFirst = /^Write 2 new posts to these outlines\./.test(prompt) && prompt.indexOf('Posted: 1d ago') < prompt.indexOf('Posted: 2h ago');
+    res.first = prompt.includes('<outline n="2">\nPosted: 2h ago\nTopic: 他今天又问我累不累\nPhoto: no\nNumbers: 1,200 likes, 30 reposts, 40,000 views\nReplies: write 5 (of 210 in all)\nReply style: 都在嘲讽他\n</outline>');
+    res.second = prompt.includes('<outline n="1">\nPosted: 1d ago\nTopic: whatever Mira would post\nPhoto: yes\nNumbers: 7 likes, 0 reposts, 0 views\nReplies: write 1\n</outline>');
+
+    // The answer: numbers and times the model wrote are ignored, its words and repliers kept
+    const many = Array.from({ length: 7 }, (_, i) => `<reply name="路人${i}" handle="lurker_${i}" likes="${9 - i}">嘲讽${i}</reply>`).join('\n');
+    answer(`<think>plan</think>
+<post n="2" ago="1m" likes="999999" views="1">
+<text>累。但你问了我就不累了。</text>
+<image>should not be kept</image>
+${many}
+</post>
+<post n="1" likes="5">
+<text>昨晚的月亮</text>
+<reply name="阿凯" handle="@kai_00" likes="1">好看</reply>
+<reply name="多余的" handle="extra">past the one asked for</reply>
+</post>`);
+    await sleep(150);
+    const kept = env.settings.socialPosts['mira.png'];
+    const oldest = kept[0], newest = kept[1];
+    res.kept = kept.length === 2 && oldest.text === '昨晚的月亮' && newest.text === '累。但你问了我就不累了。';
+    res.times = Math.abs(oldest.at - (realNow - 26 * H)) < 60000 && Math.abs(newest.at - (realNow - 2 * H)) < 60000;
+    res.numbers = newest.likes === 1200 && newest.reposts === 30 && newest.views === 40000 && newest.replyCount === 210 && oldest.likes === 7 && oldest.views === 0 && oldest.replyCount === 1;
+    res.image = newest.image === '' && oldest.image === 'Photo';
+    res.replies = newest.replies.length === 5 && newest.replies[0].name === '路人0' && newest.replies[0].handle === 'lurker_0' && newest.replies[0].likes === 9
+        && oldest.replies.length === 1 && oldest.replies[0].name === '阿凯' && oldest.replies[0].handle === 'kai_00' && oldest.replies[0].at > oldest.at;
+    res.closed = !modal();
+
+    // No <post n>: in order. A time ahead of now is now. No replies asked for: none kept
+    await click('[data-social-action="compose"]');
+    await click('[data-social-action="compose-mode"][data-mode="scripted"]');
+    type(0, 'time', local(realNow + 48 * H));
+    window.__answer = Promise.resolve('<post><text>no number</text><reply name="x">not asked for</reply></post>');
+    await click('[data-social-action="compose-go"]', 150);
+    const late = env.settings.socialPosts['mira.png'][2];
+    res.noNumberNoReplies = late?.text === 'no number' && late.replies.length === 0 && late.replyCount === 0 && late.at <= Date.now();
+
+    // A failed one: said so, what's typed still there
+    await click('[data-social-action="compose"]');
+    await click('[data-social-action="compose-mode"][data-mode="scripted"]');
+    type(0, 'topic', 'kept after a failure');
+    window.__answer = Promise.reject(new Error('HTTP 502'));
+    await click('[data-social-action="compose-go"]', 150);
+    res.failureKeepsTyping = modal().querySelector('.x-edit-error')?.textContent === 'Could not write the posts: HTTP 502' && field(0, 'topic').value === 'kept after a failure' && !field(0, 'topic').disabled;
+    await click('[data-social-action="compose-close"]');
+    r.closeSocial();
+
+    res.allPass = Object.values(res).every(v => v === true);
+    return res;
+};
+
+/** A post's photo: hidden words, shown and hidden by a tap, a real image added, changed and removed. */
+window.runPhotoTest = async function () {
+    const res = {};
+    const panel = document.getElementById('et-panel');
+    const page = () => panel.querySelector('.et-social');
+    const media = () => page().querySelector('.x-media');
+    const words = () => media().querySelector('.x-media-text');
+    const tools = () => media().querySelector('.x-media-tools');
+    const shown = el => getComputedStyle(el).display !== 'none';
+    const pixel = c => `data:image/png;base64,${c}`;
+    const A = pixel('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==');
+    const B = pixel('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==');
+    env.settings.defaultPlatform = 'echotext';
+    env.settings.socialAccounts = mockSettings().socialAccounts;
+    env.settings.socialPosts = mockSettings().socialPosts;
+    const stored = () => [...env.settings.socialAccounts['mira.png'].posts, ...env.settings.socialPosts['mira.png']].find(p => p.image);
+    r.closeSocial();
+    r.openSocial();
+    await sleep(200);
+
+    // Closed by default: the frame and its icon, no words, no buttons; 4:3
+    const box = media().getBoundingClientRect();
+    res.closed = !shown(words()) && !shown(tools()) && shown(media().querySelector('.x-media-icon')) && Math.abs(box.width / box.height - 4 / 3) < 0.03;
+
+    // A tap: the words and the button, still on the list. Another: gone
+    media().click();
+    await sleep(30);
+    res.tapShows = shown(words()) && shown(tools()) && !shown(media().querySelector('.x-media-icon')) && !page().querySelector('.x-status') && !tools().querySelector('.x-media-drop');
+    media().click();
+    await sleep(30);
+    res.tapHides = !shown(words()) && !shown(tools());
+
+    // Cancelled: nothing changes
+    media().click();
+    imageRequests.length = 0;
+    window.__nextFile = null;
+    tools().querySelector('[data-social-action="photo-add"]').click();
+    await sleep(100);
+    res.cancelled = !stored().photo && imageRequests.length === 0 && shown(words());
+
+    // An image: uploaded, kept on the post, in its own shape, closed again
+    window.__uploadPath = A;
+    window.__nextFile = await imageFile(800, 400, '#c33');
+    tools().querySelector('[data-social-action="photo-add"]').click();
+    await sleep(400);
+    res.uploaded = imageRequests.length === 1 && imageRequests[0].join() === '/api/images/upload,echogram-social-photo-N';
+    res.kept = stored().photo?.path === A && stored().photo.width === 800 && stored().photo.height === 400 && saves > 0;
+    const img = () => media().querySelector('.x-media-img');
+    const shape = ratio => { const b = media().getBoundingClientRect(); return Math.abs(b.width / b.height - ratio) < 0.03; };
+    res.image = img()?.getAttribute('src') === A && shape(2) && !shown(media().querySelector('.x-media-icon')) && !shown(words());
+    media().click();
+    await sleep(30);
+    res.tapDims = getComputedStyle(img()).opacity === '0.25' && shown(words()) && !!tools().querySelector('.x-media-drop');
+
+    // Changed: the old file deleted
+    window.__uploadPath = B;
+    window.__nextFile = await imageFile(300, 600, '#3a7');
+    tools().querySelector('[data-social-action="photo-add"]').click();
+    await sleep(400);
+    res.changed = stored().photo?.path === B && imageRequests.some(([url, path]) => url === '/api/images/delete' && path === A) && shape(0.5);
+
+    // On the post's page too; the frame's tap doesn't leave it
+    page().querySelector('.x-post[data-post-id="' + stored().id + '"]').click();
+    await sleep(60);
+    res.detail = !!page().querySelector('.x-status .x-media-img');
+    media().click();
+    await sleep(30);
+    res.detailTap = shown(words()) && !!page().querySelector('.x-status');
+
+    // Removed: the frame again, the file deleted
+    tools().querySelector('.x-media-drop').click();
+    await sleep(100);
+    res.removed = !stored().photo && !media().querySelector('.x-media-img') && imageRequests.some(([url, path]) => url === '/api/images/delete' && path === B);
+
+    window.__uploadPath = null;
+    r.closeSocial();
+    res.allPass = Object.values(res).every(v => v === true);
+    return res;
+};
+
 // A page to look at
 (async () => {
     const which = params.get('view');
@@ -559,6 +749,14 @@ ${replies}
     if (which === 'compose') {
         await sleep(200);
         document.querySelector('#et-panel [data-social-action="compose"]').click();
+    }
+    if (which === 'scripted') {
+        await sleep(200);
+        document.querySelector('#et-panel [data-social-action="compose"]').click();
+        await sleep(50);
+        document.querySelector('#et-panel [data-social-action="compose-count"][data-count="2"]').click();
+        await sleep(50);
+        document.querySelector('#et-panel [data-social-action="compose-mode"][data-mode="scripted"]').click();
     }
     if (which === 'edit') {
         await sleep(200);
