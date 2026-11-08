@@ -51,7 +51,7 @@
 
     const states = {
         'empty field': p => {},
-        'draft typed (+ becomes 发送)': p => { p.querySelector('#et-input').textContent = '今晚几点？'; },
+        'draft typed (+ stays)': p => { p.querySelector('#et-input').textContent = '今晚几点？'; },
         'character typing (title)': p => { p.setAttribute('data-et-typing', ''); },
         'generating (stop instead of +)': p => { const b = p.querySelector('#et-send-btn'); b.classList.add('et-send-stop'); b.innerHTML = '<i class="fa-solid fa-stop"></i>'; },
         'composing a photo': p => { p.querySelector('.et-input-wrap').classList.add('et-input-wrap-compose'); const a = p.querySelector('#et-attach-btn'); a.classList.add('et-attach-btn-active'); a.innerHTML = '<i class="fa-solid fa-image"></i>'; p.querySelector('#et-input').setAttribute('placeholder', "Describe the photo you're sending..."); },
