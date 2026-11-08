@@ -222,6 +222,17 @@ test('the pick: a kind first, the last one\'s less likely; in it the feelings by
     for (const roll of [0, 0.5, 0.99]) {
         assert.ok(!['daily_observation', 'interest_share', 'song_stuck'].includes(R.pickTopic({ kinds: shareOnly, history: used, random: fixed(roll) }).type));
     }
+    // A core interest weighs twice each of the others, which are even
+    const shares = shareOnly[0].topics;
+    const total = shares.reduce((n, t) => n + (t.weight || 1), 0);
+    const counts = {};
+    for (let i = 0; i < 1000; i++) {
+        const topic = R.pickTopic({ kinds: shareOnly, random: fixed((i + 0.5) / 1000) });
+        assert.equal(topic.weight, undefined);
+        counts[topic.type] = (counts[topic.type] || 0) + 1;
+    }
+    assert.ok(Math.abs(counts.interest_share / 1000 - 2 / total) < 0.005, JSON.stringify(counts));
+    for (const t of shares.filter(t => t.type !== 'interest_share')) assert.ok(Math.abs(counts[t.type] / 1000 - 1 / total) < 0.005, t.type);
     // Feelings by their weights: reassurance (65 + 0.3 × anxiety) outweighs jealousy
     const mood = kindsAt({ feelings: { anxiety: 90, anger: 40, romance: 50 } }).filter(k => k.id === 'mood');
     assert.equal(R.pickTopic({ kinds: mood, random: fixed(0) }).type, 'anxiety_reassurance');

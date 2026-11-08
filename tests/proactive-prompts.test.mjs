@@ -21,7 +21,7 @@ function proactive(features) {
 }
 const templates = proactive([]).getDefaultProactiveConfigForCharacter({}).triggerTemplates;
 // What a text on a topic is offered to send with it, and the reply format (lib/proactive-messaging.js writeOutreach)
-const turn = (features, type) => { const p = proactive(features); return [p.mediaHint(type), p.replyFormat('Mira')].filter(Boolean).join(' '); };
+const turn = (features, type) => { const p = proactive(features); return [p.mediaHint(type, 'Mira'), p.replyFormat('Mira')].filter(Boolean).join(' '); };
 
 const TRIGGERS = ['checkin', 'dormancy_break', 'late_night', 'morning_wave', 'lunch_nudge', 'evening_winddown',
     'weekend_ping', 'affection_reciprocation', 'repair_attempt', 'curiosity_ping', 'anxiety_reassurance', 'celebration_nudge',
@@ -62,7 +62,10 @@ test('a topic offers its media when the platform has them', () => {
     assert.match(turn(ECHOTEXT, 'song_stuck'), /send a <voice> message humming or singing a bit of it or the song as <music> with it/);
     assert.match(turn(['voice'], 'song_stuck'), /send a <voice> message humming or singing a bit of it with it/);
     assert.match(turn(WECHAT, 'daily_observation'), /send a <photo> of what sparked it or a <link> with it/);
-    assert.match(turn(WECHAT, 'interest_share'), /send a <photo>, a <link> or a song as <music> with it/);
+    // A core interest: the medium that interest is usually shared in, each only where the platform has it
+    assert.match(turn(WECHAT, 'interest_share'), /^Send it the way that interest is usually shared: a song as <music> for music, a <link> to an article or video for a subject Mira follows or reads about, a <photo> for gardening, cooking, making or collecting things, a <voice> message for something to be heard — or just text when it's something talked about\. /);
+    assert.match(turn(['music', 'photo'], 'interest_share'), /^Send it the way that interest is usually shared: a song as <music> for music, a <photo> for gardening, cooking, making or collecting things — or just text/);
+    assert.doesNotMatch(turn(['transfer'], 'interest_share'), /Send it the way/);
 });
 
 test('media the platform lacks are never offered', () => {
