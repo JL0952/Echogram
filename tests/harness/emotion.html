@@ -826,7 +826,11 @@
         photoEl.click();
         res.photoOpens = photoEl.getAttribute('aria-expanded') === 'true' && css(photoEl.querySelector('.ig-photo-caption'), 'display') === 'flex';
         res.voiceUnread = !!msg(2).querySelector('.ig-voice-unread');
-        msg(2).querySelector('.ig-voice').click();
+        // The words always under the waveform, in the same bubble (Instagram's transcription)
+        const voiceEl = msg(2).querySelector('.ig-voice');
+        const words = voiceEl.querySelector('.ig-transcript');
+        res.voiceWordsInside = !!words && css(words, 'display') !== 'none' && words.getBoundingClientRect().top >= voiceEl.querySelector('.ig-voice-wave').getBoundingClientRect().bottom;
+        voiceEl.click();
         await sleep(100);
         res.voiceOpens = css(msg(2).querySelector('.ig-transcript'), 'display') !== 'none' && !msg(2).querySelector('.ig-voice-unread')
             && JSON.stringify(chat()[2].voiceHeard) === '[0]';
@@ -2329,6 +2333,35 @@
             press(text, 'pointerup');
             await sleep(500);
             out.tapNoMenu = !menu();
+            // The list redrawn while it's held (a reply or "typing" arriving): the menu by the new bubble, not in the corner
+            press(text, 'pointerdown');
+            await sleep(200);
+            const before = chat()[1].mes;
+            chat()[1].mes = `${before}!`;
+            r.renderMessages(chat(), true);
+            const redrawn = bubbles(1)[0];
+            await sleep(450);
+            const rb = redrawn.getBoundingClientRect(), rm = menu()?.getBoundingClientRect();
+            out.redrawnHold = redrawn !== text && !!rm && (Math.abs(rm.top - rb.bottom) < 40 || Math.abs(rm.bottom - rb.top) < 40);
+            press(redrawn, 'pointerup');
+            redrawn.click();
+            chat()[1].mes = before;
+            r.renderMessages(chat(), true);
+            await sleep(100);
+            clear();
+            // Gone by then (the message deleted): no menu
+            const held = bubbles(1)[0];
+            press(held, 'pointerdown');
+            await sleep(200);
+            const saved = chat().slice();
+            s.chatHistory['mira.png'] = saved.slice(0, 1);
+            r.renderMessages(chat(), true);
+            await sleep(450);
+            out.goneNoMenu = !menu() && !held.isConnected;
+            s.chatHistory['mira.png'] = saved;
+            r.renderMessages(chat(), true);
+            await sleep(100);
+            clear();
             // Right-click: at once; the last bubble's covers the whole message; your own: no tapback row
             const last = bubbles(1).at(-1);
             last.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 5, clientY: 5 }));

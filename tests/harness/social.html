@@ -31,9 +31,9 @@
 /*
  * The character's social account (docs/platform-plan.md 17a) through the real code:
  * lib/social.js, the X theme, and index.js's way in (the avatar menu, WeChat's "+" panel).
- *   ?view=profile (default) | detail | empty | edit   shows that page for a screenshot
+ *   ?view=profile (default) | detail | empty | edit | compose   shows that page for a screenshot
  *   ?platform=echotext | wechat | instagram     the chat look underneath
- *   runSocialTest(), runEditTest(), runFrameTest()   the checks
+ *   runSocialTest(), runEditTest(), runFrameTest(), runComposeTest()   the checks
  */
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const params = new URLSearchParams(location.search);
@@ -77,10 +77,16 @@ function mockSettings() {
 const platform = params.get('platform') || 'echotext';
 const history = JSON.parse(JSON.stringify(window.EchoTextScenarios[0].history));
 let saves = 0;
+const modelRequests = [];
 const env = {
     settings: { ...window.EchoTextScenarios[0].settings, ...mockSettings(), autoScroll: true, defaultPlatform: platform },
     groupManager: null, FA_REACTIONS: window.EchoTextScenarioReactions, showTypingIndicator: false, BASE_URL: '../..', VERSION_QUERY: '',
-    getCurrentCharacter: () => ({ name: 'Mira', avatar: 'mira.png' }), getCharacterName: () => 'Mira', isTetheredMode: () => true,
+    getCurrentCharacter: () => ({ name: 'Mira', avatar: 'mira.png', description: 'Mira, 26, works the night desk at a hotel.', personality: 'Guarded, dry, secretly soft.' }),
+    // The model, stubbed: each request recorded, answered with window.__answer (a string or a promise)
+    sendCompletionRequest: (params) => { modelRequests.push(params); return Promise.resolve(window.__answer); },
+    stripThinkingTags: text => String(text).replace(/<think>[\s\S]*?<\/think>/g, ''),
+    replaceMacros: text => text, expandTimeDateMacros: text => text,
+    getActiveWorldInfoEntries: async () => 'The night market by the river opens at 10pm.', getCharacterName: () => 'Mira', isTetheredMode: () => true,
     getUserName: () => '我', getCharacterKey: () => 'mira.png', _pickerAvatarBg: () => '#7c6f9c',
     isMobileDevice: () => false, getChatHistory: () => history, getUserAvatarUrl: () => null, isCombinedGroupMode: () => false,
     closeAllDotMenus: () => jQuery('.et-dots-menu').remove(), panelOpen: true, saveSettings: () => { saves++; },
@@ -138,7 +144,7 @@ window.runSocialTest = async function () {
     const posts = S.getPosts(settings, 'mira.png');
     res.postsNewestFirst = posts.map(p => p.id).join(',') === 'a,b,c,pin1';
     res.pinnedMarked = posts.find(p => p.id === 'pin1').pinned === true && posts.filter(p => p.pinned).length === 1;
-    res.repliesCapped = posts[0].replies.length === 10 && posts[0].replyCount === 2400;
+    res.repliesCapped = posts[0].replies.length === 5 && posts[0].replyCount === 2400;
     const blank = S.getAccount({}, 'Lawrence Wu.png', { name: '劳伦斯' });
     res.defaults = blank.name === '劳伦斯' && blank.handle === 'LawrenceWu' && blank.theme === 'x' && blank.followers === 0;
     res.handleFromChinese = /^user\d+$/.test(S.getAccount({}, '劳伦斯.png', { name: '劳伦斯' }).handle);
@@ -167,7 +173,7 @@ window.runSocialTest = async function () {
     root().querySelector('.x-feed .x-post[data-post-id="a"]').click();
     await sleep(50);
     res.detail = texts('.x-topbar-name')[0] === 'Post' && texts('.x-status-time')[0] === '7:30 PM · Nov 8, 2026';
-    res.detailReplies = root().querySelectorAll('.x-replies .x-reply').length === 10;
+    res.detailReplies = root().querySelectorAll('.x-replies .x-reply').length === 5;
     res.replyingTo = texts('.x-reply-to')[0] === 'Replying to @mira_after_dark';
     res.replyEscaped = !root().querySelector('.x-replies b') && texts('.x-replies .x-post-text')[2].includes('<b>');
     res.replyFallback = !!root().querySelector('.x-reply .x-avatar-fallback') && root().querySelector('.x-reply .x-avatar-fallback').textContent === '夜';
@@ -258,9 +264,9 @@ window.runEditTest = async function () {
     res.previews = modal().querySelector('.x-edit-avatar-img').getAttribute('src').startsWith('data:image/jpeg') && modal().querySelector('.x-edit-banner img')?.getAttribute('src').startsWith('data:image/jpeg');
     res.typedKept = field('name').value === 'Mira 的小号';
     res.nothingUploadedYet = imageRequests.length === 0 && !stored().avatar;
+    // The load event, not decode(): decode waits for a frame, which a hidden window never draws
     const bannerImg = new Image();
-    bannerImg.src = modal().querySelector('.x-edit-banner img').getAttribute('src');
-    await bannerImg.decode();
+    await new Promise((res, rej) => { bannerImg.onload = res; bannerImg.onerror = rej; bannerImg.src = modal().querySelector('.x-edit-banner img').getAttribute('src'); });
     res.bannerSize = `${bannerImg.naturalWidth}x${bannerImg.naturalHeight}` === '1500x500';
 
     // Save: uploaded, kept, the profile redrawn
@@ -334,7 +340,7 @@ window.runEditTest = async function () {
 /**
  * The panel around the page (2026-11-08): dragged by the X page's top bar and resized
  * by its corners as by the chat's; Echogram's send button centred on a one-line field
- * whatever its height, at the bottom once it grows; on a computer above SillyTavern's top bar.
+ * whatever its height, at the bottom once it grows; on a computer above SillyTavern's top bar, with the settings and archives above it; the ⋯ menu closed by opening the page.
  */
 window.runFrameTest = async function () {
     const res = {};
@@ -396,7 +402,129 @@ window.runFrameTest = async function () {
     document.getElementById(r.ET_PORTAL_ID)?.remove();
     const portal = r.ensurePortal();
     res.portalAboveTopBar = Number(portal.style.zIndex) > 4005;
+    // Settings and archives, on <body> on a computer, above the panel's layer
+    const layer = cls => { const el = document.createElement('div'); el.className = cls; document.body.appendChild(el); const z = Number(getComputedStyle(el).zIndex); el.remove(); return z; };
+    res.settingsAbovePanel = layer('et-settings-modal') > Number(portal.style.zIndex) && layer('et-sl-overlay') > Number(portal.style.zIndex);
     portal.remove();
+
+    // Opening the page closes the chat's ⋯ menu
+    const overflow = document.getElementById('et-overflow-menu');
+    overflow.classList.add('et-overflow-menu-open');
+    r.openSocial();
+    await sleep(50);
+    res.overflowCloses = !overflow.classList.contains('et-overflow-menu-open');
+    r.closeSocial();
+
+    res.allPass = Object.values(res).every(v => v === true);
+    return res;
+};
+
+/**
+ * New posts, freestyle (17c), through index.js's real generateSocialPosts with the model
+ * stubbed: the compose button, the dialog, what the model is sent, what's kept from its
+ * answer, a failure, closing while it writes.
+ */
+window.runComposeTest = async function () {
+    const res = {};
+    const panel = document.getElementById('et-panel');
+    const page = () => panel.querySelector('.et-social');
+    const modal = () => panel.querySelector('.et-social-modal');
+    const click = async (sel, wait = 60) => { (modal() || page()).querySelector(sel).click(); await sleep(wait); };
+    const realNow = Date.now();
+    const H = 3600000;
+    env.settings.defaultPlatform = 'echotext';
+    env.settings.ctxWorldInfo = true;
+    env.settings.socialAccounts = mockSettings().socialAccounts;
+    env.settings.socialAccounts['mira.png'].posts[0].at = realNow - 40 * 24 * H;
+    env.settings.socialPosts = { 'mira.png': mockSettings().socialPosts['mira.png'].map((p, i) => ({ ...p, at: realNow - [2, 5 * 24, 20 * 24][i] * H })) };
+    r.closeSocial();
+    r.openSocial();
+    await sleep(200);
+
+    // The compose button, at the panel's bottom right; none on a post's page
+    const fab = page().querySelector('[data-social-action="compose"]');
+    const fb = fab.getBoundingClientRect(), pb = panel.getBoundingClientRect();
+    res.fab = Math.abs(pb.right - 1 - fb.right - 16) < 2 && Math.abs(pb.bottom - 1 - fb.bottom - 16) < 2;
+    await click('.x-feed .x-post');
+    res.noFabOnPost = !page().querySelector('[data-social-action="compose"]');
+    await click('[data-social-action="back"]');
+
+    // The dialog: 1 to 3, 1 picked
+    await click('[data-social-action="compose"]');
+    res.dialog = !!modal()?.querySelector('.x-compose') && [...modal().querySelectorAll('.x-count')].map(b => b.textContent).join() === '1,2,3'
+        && modal().querySelector('.x-count-on').textContent === '1';
+    await click('[data-social-action="compose-count"][data-count="3"]');
+    res.picked = modal().querySelector('.x-count-on').textContent === '3';
+
+    // Generate: what the model is sent, the button while it writes
+    let answer;
+    window.__answer = new Promise(res => { answer = res; });
+    await click('[data-social-action="compose-go"]');
+    const req = modelRequests.at(-1);
+    const sys = req.systemPrompt;
+    res.oneRequest = modelRequests.length === 1 && req.apiMessages.length === 2 && req.apiMessages[0].role === 'system' && req.apiMessages[1].content === req.rawPrompt;
+    res.asks = /^Write 3 new posts\. Choose everything yourself/.test(req.rawPrompt);
+    res.filled = !/\{\{\w+\}\}/.test(sys) && sys.startsWith("You write the posts on Mira's anonymous X account.") && sys.includes('Nobody in Mira\'s life knows this account is theirs, 我 included');
+    res.card = sys.includes("<character_reference>\nMira's description: Mira, 26, works the night desk at a hotel.") && sys.includes('World Information:\nThe night market by the river opens at 10pm.');
+    res.account = sys.includes('Name: m.\nHandle: @mira_after_dark\nBio: 晚上才上线 / 不认识的别加 / no DMs\nFollowers: 23,800\nFollowing: 312') && sys.includes('an account with 23,800 followers');
+    const lines = sys.split('Its latest posts, oldest first:\n')[1].split('\n\n')[0].split('\n');
+    res.latestPosts = lines.length === 4 && lines[0].startsWith('[Sep') && lines[2] === '[5d ago, with a photo] 周末的展。' && lines[3].startsWith('[2h ago] 今天又在他面前装了一整天没事人。 回家路上');
+    res.generating = modal().querySelector('.x-compose-go').disabled && modal().querySelector('.x-compose-go').textContent === 'Generating...' && modal().querySelector('.x-count').disabled;
+
+    // The answer: thinking dropped, three of four kept, times between the latest post and now, oldest first
+    const replies = Array.from({ length: 12 }, (_, i) => `<reply name="路人${i}" handle="lurker_${i}" likes="${20 - i}">回复${i}</reply>`).join('\n');
+    answer(`<think>plan</think>
+<post ago="3小时" likes="1.2K" reposts="30" views="4万" replies="210">
+<text>凌晨三点前台又只剩我一个</text>
+${replies}
+</post>
+<post ago="40m" likes="88">
+<text>他今天问我是不是没睡好。是。因为你。</text>
+<image>酒店前台的台灯，旁边一杯冷掉的咖啡</image>
+<reply name="Kai" likes="2">who's "you" 👀</reply>
+<post likes="5">no closing tag and no time
+<post ago="1m">a fourth one, past the three asked for</post>`);
+    await sleep(150);
+    const kept = env.settings.socialPosts['mira.png'];
+    const added = kept.slice(3);
+    // "3小时" is before the latest post (2h ago): put just after it. The one with no time is spread to about 30m ago
+    res.keptThree = kept.length === 6 && added.map(p => p.text).join('|') === '凌晨三点前台又只剩我一个|他今天问我是不是没睡好。是。因为你。|no closing tag and no time';
+    const after = realNow - 2 * H;
+    res.times = added.every(p => p.at > after && p.at <= Date.now()) && added.every((p, i) => !i || p.at >= added[i - 1].at)
+        && Math.abs(added.find(p => p.text.startsWith('他今天')).at - (realNow - 40 * 60000)) < 5000;
+    const big = added.find(p => p.text.startsWith('凌晨'));
+    res.numbers = big.likes === 1200 && big.views === 40000 && big.replyCount === 210 && big.replies.length === 5 && big.replies[0].handle === 'lurker_0';
+    const photo = added.find(p => p.text.startsWith('他今天'));
+    res.photoAndReply = photo.image === '酒店前台的台灯，旁边一杯冷掉的咖啡' && photo.replies[0].name === 'Kai' && photo.replies[0].handle === 'Kai' && photo.replies[0].at > photo.at;
+    res.ids = new Set(kept.map(p => p.id)).size === 6 && saves > 0;
+    res.closedAndShown = !modal() && page().querySelector('.x-topbar-sub').textContent === '7 posts' && page().scrollTop === 0
+        && page().querySelector('.x-feed .x-post-text').textContent === 'no closing tag and no time';
+    res.clampedAfterLatest = Math.abs(added[0].at - (realNow - 2 * H + 60000)) < 5000;
+
+    // No posts in the answer: said so, nothing kept, try again
+    await click('[data-social-action="compose"]');
+    window.__answer = Promise.resolve('Sorry, I can\'t help with that.');
+    await click('[data-social-action="compose-go"]', 150);
+    res.failed = !!modal() && /Could not write the posts: the model sent back no posts/.test(modal().querySelector('.x-edit-error')?.textContent || '')
+        && env.settings.socialPosts['mira.png'].length === 6 && !modal().querySelector('.x-compose-go').disabled;
+
+    // Closed while it writes: the request stopped, what comes back not kept
+    let late;
+    window.__answer = new Promise(res => { late = res; });
+    await click('[data-social-action="compose-go"]');
+    const signal = modelRequests.at(-1).signal;
+    await click('[data-social-action="compose-close"]');
+    res.closeStops = !modal() && signal.aborted;
+    late('<post ago="1m"><text>too late</text></post>');
+    await sleep(100);
+    res.lateNotKept = env.settings.socialPosts['mira.png'].length === 6;
+
+    // Escape closes it too
+    await click('[data-social-action="compose"]');
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await sleep(50);
+    res.escape = !modal();
+    r.closeSocial();
 
     res.allPass = Object.values(res).every(v => v === true);
     return res;
@@ -409,6 +537,10 @@ window.runFrameTest = async function () {
     await sleep(100);
     const v = view(which === 'empty' ? {} : mockSettings());
     v.open();
+    if (which === 'compose') {
+        await sleep(200);
+        document.querySelector('#et-panel [data-social-action="compose"]').click();
+    }
     if (which === 'edit') {
         await sleep(200);
         document.querySelector('#et-panel [data-social-action="edit"]').click();

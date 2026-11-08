@@ -18,6 +18,9 @@
         bookmark: 'M4 4.5C4 3.12 5.119 2 6.5 2h11C18.881 2 20 3.12 20 4.5v18.44l-8-5.71-8 5.71V4.5zM6.5 4c-.276 0-.5.22-.5.5v14.56l6-4.29 6 4.29V4.5c0-.28-.224-.5-.5-.5h-11z',
         share: 'M12 2.59l5.7 5.7-1.41 1.42L13 6.41V16h-2V6.41l-3.3 3.3-1.41-1.42L12 2.59zM21 15l-.02 3.51c0 1.38-1.12 2.49-2.5 2.49H5.5C4.11 21 3 19.88 3 18.5V15h2v3.5c0 .28.22.5.5.5h12.98c.28 0 .5-.22.5-.5L19 15h2z',
         pin: 'M7 4.5C7 3.12 8.12 2 9.5 2h5C15.88 2 17 3.12 17 4.5v5.26L20.12 16H13v5l-1 2-1-2v-5H3.88L7 9.76V4.5z',
+        // X's own "post" (vertsan's icons/post.svg) and close
+        compose: 'M23 3c-6.62-.1-10.38 2.421-13.05 6.03C7.29 12.61 6 17.331 6 22h2c0-1.007.07-2.012.19-3H12c4.1 0 7.48-3.082 7.94-7.054C22.79 10.147 23.17 6.359 23 3zm-7 8h-1.5v2H16c.63-.016 1.2-.08 1.72-.188C16.95 15.24 14.68 17 12 17H8.55c.57-2.512 1.57-4.851 3-6.78 2.16-2.912 5.29-4.911 9.45-5.187C20.95 8.079 19.9 11 16 11zM4 9V6H1V4h3V1h2v3h3v2H6v3H4z',
+        close: 'M10.59 12L4.54 5.96l1.42-1.42L12 10.59l6.04-6.05 1.42 1.42L13.41 12l6.05 6.04-1.42 1.42L12 13.41l-6.04 6.05-1.42-1.42L10.59 12z',
         image: 'M3 5.5C3 4.119 4.119 3 5.5 3h13C19.881 3 21 4.119 21 5.5v13c0 1.381-1.119 2.5-2.5 2.5h-13C4.119 21 3 19.881 3 18.5v-13zM5.5 5c-.276 0-.5.224-.5.5v9.086l3-3 3 3 5-5 3 3V5.5c0-.276-.224-.5-.5-.5h-13zM19 15.414l-3-3-5 5-3-3-3 3V18.5c0 .276.224.5.5.5h13c.276 0 .5-.224.5-.5v-3.086zM9.75 7C8.784 7 8 7.784 8 8.75s.784 1.75 1.75 1.75 1.75-.784 1.75-1.75S10.716 7 9.75 7z',
     };
 
@@ -108,7 +111,7 @@
         const posts = view.posts.length
             ? view.posts.map(post => postCard(post, a, ctx)).join('')
             : `<div class="x-empty"><div class="x-empty-title">@${ctx.esc(a.handle)} hasn’t posted</div><div class="x-empty-text">When they do, their posts will show up here.</div></div>`;
-        return `${topBar(a.name, a.postCount, ctx)}
+        return `<div class="x-page">${topBar(a.name, a.postCount, ctx)}
         <div class="x-banner">${a.bannerUrl ? `<img src="${ctx.esc(a.bannerUrl)}" alt="">` : ''}</div>
         <div class="x-profile">
             <div class="x-profile-top">
@@ -124,7 +127,33 @@
             </div>
         </div>
         <div class="x-tabs">${TABS.map((tab, i) => `<span class="x-tab${i === 0 ? ' x-tab-active' : ''}"><span>${tab}</span></span>`).join('')}</div>
-        <div class="x-feed">${posts}</div>`;
+        <div class="x-feed">${posts}</div>
+        <div class="x-fab-row"><button class="x-fab" type="button" data-social-action="compose" aria-label="New posts">${icon('compose')}</button></div>
+        </div>`;
+    }
+
+    /** New posts (vertsan's compose modal): how many, then Generate. */
+    function compose(view, ctx) {
+        const a = view.account;
+        const c = view.compose;
+        const counts = Array.from({ length: c.max }, (_, i) => i + 1).map(n =>
+            `<button class="x-count${n === c.count ? ' x-count-on' : ''}" type="button" data-social-action="compose-count" data-count="${n}"${c.generating ? ' disabled' : ''}>${n}</button>`).join('');
+        return `<div class="x-compose-backdrop" data-social-action="compose-backdrop">
+            <div class="x-compose" role="dialog" aria-label="New posts">
+                <div class="x-compose-top" data-et-drag>
+                    <button class="x-compose-close" type="button" data-social-action="compose-close" aria-label="Close">${icon('close')}</button>
+                </div>
+                <div class="x-compose-center">
+                    ${avatar(a.avatarUrl, a.avatarFallback, 'x-post-avatar', ctx)}
+                    <div class="x-compose-what">Freestyle</div>
+                </div>
+                ${c.error ? `<p class="x-edit-error">${ctx.esc(c.error)}</p>` : ''}
+                <div class="x-compose-bottom">
+                    <div class="x-counts">${counts}</div>
+                    <button class="x-compose-go" type="button" data-social-action="compose-go"${c.generating ? ' disabled' : ''}>${c.generating ? 'Generating...' : 'Generate'}</button>
+                </div>
+            </div>
+        </div>`;
     }
 
     /** A post's page (vertsan's status page): the post large, its time in full, then its replies. */
@@ -210,6 +239,6 @@
         label: 'X',
         icon: 'fa-brands fa-x-twitter',
         stylesheet: 'theme.css',
-        templates: { profile, detail, editProfile },
+        templates: { profile, detail, editProfile, compose },
     };
 })();

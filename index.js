@@ -1192,6 +1192,39 @@
     const MAX_TEXTS = { short: 4, medium: 6, long: 9 };
 
     /** @param {Array} [history] - the chat the reply follows (the stored one when left out), for the memories */
+    /**
+     * The character's card (description, personality, scenario) and the world info, as the
+     * Context page's switches allow, in <character_reference> tags so models treat them as
+     * scoped reference data rather than content to reproduce; '' with none of them.
+     * The chat's prompt and the social account's posts (lib/social.js) both use it.
+     */
+    async function buildCharacterReference(char, name) {
+        // Support both V1 (top-level fields) and V2 (nested under char.data) card formats
+        const charDescription = char.description || char.data?.description || '';
+        const charPersonality  = char.personality  || char.data?.personality  || '';
+        const charScenario     = char.scenario      || char.data?.scenario      || '';
+
+        const charRefParts = [];
+        if (settings.ctxDescription !== false && charDescription) {
+            charRefParts.push(`${name}'s description: ${expandTimeDateMacros(replaceMacros(charDescription))}`);
+        }
+        if (settings.ctxPersonality !== false && charPersonality) {
+            charRefParts.push(`${name}'s personality: ${expandTimeDateMacros(replaceMacros(charPersonality))}`);
+        }
+        if (settings.ctxScenario !== false && charScenario) {
+            charRefParts.push(`Scenario: ${expandTimeDateMacros(replaceMacros(charScenario))}`);  
+        }
+        if (settings.ctxWorldInfo === true) {
+            try {
+                const worldInfoData = await getActiveWorldInfoEntries();
+                if (worldInfoData) {
+                    charRefParts.push(`World Information:\n${worldInfoData}`);
+                }
+            } catch (e) { /* ignore */ }
+        }
+        return charRefParts.length > 0 ? `<character_reference>\n${charRefParts.join('\n\n')}\n</character_reference>` : '';
+    }
+
     async function buildSystemPrompt(targetCharOverride = null, history = null) {
         const { stable, live } = await buildPromptParts(targetCharOverride, history);
         return stable + live;
@@ -1273,34 +1306,8 @@
         }
 
         // ── 2. CHARACTER KNOWLEDGE ───────────────────────────────────────────────
-        // Support both V1 (top-level fields) and V2 (nested under char.data) card formats
-        const charDescription = char.description || char.data?.description || '';
-        const charPersonality  = char.personality  || char.data?.personality  || '';
-        const charScenario     = char.scenario      || char.data?.scenario      || '';
-
-        // Character card fields — wrapped in <character_reference> XML tags so models
-        // treat them as scoped reference data rather than content to reproduce.
-        const charRefParts = [];
-        if (settings.ctxDescription !== false && charDescription) {
-            charRefParts.push(`${name}'s description: ${expandTimeDateMacros(replaceMacros(charDescription))}`);
-        }
-        if (settings.ctxPersonality !== false && charPersonality) {
-            charRefParts.push(`${name}'s personality: ${expandTimeDateMacros(replaceMacros(charPersonality))}`);
-        }
-        if (settings.ctxScenario !== false && charScenario) {
-            charRefParts.push(`Scenario: ${expandTimeDateMacros(replaceMacros(charScenario))}`);  
-        }
-        if (settings.ctxWorldInfo === true) {
-            try {
-                const worldInfoData = await getActiveWorldInfoEntries();
-                if (worldInfoData) {
-                    charRefParts.push(`World Information:\n${worldInfoData}`);
-                }
-            } catch (e) { /* ignore */ }
-        }
-        if (charRefParts.length > 0) {
-            prompt += `\n\n<character_reference>\n${charRefParts.join('\n\n')}\n</character_reference>`;
-        }
+        const characterReference = await buildCharacterReference(char, name);
+        if (characterReference) prompt += `\n\n${characterReference}`;
         // Daily Life: their usual schedule today and tomorrow, the same all day (where they are in it now is live)
         prompt += buildScheduleContext(name, scheduleFrom);
 
@@ -4909,6 +4916,9 @@
     }
 
     function openSocial() {
+        // The chat's menus (the header's ⋯ among them) go with the chat it covers
+        jQuery('#et-overflow-menu').removeClass('et-overflow-menu-open');
+        closeAllDotMenus();
         if (!socialView) {
             socialView = Social.createSocialView({
                 getSettings: () => settings,
@@ -4920,6 +4930,7 @@
                 stylesheetUrl: (theme, file) => `${BASE_URL}/social/${theme}/${file}${VERSION_QUERY}`,
                 now: () => Date.now(),
                 pickImage: pickSocialImage,
+                generatePosts: generateSocialPosts,
                 uploadImage: (dataUrl, kind) => uploadUserImage(dataUrl, getCharacterName(), `echogram-social-${kind}`),
                 deleteImage: deleteUserImage,
             });
@@ -4941,6 +4952,44 @@
             { cropAspect: banner ? 3 : 1, cropImage: await readFileAsDataUrl(file) });
         if (!cropped) return null;
         return banner ? (await fitImageDataUrl(cropped, SOCIAL_BANNER_WIDTH)).dataUrl : shrinkImageDataUrl(cropped, AVATAR_SIZE);
+    }
+
+    /**
+     * New posts on the open character's social account (docs/platform-plan.md 17c): one
+     * request with the account's fixed system prompt (lib/social.js), the card and world
+     * info as the chat has them, the account and its latest posts. Kept with the chat;
+     * resolves with how many. Throws when the model sends back none, or when `signal`
+     * stops it (nothing is kept then).
+     */
+    async function generateSocialPosts({ count, signal = new AbortController().signal } = {}) {
+        const char = getCurrentCharacter();
+        const key = getCharacterKey();
+        if (!char || !key) throw new Error('no character is open');
+        const name = char.name || 'Character';
+        const posts = Social.getPosts(settings, key);
+        const request = Social.buildPostsRequest({
+            charName: name,
+            userName: getUserName(),
+            platform: socialTheme()?.label || 'X',
+            card: await buildCharacterReference(char, name),
+            account: Social.getAccount(settings, key, { name }),
+            posts,
+            count,
+            now: Date.now(),
+        });
+        const systemPrompt = withRefusalFrame(request.systemPrompt);
+        const raw = await sendCompletionRequest({
+            apiMessages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: request.prompt }],
+            rawPrompt: request.prompt, systemPrompt, signal,
+        });
+        // An answer that comes after all (the default connection can't be stopped)
+        if (signal.aborted) throw signal.reason ?? new DOMException('Aborted', 'AbortError');
+        const now = Date.now();
+        const added = Social.parsePosts(stripThinkingTags(String(raw ?? '')), { now, after: posts[0]?.at || 0, count: request.count });
+        if (!added.length) throw new Error('the model sent back no posts');
+        Social.addChatPosts(settings, key, added, `p${now}`);
+        saveSettings();
+        return added.length;
     }
 
     function closeSocial() {
@@ -7627,15 +7676,31 @@
         if (e.pointerType === 'mouse' && e.button !== 0) return;
         const bubble = bubbleTarget(e.target);
         if (!bubble) return;
+        const ref = bubbleRef(bubble);
         bubbleHold = {
             x: e.clientX,
             y: e.clientY,
             timer: setTimeout(() => {
                 bubbleHold = null;
-                bubbleHeld = bubble;
-                openBubbleMenu(bubble);
+                // Redrawn meanwhile (a reply or "typing" arriving): its new self, else nothing
+                const live = bubble.isConnected ? bubble : findBubble(ref);
+                if (!live) return;
+                bubbleHeld = live;
+                openBubbleMenu(live);
             }, BUBBLE_HOLD_MS),
         };
+    }
+
+    /** Where a bubble is: its message's index and its place among the message's bubbles. */
+    function bubbleRef(bubble) {
+        const msgEl = bubble.closest('[data-et-role~="message"]');
+        return { index: msgEl?.dataset.index, at: msgEl ? [...msgEl.querySelectorAll('[data-et-role~="bubble"]')].indexOf(bubble) : -1 };
+    }
+
+    /** The bubble at `ref` as the list has it now, or null. */
+    function findBubble(ref) {
+        const msgEl = findMessageElement(ref.index)[0];
+        return (msgEl && ref.at >= 0 && msgEl.querySelectorAll('[data-et-role~="bubble"]')[ref.at]) || null;
     }
 
     function onBubblePointerMove(e) {
@@ -7666,6 +7731,8 @@
 
     /** A bubble's menu (a character's has React, where the platform has tapbacks, for the tapback row). */
     function openBubbleMenu(bubble) {
+        // A menu placed by a bubble no longer on the page would land in the corner
+        if (!bubble.isConnected) return;
         const msgEl = bubble.closest('[data-et-role~="message"]');
         const msgIndex = parseInt(msgEl?.dataset.index, 10);
         const msg = getChatHistory()[msgIndex];

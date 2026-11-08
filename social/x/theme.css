@@ -735,3 +735,197 @@
     font-size: 16px;
     resize: none;
 }
+
+/* ── New posts: X's compose button, and vertsan's compose modal ── */
+
+/* The page fills the panel at least, so the button sits at its bottom on a short one too */
+.et-social[data-social-theme="x"] .x-page {
+    display: flex;
+    flex-direction: column;
+    min-height: 100%;
+}
+
+.et-social[data-social-theme="x"] .x-fab-row {
+    position: sticky;
+    bottom: 0;
+    height: 0;
+    margin-top: auto;
+}
+
+.et-social[data-social-theme="x"] .x-fab {
+    position: absolute;
+    right: 16px;
+    bottom: 16px;
+    display: grid;
+    place-items: center;
+    width: 56px;
+    height: 56px;
+    padding: 0;
+    border: 0;
+    border-radius: 9999px;
+    color: #fff;
+    background: var(--x-blue);
+    box-shadow: 0 0 10px rgba(255, 255, 255, 0.2), 0 0 3px 1px rgba(255, 255, 255, 0.15);
+    cursor: pointer;
+    transition: background-color 0.2s, transform 0.1s;
+}
+
+.et-social[data-social-theme="x"] .x-fab:hover {
+    background: #1a8cd8;
+}
+
+.et-social[data-social-theme="x"] .x-fab:active {
+    transform: scale(0.95);
+}
+
+.et-social[data-social-theme="x"] .x-fab .x-icon {
+    width: 24px;
+    height: 24px;
+}
+
+.et-social-modal[data-social-theme="x"] .x-compose-backdrop {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    background: rgba(41, 49, 57, 0.65);
+    animation: x-fade-in 0.15s ease-out both;
+}
+
+@keyframes x-fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+.et-social-modal[data-social-theme="x"] .x-compose {
+    width: calc(100% - 24px);
+    margin-top: 48px;
+    padding: 16px 20px;
+    border-radius: 12px;
+    background: var(--x-bg);
+    animation: x-modal-in 0.2s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.et-social-modal[data-social-theme="x"] .x-compose-top {
+    display: flex;
+    align-items: center;
+}
+
+.et-social-modal[data-social-theme="x"] .x-compose-close {
+    display: grid;
+    place-items: center;
+    margin: -8px 0 0 -8px;
+    padding: 8px;
+    border: 0;
+    border-radius: 9999px;
+    color: var(--x-text);
+    background: none;
+    cursor: pointer;
+}
+
+.et-social-modal[data-social-theme="x"] .x-compose-close:hover {
+    background: rgba(231, 233, 234, 0.1);
+}
+
+.et-social-modal[data-social-theme="x"] .x-compose-close .x-icon {
+    width: 20px;
+    height: 20px;
+}
+
+.et-social-modal[data-social-theme="x"] .x-compose-center {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 24px 0;
+}
+
+.et-social-modal[data-social-theme="x"] .x-post-avatar {
+    width: 40px;
+    height: 40px;
+    flex-shrink: 0;
+    border-radius: 9999px;
+    object-fit: cover;
+}
+
+.et-social-modal[data-social-theme="x"] .x-compose-what {
+    color: var(--x-gray);
+    font-size: 18px;
+}
+
+.et-social-modal[data-social-theme="x"] .x-compose .x-edit-error {
+    margin: 0 0 12px;
+}
+
+.et-social-modal[data-social-theme="x"] .x-compose-bottom {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding-top: 12px;
+    border-top: 1px solid var(--x-border);
+}
+
+.et-social-modal[data-social-theme="x"] .x-counts {
+    display: flex;
+    gap: 4px;
+}
+
+.et-social-modal[data-social-theme="x"] .x-count {
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    border: 1px solid var(--x-border);
+    border-radius: 9999px;
+    color: var(--x-blue);
+    background: none;
+    font: inherit;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.et-social-modal[data-social-theme="x"] .x-count:hover:not(:disabled) {
+    background: rgba(29, 155, 240, 0.1);
+}
+
+.et-social-modal[data-social-theme="x"] .x-count-on {
+    border-color: var(--x-blue);
+    color: #fff;
+    background: var(--x-blue);
+}
+
+.et-social-modal[data-social-theme="x"] .x-count-on:hover:not(:disabled) {
+    background: var(--x-blue);
+}
+
+.et-social-modal[data-social-theme="x"] .x-count:disabled {
+    cursor: default;
+    opacity: 0.6;
+}
+
+.et-social-modal[data-social-theme="x"] .x-compose-go {
+    padding: 8px 20px;
+    border: 0;
+    border-radius: 9999px;
+    color: #fff;
+    background: var(--x-blue);
+    font: inherit;
+    font-weight: 700;
+    line-height: 20px;
+    cursor: pointer;
+    transition: filter 0.2s, transform 0.1s;
+}
+
+.et-social-modal[data-social-theme="x"] .x-compose-go:hover:not(:disabled) {
+    filter: brightness(1.1);
+}
+
+.et-social-modal[data-social-theme="x"] .x-compose-go:active:not(:disabled) {
+    transform: scale(0.98);
+}
+
+.et-social-modal[data-social-theme="x"] .x-compose-go:disabled {
+    cursor: default;
+    background: rgba(29, 155, 240, 0.5);
+}

@@ -3447,7 +3447,9 @@ html.et-bg-light {
 .et-settings-modal {
     position: fixed;
     inset: 0;
-    z-index: 2100;
+    /* On a computer it's on <body>, the panel in #et-portal (4010, above SillyTavern's
+       top bar): above that. On a phone both are in the portal, above the panel (2001) */
+    z-index: 4100;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -5893,7 +5895,8 @@ textarea.et-sched-in {
 .et-sl-overlay {
     position: fixed;
     inset: 0;
-    z-index: 2200;
+    /* Above the panel's portal on a computer, as the settings (4100) */
+    z-index: 4200;
     display: flex;
     align-items: center;
     justify-content: center;

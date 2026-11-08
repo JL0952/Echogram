@@ -1526,16 +1526,23 @@
     stroke-linecap: round;
 }
 
-/* ── Voice: play, waveform, length; tapped, the words underneath ── */
+/* ── Voice: play, waveform, length, and its transcription under them in the bubble ── */
 
 [data-platform="instagram"] .ig-voice {
     display: flex;
-    align-items: center;
-    gap: 8px;
-    width: 220px;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+    width: 260px;
     max-width: 100%;
-    padding: 8px 14px 8px 8px;
+    padding: 10px 16px 12px 12px;
     cursor: pointer;
+}
+
+[data-platform="instagram"] .ig-voice-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
 }
 
 [data-platform="instagram"] .ig-voice-play {
@@ -1546,8 +1553,8 @@
 }
 
 [data-platform="instagram"] .ig-voice-play svg {
-    width: 20px;
-    height: 20px;
+    width: 22px;
+    height: 22px;
 }
 
 [data-platform="instagram"] .ig-voice-wave {
@@ -1555,7 +1562,7 @@
     align-items: center;
     gap: 2px;
     flex: 1;
-    height: 22px;
+    height: 26px;
 }
 
 [data-platform="instagram"] .ig-voice-wave i {
@@ -1569,6 +1576,7 @@
 [data-platform="instagram"] .ig-voice-time {
     font-size: 12px;
     font-variant-numeric: tabular-nums;
+    opacity: 0.9;
 }
 
 [data-platform="instagram"] .ig-voice-unread {
@@ -1579,20 +1587,18 @@
 }
 
 [data-platform="instagram"] .ig-transcript {
-    box-sizing: border-box;
-    max-width: 100%;
-    margin-top: 4px;
-    padding: 8px 12px;
-    border-radius: 16px;
-    color: var(--ig-text);
-    background: var(--ig-quote);
+    padding-left: 4px;
     font-size: calc(var(--et-font-size, 15px) - 1px);
     line-height: 1.35;
     overflow-wrap: anywhere;
 }
 
-[data-platform="instagram"] .ig-voice[aria-expanded="false"] + .ig-transcript {
-    display: none;
+[data-platform="instagram"] .ig-transcript p {
+    margin: 0;
+}
+
+[data-platform="instagram"] .ig-transcript p + p {
+    margin-top: 4px;
 }
 
 /* ── Reply: who it answers, and the original as a faded bubble above ── */
