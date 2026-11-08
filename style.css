@@ -3342,6 +3342,17 @@ html.et-bg-light {
     box-sizing: border-box !important;
 }
 
+/* A SillyTavern theme's custom CSS may style every textarea with !important (双色盒子:
+   textarea:not([type="search"]) gets a background and a border); the field keeps its own.
+   Still below the looks' own rules for the field ([data-platform] #et-input). */
+.et-input-wrap textarea.et-input:not([type="search"]),
+.et-input-wrap textarea.et-input:not([type="search"]):focus {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    outline: none !important;
+}
+
 .et-input::-webkit-scrollbar {
     width: 6px;
 }
