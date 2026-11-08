@@ -2276,7 +2276,6 @@
         if (ids.length) map[charKey] = ids;
         else delete map[charKey];
         saveSettings();
-        renderStickerSets();
     }
 
     /** Every card in SillyTavern as { key, name }, by name. */
@@ -2288,34 +2287,60 @@
     }
 
     /**
-     * Settings → Stickers: a row per set, the characters it's on for under it (a name each,
-     * × to take it off, a list to add one), the open one's stickers under that.
+     * Settings → Stickers: a row per set: its cover (shows its stickers under it), its name
+     * (an imported one's turns into a field when clicked), how many, which characters it's
+     * on for (a list with a checkbox each and a search, opened from the row) and Delete.
      */
     function renderStickerSets() {
         const list = jQuery('#et-sticker-sets');
         if (!list.length) return;
-        const characters = stickerCharacters();
-        const nameOf = key => characters.find(char => char.key === key)?.name || CharacterData.nameOf(settings, key);
-        const keysWith = id => Object.keys(settings.stickerSetsByCharacter || {}).filter(key => stickerSetsFor(key).includes(id));
         list.html(getStickerLibrary().map(set => {
-            const on = keysWith(set.id);
-            const chips = on.map(key => `<span class="et-sticker-char">${escapeHtml(nameOf(key))}<button type="button" data-sticker-char-remove="${escapeHtml(key)}" title="Remove"><i class="fa-solid fa-xmark"></i></button></span>`).join('');
-            const addable = characters.filter(char => !on.includes(char.key));
-            const add = addable.length ? `<span class="et-select-wrapper et-sticker-char-add"><select class="et-select" data-sticker-char-add><option value="">+ Character</option>${addable.map(char => `<option value="${escapeHtml(char.key)}">${escapeHtml(char.name)}</option>`).join('')}</select><i class="fa-solid fa-chevron-down et-select-arrow"></i></span>` : '';
             const cover = set.stickers[0] ? `<img src="${escapeHtml(set.stickers[0].url)}" alt="" draggable="false">` : '';
             const name = set.builtIn
                 ? `<span class="et-sticker-set-name">${escapeHtml(set.name)}</span>`
-                : `<input class="et-input-text et-sticker-set-name" data-sticker-set-name value="${escapeHtml(set.name)}" maxlength="40">`;
+                : `<button type="button" class="et-sticker-set-name et-sticker-editable" data-sticker-edit-set title="Rename">${escapeHtml(set.name)}</button>`;
             const remove = set.builtIn ? '' : '<button type="button" class="et-sticker-delete" data-sticker-delete-set title="Delete"><i class="fa-solid fa-trash-can"></i></button>';
             const open = set.id === stickerSetOpen;
             const stickers = !open ? '' : `<div class="et-sticker-set-items">${set.stickers.map(sticker => set.builtIn
                 ? `<div class="et-sticker-set-item"><img src="${escapeHtml(sticker.url)}" alt="" loading="lazy" draggable="false"><span>${escapeHtml(sticker.name)}</span></div>`
-                : `<div class="et-sticker-set-item" data-sticker="${escapeHtml(sticker.name)}"><img src="${escapeHtml(sticker.url)}" alt="" loading="lazy" draggable="false"><input class="et-input-text" data-sticker-rename value="${escapeHtml(sticker.name)}" maxlength="40"><button type="button" class="et-sticker-delete" data-sticker-delete title="Delete"><i class="fa-solid fa-xmark"></i></button></div>`).join('')}</div>`;
+                : `<div class="et-sticker-set-item" data-sticker="${escapeHtml(sticker.name)}"><img src="${escapeHtml(sticker.url)}" alt="" loading="lazy" draggable="false"><button type="button" class="et-sticker-editable" data-sticker-edit title="Rename">${escapeHtml(sticker.name)}</button><button type="button" class="et-sticker-delete" data-sticker-delete title="Delete"><i class="fa-solid fa-xmark"></i></button></div>`).join('')}</div>`;
             return `<div class="et-sticker-set${open ? ' et-sticker-set-open' : ''}" data-sticker-set="${escapeHtml(set.id)}">`
                 + `<div class="et-sticker-set-row"><button type="button" class="et-sticker-set-cover" data-sticker-set-toggle title="${open ? 'Hide' : 'Show'}">${cover}</button>${name}`
-                + `<span class="et-sticker-set-count">${set.stickers.length}</span>${remove}</div>`
-                + `<div class="et-sticker-set-chars">${chips}${add}</div>${stickers}</div>`;
+                + `<span class="et-sticker-set-count">${set.stickers.length}</span>${stickerCharsButton(set.id)}${remove}</div>${stickers}</div>`;
         }).join(''));
+    }
+
+    /** The characters a set is on for, by key. */
+    function stickerSetKeys(setId) {
+        return Object.keys(settings.stickerSetsByCharacter || {}).filter(key => stickerSetsFor(key).includes(setId));
+    }
+
+    /** A character's name by key: the card's, or the one remembered for a card that's gone. */
+    function stickerCharacterName(key, characters = stickerCharacters()) {
+        return characters.find(char => char.key === key)?.name || CharacterData.nameOf(settings, key);
+    }
+
+    /** The button that opens a set's characters: how many it's on for, their names on hover. */
+    function stickerCharsButton(setId) {
+        const keys = stickerSetKeys(setId);
+        const characters = stickerCharacters();
+        const names = keys.map(key => stickerCharacterName(key, characters)).join(', ');
+        return `<button type="button" class="et-sticker-chars-btn${keys.length ? ' et-sticker-chars-some' : ''}" data-sticker-chars title="${escapeHtml(names)}"><i class="fa-solid fa-user"></i><span>${keys.length}</span><i class="fa-solid fa-chevron-down"></i></button>`;
+    }
+
+    /** A set's characters: a search, then every card with a checkbox (and any it's on for whose card is gone). */
+    function openStickerChars(button) {
+        jQuery('.et-sticker-chars-menu').remove();
+        const setEl = button.closest('[data-sticker-set]');
+        const setId = setEl.attr('data-sticker-set');
+        const on = stickerSetKeys(setId);
+        const characters = stickerCharacters();
+        const gone = on.filter(key => !characters.some(char => char.key === key)).map(key => ({ key, name: stickerCharacterName(key, characters) }));
+        const items = [...gone, ...characters].map(char =>
+            `<label class="et-sticker-chars-item" data-name="${escapeHtml(String(char.name).toLowerCase())}"><input type="checkbox" class="checkbox" data-sticker-char="${escapeHtml(char.key)}"${on.includes(char.key) ? ' checked' : ''}><span>${escapeHtml(char.name)}</span></label>`).join('');
+        const menu = jQuery(`<div class="et-sticker-chars-menu" data-et-own-escape><input type="text" class="et-input-text" data-sticker-chars-search placeholder="Search"><div class="et-sticker-chars-list">${items}</div></div>`);
+        setEl.find('.et-sticker-set-row').append(menu);
+        menu.find('[data-sticker-chars-search]').trigger('focus');
     }
 
     /** An imported set's stored entry, by id. */
@@ -2337,13 +2362,53 @@
                 stickerSetOpen = stickerSetOpen === id ? null : id;
                 renderStickerSets();
             })
-            .on('change.et-stickers', '[data-sticker-char-add]', function () {
-                const id = jQuery(this).closest('[data-sticker-set]').attr('data-sticker-set');
-                if (this.value) setStickerSetFor(this.value, id, true);
+            // Which characters: the list opens under the row, and closes on a click anywhere else or Escape
+            .on('click.et-stickers', '[data-sticker-chars]', function (e) {
+                e.stopPropagation();
+                const open = jQuery(this).siblings('.et-sticker-chars-menu').length;
+                jQuery('.et-sticker-chars-menu').remove();
+                if (!open) openStickerChars(jQuery(this));
             })
-            .on('click.et-stickers', '[data-sticker-char-remove]', function () {
-                const id = jQuery(this).closest('[data-sticker-set]').attr('data-sticker-set');
-                setStickerSetFor(this.dataset.stickerCharRemove, id, false);
+            .on('click.et-stickers', function (e) {
+                if (!jQuery(e.target).closest('.et-sticker-chars-menu, [data-sticker-chars]').length) jQuery('.et-sticker-chars-menu').remove();
+            })
+            .on('keydown.et-stickers', '.et-sticker-chars-menu', function (e) {
+                if (e.key === 'Escape') {
+                    e.preventDefault();
+                    jQuery(this).remove();
+                }
+            })
+            .on('input.et-stickers', '[data-sticker-chars-search]', function () {
+                const query = this.value.trim().toLowerCase();
+                jQuery(this).siblings('.et-sticker-chars-list').children().each(function () {
+                    this.hidden = !!query && !this.dataset.name.includes(query);
+                });
+            })
+            .on('change.et-stickers', '[data-sticker-char]', function () {
+                const setEl = jQuery(this).closest('[data-sticker-set]');
+                const id = setEl.attr('data-sticker-set');
+                setStickerSetFor(this.dataset.stickerChar, id, this.checked);
+                // The count and names in place, the list staying open
+                setEl.find('[data-sticker-chars]').replaceWith(stickerCharsButton(id));
+            })
+            // A name is a field only while it's being edited: Enter or leaving it keeps it, Escape doesn't
+            .on('click.et-stickers', '[data-sticker-edit-set], [data-sticker-edit]', function () {
+                const button = jQuery(this);
+                const setName = button.is('[data-sticker-edit-set]');
+                const input = jQuery(`<input type="text" class="et-input-text${setName ? ' et-sticker-set-name' : ''}" maxlength="40" data-et-own-escape ${setName ? 'data-sticker-set-name' : 'data-sticker-rename'}>`).attr('value', button.text());
+                button.replaceWith(input);
+                input.trigger('focus').trigger('select');
+            })
+            .on('keydown.et-stickers', '[data-sticker-set-name], [data-sticker-rename]', function (e) {
+                if (e.key === 'Enter') this.blur();
+                else if (e.key === 'Escape') {
+                    e.preventDefault();
+                    this.value = this.defaultValue;
+                    renderStickerSets();
+                }
+            })
+            .on('blur.et-stickers', '[data-sticker-set-name], [data-sticker-rename]', function () {
+                if (this.isConnected) renderStickerSets();
             })
             .on('change.et-stickers', '[data-sticker-set-name]', function () {
                 const set = storedStickerSet(jQuery(this).closest('[data-sticker-set]').attr('data-sticker-set'));
@@ -5593,6 +5658,7 @@
         menu.find('.et-dots-item').on('click', function (e) {
             e.stopPropagation();
             setStickerSetFor(charKey, set.id, this.dataset.stickerSetFor === 'on');
+            renderStickerSets();
             closeAllDotMenus();
         });
     }

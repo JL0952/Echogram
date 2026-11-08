@@ -3652,44 +3652,106 @@ input.et-sticker-set-name {
     font-size: 0.8rem;
 }
 
-/* The characters a set is on for: a name each, then a list to add one */
-.et-sticker-set-chars {
-    display: flex;
-    flex-wrap: wrap;
+/* A name shows as text; clicked, it becomes a field until it's kept */
+.et-sticker-editable {
+    min-width: 0;
+    padding: 4px 6px;
+    overflow: hidden;
+    border: 1px solid transparent;
+    border-radius: var(--et-radius-sm);
+    background: none;
+    color: var(--et-surface-text);
+    font-family: inherit;
+    font-size: inherit;
+    text-align: left;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    cursor: text;
+}
+
+/* The built-in set's name lines up with an imported one's (its border and padding) */
+span.et-sticker-set-name {
+    padding: 5px 7px;
+}
+
+.et-sticker-set-row .et-sticker-editable {
+    font-size: 0.9rem;
+}
+
+.et-sticker-editable:hover {
+    border-color: var(--et-surface-line);
+}
+
+/* Which characters a set is on for: how many, opening a list with a search */
+.et-sticker-set-row {
+    position: relative;
+}
+
+.et-sticker-chars-btn {
+    display: inline-flex;
+    flex-shrink: 0;
     align-items: center;
     gap: 6px;
-    margin: 6px 0 0 54px;
-}
-
-.et-sticker-char {
-    display: inline-flex;
-    align-items: center;
-    gap: 2px;
-    padding: 2px 4px 2px 10px;
-    border: 1px solid color-mix(in srgb, var(--et-theme-color) 35%, transparent);
-    border-radius: 999px;
-    background: color-mix(in srgb, var(--et-theme-color) 10%, transparent);
-    color: var(--et-surface-text);
-    font-size: 0.78rem;
-}
-
-.et-sticker-char button {
-    padding: 2px 5px;
-    border: 0;
-    background: none;
+    padding: 5px 9px;
+    border: 1px solid var(--et-surface-line);
+    border-radius: var(--et-radius-sm);
+    background: transparent;
     color: var(--et-surface-muted);
+    font-size: 0.8rem;
     cursor: pointer;
 }
 
-.et-sticker-char-add {
-    display: inline-block;
-    width: auto;
-    margin-bottom: 0;
+.et-sticker-chars-btn.et-sticker-chars-some {
+    border-color: color-mix(in srgb, var(--et-theme-color) 35%, transparent);
+    background: color-mix(in srgb, var(--et-theme-color) 10%, transparent);
+    color: var(--et-theme-color);
 }
 
-.et-sticker-char-add .et-select {
-    padding: 4px 28px 4px 10px;
-    font-size: 0.78rem;
+.et-sticker-chars-btn .fa-chevron-down {
+    font-size: 0.65rem;
+}
+
+.et-sticker-chars-menu {
+    position: absolute;
+    top: calc(100% + 4px);
+    right: 0;
+    z-index: 5;
+    width: 220px;
+    padding: 8px;
+    border: 1px solid var(--et-surface-line);
+    border-radius: var(--et-radius-sm);
+    background: var(--et-surface, #1e1e1e);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+
+.et-sticker-chars-menu .et-input-text {
+    margin-bottom: 6px;
+    padding: 6px 10px;
+    font-size: 0.82rem;
+}
+
+.et-sticker-chars-list {
+    max-height: 220px;
+    overflow-y: auto;
+}
+
+.et-sticker-chars-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 4px;
+    border-radius: var(--et-radius-sm);
+    color: var(--et-surface-text);
+    font-size: 0.85rem;
+    cursor: pointer;
+}
+
+.et-sticker-chars-item[hidden] {
+    display: none;
+}
+
+.et-sticker-chars-item:hover {
+    background: color-mix(in srgb, var(--et-surface-text) 6%, transparent);
 }
 
 .et-sticker-delete {
@@ -3732,7 +3794,9 @@ input.et-sticker-set-name {
     object-fit: contain;
 }
 
-.et-sticker-set-item input {
+.et-sticker-set-item input,
+.et-sticker-set-item .et-sticker-editable {
+    max-width: 100%;
     margin: 0;
     padding: 4px 6px;
     font-size: 0.78rem;

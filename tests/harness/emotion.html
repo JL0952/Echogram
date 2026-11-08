@@ -2039,13 +2039,13 @@
         await sleep(300);
         res.shownOnWeChat = !btn().hidden && getComputedStyle(btn()).display !== 'none';
 
-        // The panel: 月薪喵's tab and its 23 stickers with their names; the button turns into a keyboard
+        // The panel: 月薪喵's tab and its 27 stickers with their names; the button turns into a keyboard
         r.toggleStickerPanel();
         await sleep(400);
         const items = () => [...open().querySelectorAll('.et-sticker-item')];
         res.panel = open()?.dataset.etPanel === 'stickers' && open().querySelectorAll('.et-sticker-tab').length === 1
             && open().querySelector('.et-sticker-tabs > :first-child').classList.contains('et-sticker-add')
-            && items().length === 23 && items()[0].textContent === '安慰' && !!items()[0].querySelector('img');
+            && items().length === 27 && items()[0].textContent === '安慰' && !!items()[0].querySelector('img');
         res.panelHeight = open().getBoundingClientRect().height > 250;
         res.keyboard = btn().classList.contains('et-sticker-btn-active');
 
@@ -2057,7 +2057,7 @@
         r.startReply(0, null);
         items()[1].click();
         await sleep(300);
-        res.withQuote = chat().at(-1).mes === '<reply>Mira: hi</reply>\n<sticker>不想干</sticker>' && !document.querySelector('#et-reply-draft:not([hidden])');
+        res.withQuote = chat().at(-1).mes === '<reply>Mira: hi</reply>\n<sticker>好的</sticker>' && !document.querySelector('#et-reply-draft:not([hidden])');
 
         // "+" turns it into the tiles where it stands, the sticker button back to the glyph; and back
         const element = open();
@@ -2066,16 +2066,27 @@
         res.toTiles = open() === element && element.dataset.etPanel === 'attach' && !!element.querySelector('.et-attach-panel-item') && !btn().classList.contains('et-sticker-btn-active');
         r.toggleStickerPanel();
         await sleep(400);
-        res.backToStickers = open() === element && items().length === 23 && btn().classList.contains('et-sticker-btn-active');
+        res.backToStickers = open() === element && items().length === 27 && btn().classList.contains('et-sticker-btn-active');
 
         // Import a ZIP from the settings: uploads stubbed
         const { host } = await mountSettingsPanel();
         r.bindStickerSets();
         r.renderStickerSets();
+        // Shown, on its Stickers page, as when it's open (a field in a hidden one can't take focus)
+        host.querySelector('#et-settings-modal').classList.add('et-settings-visible');
+        host.querySelector('.et-nav-item[data-section="stickers"]').click();
         const rows = () => [...host.querySelectorAll('.et-sticker-set')];
-        // 月薪喵 too is on for nobody at first: no names under it, both characters to add
-        res.listPreset = rows().length === 1 && !rows()[0].querySelector('[data-sticker-delete-set]') && !rows()[0].querySelector('.et-sticker-char')
-            && [...rows()[0].querySelectorAll('[data-sticker-char-add] option')].map(o => o.textContent).join(',') === '+ Character,Mira,Qi';
+        // 月薪喵 too is on for nobody at first: 0 on its button, both characters in its list, none ticked
+        const charsBtn = i => rows()[i].querySelector('[data-sticker-chars]');
+        const charsMenu = () => host.querySelector('.et-sticker-chars-menu');
+        const charItems = () => [...charsMenu().querySelectorAll('.et-sticker-chars-item')];
+        res.listPreset = rows().length === 1 && !rows()[0].querySelector('[data-sticker-delete-set]') && charsBtn(0).textContent.trim() === '0'
+            && !!rows()[0].querySelector('span.et-sticker-set-name');
+        charsBtn(0).click();
+        res.charsList = charItems().map(item => item.textContent).join(',') === 'Mira,Qi' && !charsMenu().querySelector(':checked')
+            && document.activeElement === charsMenu().querySelector('[data-sticker-chars-search]');
+        host.click();
+        res.charsCloses = !charsMenu();
         if (!window.JSZip) await new Promise((resolve, reject) => {
             const script = document.createElement('script');
             script.src = 'build/vendor/jszip.min.js';
@@ -2138,15 +2149,19 @@
             await sleep(100);
             res.tabShows = items().length === set.stickers.length && items()[0].querySelector('img').getAttribute('src') === `/${set.stickers[0].path}`;
 
-            // On for nobody; Mira added from the list, her name under it, then taken off
-            res.importedOff = !Object.keys(s.stickerSetsByCharacter).length;
-            const pick = rows()[1].querySelector('[data-sticker-char-add]');
-            pick.value = 'mira.png';
-            pick.dispatchEvent(new Event('change', { bubbles: true }));
-            res.charAdded = s.stickerSetsByCharacter['mira.png']?.join() === set.id && rows()[1].querySelector('.et-sticker-char')?.textContent === 'Mira'
-                && [...rows()[1].querySelectorAll('[data-sticker-char-add] option')].map(o => o.textContent).join(',') === '+ Character,Qi';
-            rows()[1].querySelector('[data-sticker-char-remove]').click();
-            res.charRemoved = !s.stickerSetsByCharacter['mira.png'] && !rows()[1].querySelector('.et-sticker-char');
+            // On for nobody, its name text until clicked; Mira ticked in its list (searched for), then unticked
+            res.importedOff = !Object.keys(s.stickerSetsByCharacter).length && !rows()[1].querySelector('input');
+            charsBtn(1).click();
+            const search = charsMenu().querySelector('[data-sticker-chars-search]');
+            search.value = 'mi';
+            search.dispatchEvent(new Event('input', { bubbles: true }));
+            res.charsSearch = charItems().filter(item => !item.hidden).map(item => item.textContent).join() === 'Mira';
+            const tick = key => { const box = charsMenu().querySelector(`[data-sticker-char="${key}"]`); box.click(); };
+            tick('mira.png');
+            res.charAdded = s.stickerSetsByCharacter['mira.png']?.join() === set.id && charsBtn(1).textContent.trim() === '1' && charsBtn(1).title === 'Mira' && !!charsMenu();
+            tick('mira.png');
+            res.charRemoved = !s.stickerSetsByCharacter['mira.png'] && charsBtn(1).textContent.trim() === '0';
+            host.click();
 
             // In the panel: 月薪喵's tab held down turns it on for Mira; the click that ends it doesn't switch tabs
             const tab = i => open().querySelectorAll('.et-sticker-tab')[i];
@@ -2161,7 +2176,7 @@
             res.holdKeepsTab = tab(1).classList.contains('et-sticker-tab-active');
             pickMenu();
             await sleep(250);
-            res.holdTurnsOn = s.stickerSetsByCharacter['mira.png']?.join() === 'yuexinmiao' && rows()[0].querySelector('.et-sticker-char')?.textContent === 'Mira';
+            res.holdTurnsOn = s.stickerSetsByCharacter['mira.png']?.join() === 'yuexinmiao' && charsBtn(0).title === 'Mira';
             // Right-clicked: it shows as on, and turns it off
             tab(0).dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
             await sleep(50);
@@ -2177,14 +2192,27 @@
 
             // Its stickers under it; a name the library has is refused, a new one kept
             rows()[1].querySelector('[data-sticker-set-toggle]').click();
-            const input = () => rows()[1].querySelector('[data-sticker-rename]');
+            const edit = () => { rows()[1].querySelector('[data-sticker-edit]').click(); return rows()[1].querySelector('[data-sticker-rename]'); };
             const first = set.stickers[0].name;
-            input().value = '安慰';
-            input().dispatchEvent(new Event('change', { bubbles: true }));
-            res.renameTaken = set.stickers[0].name === first && errors.some(e => /taken/.test(e));
-            input().value = ' 猫猫吃鸡腿 ';
-            input().dispatchEvent(new Event('change', { bubbles: true }));
-            res.renamed = set.stickers[0].name === '猫猫吃鸡腿' && rows()[1].querySelector('[data-sticker-rename]').value === '猫猫吃鸡腿';
+            let input = edit();
+            res.editField = !!input && input.value === first && document.activeElement === input;
+            input.value = '安慰';
+            input.dispatchEvent(new Event('change', { bubbles: true }));
+            res.renameTaken = set.stickers[0].name === first && errors.some(e => /taken/.test(e)) && !rows()[1].querySelector('[data-sticker-rename]');
+            input = edit();
+            input.value = '别的';
+            input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+            res.escapeKeeps = set.stickers[0].name === first && !rows()[1].querySelector('[data-sticker-rename]') && host.querySelector('#et-settings-modal').classList.contains('et-settings-visible');
+            input = edit();
+            input.value = ' 猫猫吃鸡腿 ';
+            input.dispatchEvent(new Event('change', { bubbles: true }));
+            res.renamed = set.stickers[0].name === '猫猫吃鸡腿' && rows()[1].querySelector('[data-sticker-edit]').textContent === '猫猫吃鸡腿';
+            // The set's name the same way
+            rows()[1].querySelector('[data-sticker-edit-set]').click();
+            const setInput = rows()[1].querySelector('[data-sticker-set-name]');
+            setInput.value = '猫猫';
+            setInput.dispatchEvent(new Event('change', { bubbles: true }));
+            res.setRenamed = set.name === '猫猫' && rows()[1].querySelector('[data-sticker-edit-set]').textContent === '猫猫';
 
             // Deleting one sticker, then the set: each on a second click
             const count = set.stickers.length;
