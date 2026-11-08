@@ -1661,12 +1661,6 @@
     opacity: 0.4;
 }
 
-/* Held down for its menu: no callout or selection */
-[data-platform="wechat"] .et-sticker-tab {
-    -webkit-touch-callout: none;
-    user-select: none;
-}
-
 [data-platform="wechat"] .et-sticker-tab img {
     width: 28px;
     height: 28px;

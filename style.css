@@ -11114,6 +11114,15 @@ textarea.et-mem-save-snippet-edit::placeholder {
     transition: height 0.28s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+/* Every look: a press held on a sticker, a tab or a tile selects nothing and brings up
+   no callout (iOS needs the -webkit- ones), so holding a set's tab only opens its menu */
+.et-attach-panel,
+.et-attach-panel * {
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+}
+
 .et-sticker-tabs {
     display: flex;
     gap: 4px;
@@ -11145,11 +11154,6 @@ textarea.et-mem-save-snippet-edit::placeholder {
 
 .et-sticker-add:disabled {
     opacity: 0.4;
-}
-
-.et-sticker-tab {
-    -webkit-touch-callout: none;
-    user-select: none;
 }
 
 .et-sticker-tab img {
