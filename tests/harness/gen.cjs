@@ -23,7 +23,7 @@ const body = (iife.expression.callee || iife.expression.expression.callee).body.
 
 const WANT = [
     // data / view model
-    'RichMessages', 'Features', 'Stickers', 'stickerPresets', 'getStickerLibrary', 'ChatViewModel', 'Platform', 'Platforms', 'PLATFORM_IDS', 'activePlatformMemo', 'getActivePlatform',
+    'RichMessages', 'Features', 'Stickers', 'stickerPresets', 'stickerLibrary', 'getStickerLibrary', 'ChatViewModel', 'Platform', 'Platforms', 'PLATFORM_IDS', 'activePlatformMemo', 'getActivePlatform',
     'syncPlatformChrome', 'sharedFillFrame', 'updateSharedFill', 'queueSharedFill', 'watchSharedFill', 'fitTextsFrame', 'textGap', 'fitTexts', 'fitLyrics', 'queueFitTexts', 'watchTextFit', 'songArtTimer', 'requestSongArt', 'queueSongArtRefresh', 'populatePlatformSelects', 'bindPlatformSelects', 'onPlatformChoiceChanged', 'getColorScheme', 'getReactionIds', 'userRunStart', 'startInlineEdit', 'getActiveFeatures', 'platformHas',
     'getMessageDisplayParts', 'getMessageReactions', 'staggeredMessageKeys', 'shouldStaggerReveal', 'staggerRevealParts',
     // html

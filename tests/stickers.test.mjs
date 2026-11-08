@@ -111,3 +111,47 @@ test('a sticker shows its image where the platform has stickers, the note where 
     assert.deepEqual(u2.parts, [{ type: 'text', text: '[Sticker: 小猫摸摸头]' }]);
     assert.deepEqual(c2.parts.map(p => p.text), ['乖', '[Sticker: 安慰你]', '[Sticker: 不存在的]']);
 });
+
+test('a name already in the library gets the first number that makes it new', () => {
+    const { uniqueName } = window.EchoTextStickers;
+    assert.equal(uniqueName(new Set(['安慰']), '害羞'), '害羞');
+    assert.equal(uniqueName(new Set(['害羞']), '害羞'), '害羞2');
+    assert.equal(uniqueName(new Set(['害羞', '害羞2', '害羞3']), '害羞'), '害羞4');
+});
+
+test('a ZIP\'s names read as UTF-8, or as GBK when they aren\'t', () => {
+    const { decodeZipName } = window.EchoTextStickers;
+    assert.equal(decodeZipName(new TextEncoder().encode('表情包/小猫无奈.gif')), '表情包/小猫无奈.gif');
+    // 小猫 in GBK
+    assert.equal(decodeZipName(new Uint8Array([0xd0, 0xa1, 0xc3, 0xa8, 0x2e, 0x67, 0x69, 0x66])), '小猫.gif');
+    // GBK that happens to be valid UTF-8 too ("Сè") is still read as GBK; accented UTF-8 stays
+    assert.equal(decodeZipName(new TextEncoder().encode('Сè.gif')), '小猫.gif');
+    assert.equal(decodeZipName(new TextEncoder().encode('café ☕.gif')), 'café ☕.gif');
+    // JSZip hands over a binary string where it can't give bytes
+    assert.equal(decodeZipName(String.fromCharCode(...new TextEncoder().encode('害羞.png'))), '害羞.png');
+});
+
+test('a ZIP\'s stickers: its images named after their files, made unique, the rest skipped', () => {
+    const { zipStickerFiles } = window.EchoTextStickers;
+    const { files, skipped } = zipStickerFiles([
+        '表情包/', '表情包/小猫摸摸头.gif', '表情包/小猫摸摸头2.gif', '表情包/sub/小猫摸摸头.PNG', '表情包/安慰.jpeg',
+        '表情包/readme.txt', '__MACOSX/表情包/._小猫摸摸头.gif', '表情包/.DS_Store', '表情包/.gif',
+    ], new Set(['安慰']));
+    assert.deepEqual(files, [
+        { path: '表情包/小猫摸摸头.gif', name: '小猫摸摸头', format: 'gif' },
+        { path: '表情包/小猫摸摸头2.gif', name: '小猫摸摸头2', format: 'gif' },
+        { path: '表情包/sub/小猫摸摸头.PNG', name: '小猫摸摸头3', format: 'png' },
+        { path: '表情包/安慰.jpeg', name: '安慰2', format: 'jpeg' },
+    ]);
+    assert.equal(skipped, 1);
+});
+
+test('imported sets come after the built-in ones, their images where the upload put them', () => {
+    const { importedSets, findSticker: find, characterNames: names } = window.EchoTextStickers;
+    const sets = importedSets([{ id: 'sx', name: '猫', stickers: [{ name: '小猫无奈', path: 'user/images/Echogram stickers sx/000.gif' }] }]);
+    assert.deepEqual(sets, [{ id: 'sx', name: '猫', stickers: [{ name: '小猫无奈', path: 'user/images/Echogram stickers sx/000.gif', url: '/user/images/Echogram stickers sx/000.gif' }] }]);
+    const lib = [...presets, ...sets];
+    assert.equal(find(lib, '无奈')?.url, '/user/images/Echogram stickers sx/000.gif');
+    assert.deepEqual(names(lib, ['yuexinmiao']), ['小猫无奈']);
+    assert.deepEqual(importedSets(undefined), []);
+});

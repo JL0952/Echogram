@@ -3601,6 +3601,120 @@ html.et-bg-light {
     min-width: 0;
 }
 
+/* Sticker sets (Settings → Stickers): a row per set, the open one's stickers under it */
+.et-sticker-sets {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.et-sticker-set-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.et-sticker-set-cover {
+    flex-shrink: 0;
+    width: 44px;
+    height: 44px;
+    padding: 2px;
+    border: 1px solid var(--et-surface-line);
+    border-radius: var(--et-radius-sm);
+    background: transparent;
+    cursor: pointer;
+}
+
+.et-sticker-set-open .et-sticker-set-cover {
+    border-color: var(--et-theme-color);
+}
+
+.et-sticker-set-cover img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+}
+
+.et-sticker-set-name {
+    flex: 1;
+    min-width: 0;
+    color: var(--et-surface-text);
+    font-size: 0.9rem;
+}
+
+input.et-sticker-set-name {
+    margin: 0;
+    padding: 6px 10px;
+}
+
+.et-sticker-set-count {
+    color: var(--et-surface-muted);
+    font-size: 0.8rem;
+}
+
+.et-sticker-set-char {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    color: var(--et-surface-muted);
+    font-size: 0.8rem;
+    cursor: pointer;
+}
+
+.et-sticker-delete {
+    flex-shrink: 0;
+    padding: 6px 8px;
+    border: 1px solid transparent;
+    border-radius: var(--et-radius-sm);
+    background: transparent;
+    color: var(--et-surface-muted);
+    cursor: pointer;
+}
+
+.et-sticker-delete.et-recover-armed {
+    border-color: rgba(248, 113, 113, 0.5);
+    background: rgba(248, 113, 113, 0.12);
+    color: #f87171;
+}
+
+.et-sticker-set-items {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+    gap: 10px;
+    margin: 10px 0 4px 54px;
+}
+
+.et-sticker-set-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
+    position: relative;
+    color: var(--et-surface-muted);
+    font-size: 0.78rem;
+}
+
+.et-sticker-set-item img {
+    width: 64px;
+    height: 64px;
+    object-fit: contain;
+}
+
+.et-sticker-set-item input {
+    margin: 0;
+    padding: 4px 6px;
+    font-size: 0.78rem;
+    text-align: center;
+}
+
+.et-sticker-set-item .et-sticker-delete {
+    position: absolute;
+    top: -4px;
+    right: 0;
+    padding: 2px 6px;
+}
+
 /* Delete: quiet until it's armed */
 .et-mem-add-btn.et-recover-delete {
     border-color: var(--et-surface-line);

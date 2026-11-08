@@ -243,7 +243,8 @@
    photo / transfer menu, and the send button shows as 发送 once there is
    text (as in WeChat). While a reply is being generated it shows as a stop
    button instead of "+". The voice glyph is EchoText's voice button (a keyboard
-   while in voice mode, to switch back); emoji is drawn, not yet a button. */
+   while in voice mode, to switch back); the emoji glyph is the sticker button (a
+   keyboard while its panel is up), drawn only when the platform has no stickers. */
 
 [data-platform="wechat"] [data-et-role~="input-bar"] {
     position: relative;
@@ -268,6 +269,7 @@
 [data-platform="wechat"] [data-et-role~="input-bar"]::before,
 [data-platform="wechat"] [data-et-role~="input-bar"]::after,
 [data-platform="wechat"] #et-voice-btn::before,
+[data-platform="wechat"] #et-sticker-btn::before,
 [data-platform="wechat"] #et-attach-btn::before {
     content: "";
     display: block;
@@ -324,6 +326,43 @@
     grid-row: 1;
     margin-bottom: 4px;
     transform: translateX(2px);
+}
+
+/* The emoji glyph is the sticker button itself, when the platform has stickers */
+[data-platform="wechat"] [data-et-role~="input-bar"]:has(#et-sticker-btn:not([hidden]))::after {
+    display: none;
+}
+
+[data-platform="wechat"] #et-sticker-btn {
+    grid-column: 3;
+    grid-row: 1;
+    display: grid;
+    place-items: center;
+    width: 34px;
+    height: 32px;
+    margin: 0 0 4px;
+    padding: 0;
+    border: 0;
+    color: var(--wx-text);
+    background: none;
+    cursor: pointer;
+}
+
+[data-platform="wechat"] #et-sticker-btn[hidden] {
+    display: none;
+}
+
+[data-platform="wechat"] #et-sticker-btn::before {
+    --wx-glyph: var(--wx-icon-sticker);
+    transform: translateX(2px);
+}
+
+[data-platform="wechat"] #et-sticker-btn.et-sticker-btn-active::before {
+    --wx-glyph: var(--wx-icon-keyboard);
+}
+
+[data-platform="wechat"] #et-sticker-btn > i {
+    display: none;
 }
 
 /* The textarea itself is the field */
@@ -1607,4 +1646,84 @@
     color: var(--wx-muted);
     font-size: 12px;
     line-height: 16px;
+}
+
+/* ── Sticker panel: the "+" panel's place, a tab per set along the top (its
+   first sticker), then the set's stickers four to a row with their names ── */
+
+[data-platform="wechat"] .et-sticker-tabs {
+    display: flex;
+    gap: 4px;
+    padding: 6px 8px;
+    overflow-x: auto;
+    scrollbar-width: none;
+    border-bottom: 0.5px solid var(--wx-input-border);
+}
+
+[data-platform="wechat"] .et-sticker-tab {
+    display: grid;
+    flex-shrink: 0;
+    place-items: center;
+    width: 44px;
+    height: 36px;
+    padding: 0;
+    border: 0;
+    border-radius: 8px;
+    background: none;
+    cursor: pointer;
+}
+
+[data-platform="wechat"] .et-sticker-tab img {
+    width: 28px;
+    height: 28px;
+    object-fit: contain;
+}
+
+[data-platform="wechat"] .et-sticker-tab-active {
+    background: var(--wx-bubble-in);
+}
+
+[data-platform="wechat"] .et-sticker-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    align-content: start;
+    gap: 6px 4px;
+    box-sizing: border-box;
+    height: 240px;
+    padding: 10px 10px max(env(safe-area-inset-bottom, 0px), 10px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+
+[data-platform="wechat"] .et-sticker-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
+    padding: 4px 0;
+    border: 0;
+    border-radius: 8px;
+    background: none;
+    cursor: pointer;
+}
+
+[data-platform="wechat"] .et-sticker-item:active {
+    background: var(--wx-bubble-in);
+}
+
+[data-platform="wechat"] .et-sticker-item img {
+    width: 60px;
+    height: 60px;
+    object-fit: contain;
+}
+
+[data-platform="wechat"] .et-sticker-item span {
+    max-width: 100%;
+    overflow: hidden;
+    color: var(--wx-muted);
+    font-size: 11px;
+    line-height: 14px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }

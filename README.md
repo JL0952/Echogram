@@ -23,6 +23,7 @@ Text your SillyTavern characters like they're on your phone.
 - Replies come as several short texts, at the length you pick for each character.
 - Photos, voice messages, locations, songs, money transfers, files and links.
 - Your own images on any photo, from its menu.
+- Stickers on WeChat: a built-in set, or your own from a ZIP, named after their files.
 - Tapbacks and quoted replies, from you and the character.
 - Rapport, Romance, Desire, moods, Big Five, Morality and texting style, set by hand or left to change on their own.
 - Characters text you first, sometimes with a photo or voice message.

@@ -2004,6 +2004,186 @@
     };
 
     // Settings that depend on another: greyed out and fixed while it's off, saying what's needed
+    // Stickers (6b, 6c) through the real code: the button only on WeChat, the panel (a tab per
+    // set, the stickers with their names, a tap sending one with the panel staying up, the "+"
+    // panel taking its place and back), a ZIP imported from the settings (its file names, the
+    // uploads, a new tab), the character's switch, renaming (a taken name refused), deleting a
+    // sticker and a set (a second click), and a failed upload keeping nothing. ?zip=<path under
+    // the repo> imports that file instead of a small one made here.
+    window.runStickerTest = async function () {
+        const res = {};
+        errors.length = 0;
+        const s = env.settings;
+        const platformBefore = s.defaultPlatform;
+        const chat = () => s.chatHistory['mira.png'];
+        Object.assign(s, { defaultPlatform: 'echotext', stickerSets: [], stickerSetsOff: [] });
+        s.chatHistory['mira.png'] = [{ is_user: false, mes: 'hi', send_date: Date.now() - 60000 }];
+        r.bindMessageActions?.();
+        // The panel's taps, bound once as the extension does when the panel opens
+        if (!window.__stickerPanelBound) {
+            r.bindAttachPanel();
+            window.__stickerPanelBound = true;
+        }
+        r.renderMessages(chat());
+        await sleep(300);
+        const btn = () => document.getElementById('et-sticker-btn');
+        const open = () => document.getElementById('et-attach-panel');
+        res.hiddenElsewhere = btn().hidden;
+        s.defaultPlatform = 'wechat';
+        r.renderMessages(chat());
+        await sleep(300);
+        res.shownOnWeChat = !btn().hidden && getComputedStyle(btn()).display !== 'none';
+
+        // The panel: 月薪喵's tab and its 23 stickers with their names; the button turns into a keyboard
+        r.toggleStickerPanel();
+        await sleep(400);
+        const items = () => [...open().querySelectorAll('.et-sticker-item')];
+        res.panel = open()?.dataset.etPanel === 'stickers' && open().querySelectorAll('.et-sticker-tab').length === 1
+            && items().length === 23 && items()[0].textContent === '安慰' && !!items()[0].querySelector('img');
+        res.panelHeight = open().getBoundingClientRect().height > 250;
+        res.keyboard = btn().classList.contains('et-sticker-btn-active');
+
+        // A tap sends it, the panel staying up; a quote waiting goes with it
+        items()[0].click();
+        await sleep(300);
+        res.sent = chat().at(-1).is_user && chat().at(-1).mes === '<sticker>安慰</sticker>' && !!open();
+        res.shown = !!panel.querySelector(`[data-et-role="message"][data-index="${chat().length - 1}"] .wx-sticker img`);
+        r.startReply(0, null);
+        items()[1].click();
+        await sleep(300);
+        res.withQuote = chat().at(-1).mes === '<reply>Mira: hi</reply>\n<sticker>不想干</sticker>' && !document.querySelector('#et-reply-draft:not([hidden])');
+
+        // "+" turns it into the tiles where it stands, the sticker button back to the glyph; and back
+        const element = open();
+        r.toggleAttachPanel();
+        await sleep(400);
+        res.toTiles = open() === element && element.dataset.etPanel === 'attach' && !!element.querySelector('.et-attach-panel-item') && !btn().classList.contains('et-sticker-btn-active');
+        r.toggleStickerPanel();
+        await sleep(400);
+        res.backToStickers = open() === element && items().length === 23 && btn().classList.contains('et-sticker-btn-active');
+
+        // Import a ZIP from the settings: uploads stubbed
+        const { host } = await mountSettingsPanel();
+        r.bindStickerSets();
+        r.renderStickerSets();
+        const rows = () => [...host.querySelectorAll('.et-sticker-set')];
+        res.listPreset = rows().length === 1 && !rows()[0].querySelector('[data-sticker-delete-set]') && rows()[0].querySelector('[data-sticker-set-char]').checked;
+        if (!window.JSZip) await new Promise((resolve, reject) => {
+            const script = document.createElement('script');
+            script.src = 'build/vendor/jszip.min.js';
+            script.onload = resolve;
+            script.onerror = reject;
+            document.head.appendChild(script);
+        });
+        let zipFile;
+        if (params.get('zip')) {
+            const blob = await (await fetch(`/${params.get('zip')}`)).blob();
+            zipFile = new File([blob], params.get('zip').split('/').pop(), { type: 'application/zip' });
+        } else {
+            // Names not marked as UTF-8, one of them in GBK (小猫), a name the set has already, and a text file
+            const zip = new JSZip();
+            const gif = Uint8Array.from(atob('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'), c => c.charCodeAt(0));
+            zip.file('猫/喂你鸡腿.gif', gif);
+            zip.file('猫/安慰.gif', gif);
+            zip.file('猫/说明.txt', 'x');
+            zip.file('gbk.gif', gif);
+            // A name encoder of its own leaves the names unmarked; gbk.gif goes in as 小猫.gif in GBK
+            const data = await zip.generateAsync({ type: 'uint8array', encodeFileName: name => name === 'gbk.gif'
+                ? [0xd0, 0xa1, 0xc3, 0xa8, ...new TextEncoder().encode('.gif')] : [...new TextEncoder().encode(name)] });
+            zipFile = new File([data], '猫猫.zip', { type: 'application/zip' });
+        }
+        const uploads = [], deletes = [];
+        const fetchBefore = window.fetch;
+        let failAt = Infinity;
+        window.fetch = async (url, options) => {
+            if (url === '/api/images/upload') {
+                const body = JSON.parse(options.body);
+                uploads.push(body);
+                if (uploads.length >= failAt) return new Response('no', { status: 500 });
+                return new Response(JSON.stringify({ path: `user/images/${body.ch_name}/${body.filename}.${body.format}` }));
+            }
+            if (url === '/api/images/delete') {
+                deletes.push(JSON.parse(options.body).path);
+                return new Response('{}');
+            }
+            return fetchBefore(url, options);
+        };
+        const contextBefore = window.SillyTavern.getContext;
+        window.SillyTavern.getContext = () => ({ getRequestHeaders: () => ({ 'Content-Type': 'application/json' }) });
+        const importFile = async file => {
+            const input = host.querySelector('#et-sticker-import-file');
+            const transfer = new DataTransfer();
+            transfer.items.add(file);
+            input.files = transfer.files;
+            input.dispatchEvent(new Event('change', { bubbles: true }));
+            for (let i = 0; i < 200 && host.querySelector('#et-sticker-import').disabled === false; i++) await sleep(10);
+            for (let i = 0; i < 600 && host.querySelector('#et-sticker-import').disabled; i++) await sleep(50);
+        };
+        try {
+            await importFile(zipFile);
+            const set = s.stickerSets[0];
+            res.imported = s.stickerSets.length === 1 && set?.name === zipFile.name.replace(/\.zip$/i, '') && set.stickers.length === uploads.length;
+            res.uploads = uploads.length > 0 && uploads.every(u => u.ch_name === `Echogram stickers ${set.id}` && u.image.length > 0)
+                && set.stickers.every(st => st.path.startsWith(`user/images/Echogram stickers ${set.id}/`));
+            res.importedNames = params.get('zip') ? set.stickers.map(st => st.name).join(' ')
+                : set.stickers.map(st => st.name).join(',') === '喂你鸡腿,安慰2,小猫';
+            res.listed = rows().length === 2 && rows()[1].querySelector('.et-sticker-set-count').textContent === String(set.stickers.length);
+            res.newTab = open().querySelectorAll('.et-sticker-tab').length === 2;
+            open().querySelectorAll('.et-sticker-tab')[1].click();
+            await sleep(100);
+            res.tabShows = items().length === set.stickers.length && items()[0].querySelector('img').getAttribute('src') === `/${set.stickers[0].path}`;
+
+            // The character's switch
+            const char = () => rows()[1].querySelector('[data-sticker-set-char]');
+            char().click();
+            res.charOff = s.stickerSetsOff.includes(set.id);
+            char().click();
+            res.charOn = !s.stickerSetsOff.includes(set.id);
+
+            // Its stickers under it; a name the library has is refused, a new one kept
+            rows()[1].querySelector('[data-sticker-set-toggle]').click();
+            const input = () => rows()[1].querySelector('[data-sticker-rename]');
+            const first = set.stickers[0].name;
+            input().value = '安慰';
+            input().dispatchEvent(new Event('change', { bubbles: true }));
+            res.renameTaken = set.stickers[0].name === first && errors.some(e => /taken/.test(e));
+            input().value = ' 猫猫吃鸡腿 ';
+            input().dispatchEvent(new Event('change', { bubbles: true }));
+            res.renamed = set.stickers[0].name === '猫猫吃鸡腿' && rows()[1].querySelector('[data-sticker-rename]').value === '猫猫吃鸡腿';
+
+            // Deleting one sticker, then the set: each on a second click
+            const count = set.stickers.length;
+            const removed = set.stickers[0].path;
+            rows()[1].querySelector('[data-sticker-delete]').click();
+            res.oneArmed = set.stickers.length === count;
+            rows()[1].querySelector('[data-sticker-delete]').click();
+            res.oneDeleted = set.stickers.length === count - 1 && deletes.includes(removed);
+            rows()[1].querySelector('[data-sticker-delete-set]').click();
+            rows()[1].querySelector('[data-sticker-delete-set]').click();
+            res.setDeleted = s.stickerSets.length === 0 && rows().length === 1 && deletes.length === count && open().querySelectorAll('.et-sticker-tab').length === 1;
+
+            // A failed upload keeps nothing, and takes back what went up
+            uploads.length = 0;
+            deletes.length = 0;
+            failAt = 2;
+            errors.length = 0;
+            await importFile(zipFile);
+            res.failKeepsNothing = s.stickerSets.length === 0 && deletes.length === 1 && errors.some(e => /Could not import/.test(e));
+        } finally {
+            window.fetch = fetchBefore;
+            window.SillyTavern.getContext = contextBefore;
+            host.remove();
+        }
+
+        r.toggleStickerPanel();
+        await sleep(400);
+        res.closed = !open() && !btn().classList.contains('et-sticker-btn-active');
+        s.defaultPlatform = platformBefore;
+        r.renderMessages(chat());
+        res.ok = Object.entries(res).every(([k, v]) => k === 'importedNames' && params.get('zip') ? true : v === true);
+        return res;
+    };
+
     window.runControlsTest = async function () {
         const res = {};
         errors.length = 0;
@@ -3067,7 +3247,8 @@
         const storyPause = await window.runStoryPauseTest();
         const target = await window.runTargetTest();
         const typingTest = await window.runTypingTest();
-        fetch('/__log', { method: 'POST', body: JSON.stringify({ runChatMemoryTest: chatMemory, runControlsTest: controls, runTogetherTest: together, runStoryPauseTest: storyPause, runTargetTest: target, runTypingTest: typingTest, runReplyLengthTest: replyLength, runLifeReportTest: lifeReport, runUnseenTest: unseen, runCatchUpTest: catchUp, runPlanTest: plan, runLifeMemoryTest: lifeMemory, runRenameTest: rename, runEmotionTest: result, runAutoTest: auto, runReplyTest: reply, runTapbackTest: tapback, runMemoryTest: memory, runSummaryTest: summary, runInstagramTest: instagram, runScheduleTest: schedule, runLifeTest: life }) }).catch(() => {});
+        const stickerTest = await window.runStickerTest();
+        fetch('/__log', { method: 'POST', body: JSON.stringify({ runChatMemoryTest: chatMemory, runControlsTest: controls, runTogetherTest: together, runStoryPauseTest: storyPause, runTargetTest: target, runTypingTest: typingTest, runStickerTest: stickerTest, runReplyLengthTest: replyLength, runLifeReportTest: lifeReport, runUnseenTest: unseen, runCatchUpTest: catchUp, runPlanTest: plan, runLifeMemoryTest: lifeMemory, runRenameTest: rename, runEmotionTest: result, runAutoTest: auto, runReplyTest: reply, runTapbackTest: tapback, runMemoryTest: memory, runSummaryTest: summary, runInstagramTest: instagram, runScheduleTest: schedule, runLifeTest: life }) }).catch(() => {});
     } else if (params.has('memory')) {
         // Two memories, one pinned, the other in the last prompt; Add Memory open on a bubble
         env.settings.characterMemories = { 'mira.png': [
