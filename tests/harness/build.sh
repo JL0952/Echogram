@@ -15,8 +15,8 @@ mkdir -p "$B/vendor/css" "$B/vendor/webfonts"
 # jQuery, DOMPurify and Font Awesome, from SillyTavern itself
 # JSZip for importing sticker ZIPs (SillyTavern loads it from /lib)
 cp "$ST_ROOT/public/lib/jquery-3.5.1.min.js" "$ST_ROOT/node_modules/dompurify/dist/purify.min.js" "$ST_ROOT/public/lib/jszip.min.js" "$B/vendor/"
-cp "$ST_ROOT/public/css/fontawesome.min.css" "$ST_ROOT/public/css/solid.min.css" "$B/vendor/css/"
-cp "$ST_ROOT/public/webfonts/fa-solid-900.woff2" "$ST_ROOT/public/webfonts/fa-solid-900.ttf" "$B/vendor/webfonts/"
+cp "$ST_ROOT/public/css/fontawesome.min.css" "$ST_ROOT/public/css/solid.min.css" "$ST_ROOT/public/css/brands.min.css" "$B/vendor/css/"
+cp "$ST_ROOT/public/webfonts/fa-solid-900.woff2" "$ST_ROOT/public/webfonts/fa-solid-900.ttf" "$ST_ROOT/public/webfonts/fa-brands-400.woff2" "$ST_ROOT/public/webfonts/fa-brands-400.ttf" "$B/vendor/webfonts/"
 
 git -C "$REPO" show "$REF:index.js" > "$B/index.old.js"
 # Before step 10a messages carried memory highlights, which the view model no longer has
@@ -32,7 +32,7 @@ sed -i '' 's/^const Platforms = window\.EchoTextPlatforms;/const Platforms = { .
 
 node "$H/gen.cjs" "$REPO/index.js" new "$B/bundle-new.js"
 EXTRA=bindBubbleTouchSwipe,updateSwipeInPlace node "$H/gen.cjs" "$REPO/index.js" touch "$B/bundle-touch.js"
-CHROME=buildPanelHtml,inputPlaceholder,setInputPlaceholder,modeMenuItemInner,toggleAttachMenu,toggleAttachPanel,bindAttachPanel,toggleStickerPanel,attachPanelHtml,stickerTab,stickerPanelHtml,toggleBottomPanel,syncStickerButton,refreshStickerPanel,STICKER_HOLD_MS,stickerHoldTimer,stickerHeld,openStickerSetMenu,stickerSetsFor,setStickerSetFor,stickerCharacters,stickerSetKeys,stickerCharacterName,stickerCharsButton,openStickerChars,setComposeMode,isVoiceButtonMode,getChatCurrency,shareType,shareTypeLabel,shareTypes,renderShareTypeChip,toggleShareTypeMenu,getCharAvatarUrl,getCardAvatarUrl,getCustomCharAvatarUrl,openAvatarMenu,changeCharacterAvatar,setCustomCharAvatar,deleteUserImage,readFileAsDataUrl,shrinkImageDataUrl,openAvatarLightbox,AVATAR_SIZE,uploadUserImage,fitImageDataUrl,getPhotoImages,setPhotoImages,allPhotoImagePaths,addPhotoImage,removePhotoImage,PHOTO_SIZE
+CHROME=buildPanelHtml,inputPlaceholder,setInputPlaceholder,modeMenuItemInner,toggleAttachMenu,toggleAttachPanel,bindAttachPanel,toggleStickerPanel,attachPanelHtml,stickerTab,stickerPanelHtml,toggleBottomPanel,syncStickerButton,refreshStickerPanel,STICKER_HOLD_MS,stickerHoldTimer,stickerHeld,openStickerSetMenu,stickerSetsFor,setStickerSetFor,stickerCharacters,stickerSetKeys,stickerCharacterName,stickerCharsButton,openStickerChars,setComposeMode,isVoiceButtonMode,getChatCurrency,shareType,shareTypeLabel,shareTypes,renderShareTypeChip,toggleShareTypeMenu,getCharAvatarUrl,getCardAvatarUrl,getCustomCharAvatarUrl,openAvatarMenu,changeCharacterAvatar,setCustomCharAvatar,deleteUserImage,readFileAsDataUrl,shrinkImageDataUrl,openAvatarLightbox,AVATAR_SIZE,uploadUserImage,fitImageDataUrl,getPhotoImages,setPhotoImages,allPhotoImagePaths,addPhotoImage,removePhotoImage,PHOTO_SIZE,Social,socialView,socialTheme,openSocial,closeSocial
 EXTRA=$CHROME node "$H/gen.cjs" "$REPO/index.js" chrome "$B/bundle-chrome.js"
 # emotion.html: the panel plus how a reply lands (Auto mode's <mood> line), the model stubbed,
 # quoted replies (Reply in a bubble's menu, the draft, sending), per-bubble tapbacks, Add Memory

@@ -68,6 +68,7 @@
     loadEchoTextModule('lib/chat-view-model.js', 'EchoTextChatViewModel');
     loadEchoTextModule('lib/music-lookup.js', 'EchoTextMusicLookup');
     loadEchoTextModule('lib/story-texts.js', 'EchoTextStoryTexts');
+    loadEchoTextModule('lib/social.js', 'EchoTextSocial');
 
     // Platform packs (platforms/<id>/platform.js), in menu order. Their scripts are
     // small and all load now; a pack's stylesheet loads only while it's in use.
@@ -82,12 +83,23 @@
         }
     }
 
+    // Social account themes (social/<id>/theme.js); a theme's stylesheet loads only while its page is open
+    const SOCIAL_THEME_IDS = ['x'];
+    for (const id of SOCIAL_THEME_IDS) {
+        try {
+            if (!window.EchoTextSocialThemes?.[id]) runEchoTextScript(`social/${id}/theme.js`);
+        } catch (e) {
+            console.error(`[EchoText] Failed to load social theme '${id}':`, e);
+        }
+    }
+
     const RichMessages = window.EchoTextRichMessages;
     const Features = window.EchoTextFeatures;
     const Stickers = window.EchoTextStickers;
     const ChatViewModel = window.EchoTextChatViewModel;
     const ChatSummaries = window.EchoTextChatSummaries;
     const StoryTexts = window.EchoTextStoryTexts;
+    const Social = window.EchoTextSocial;
     const Platforms = window.EchoTextPlatforms;
 
     // ============================================================
@@ -421,6 +433,9 @@
         }
         if (!s.characterNames || typeof s.characterNames !== 'object' || Array.isArray(s.characterNames)) {
             s.characterNames = {};
+        }
+        for (const field of ['socialAccounts', 'socialPosts']) {
+            if (!s[field] || typeof s[field] !== 'object' || Array.isArray(s[field])) s[field] = {};
         }
         if (!s.proactiveCharacterConfig || typeof s.proactiveCharacterConfig !== 'object' || Array.isArray(s.proactiveCharacterConfig)) {
             s.proactiveCharacterConfig = {};
@@ -826,6 +841,7 @@
 
     function applySelectedCharacterToPanel() {
         if (!panelOpen) return;
+        closeSocial();
 
         // ── Combine mode: show all members in header ──────────────────
         if (groupManager && groupManager.isGroupSession() && groupManager.isCombineMode()) {
@@ -4862,6 +4878,41 @@
     const AVATAR_SIZE = 512;
 
     /** The avatar's menu, under (or over) the avatar: view it, change it, or go back to the card's. */
+    // ============================================================
+    // SOCIAL ACCOUNT (lib/social.js, docs/platform-plan.md 17)
+    // ============================================================
+
+    // The character's social account page, over the panel; made on first use
+    let socialView = null;
+
+    /** The open character's account theme (social/<id>/theme.js), or null with none loaded. */
+    function socialTheme() {
+        const themes = window.EchoTextSocialThemes || {};
+        const key = getCharacterKey();
+        if (!key) return null;
+        const account = Social.getAccount(settings, key, { name: getCharacterName() });
+        return themes[account.theme] || themes[Social.DEFAULT_THEME] || null;
+    }
+
+    function openSocial() {
+        if (!socialView) {
+            socialView = Social.createSocialView({
+                getSettings: () => settings,
+                getCharacterKey,
+                getCharacterName,
+                getAvatarUrl: getCharAvatarUrl,
+                getContainer: () => document.getElementById('et-panel'),
+                stylesheetUrl: (theme, file) => `${BASE_URL}/social/${theme}/${file}${VERSION_QUERY}`,
+                now: () => Date.now(),
+            });
+        }
+        socialView.open();
+    }
+
+    function closeSocial() {
+        if (socialView) socialView.close();
+    }
+
     function openAvatarMenu(anchor) {
         if (!getCharacterKey()) return;
         if (jQuery('.et-avatar-menu').length) {
@@ -4873,6 +4924,9 @@
         if (getCharAvatarUrl()) items.push(['view', 'fa-expand', 'View Avatar']);
         items.push(['change', 'fa-image', 'Change Avatar']);
         if (getCustomCharAvatarUrl()) items.push(['reset', 'fa-rotate-left', 'Use Card Avatar']);
+        // The social account's page; a platform with a "+" panel has it there instead
+        const social = socialTheme();
+        if (social && !getActivePlatform().composerPanel) items.push(['social', social.icon, social.label]);
         if (getActivePlatform().username) {
             items.push(['username', 'fa-at', 'Set Username']);
             if (getCharacterUsername()) {
@@ -4880,7 +4934,7 @@
             }
         }
         const menu = jQuery(`<div class="et-dots-menu et-avatar-menu">${items.map(([id, icon, label]) =>
-            `<button class="et-dots-item" data-avatar="${id}"><i class="fa-solid ${icon}"></i><span>${label}</span></button>`).join('')}</div>`);
+            `<button class="et-dots-item" data-avatar="${id}"><i class="${icon.startsWith('fa-brands') ? icon : `fa-solid ${icon}`}"></i><span>${escapeHtml(label)}</span></button>`).join('')}</div>`);
         jQuery('#et-panel').append(menu);
 
         const a = anchor.getBoundingClientRect();
@@ -4907,6 +4961,7 @@
             else if (choice === 'change') changeCharacterAvatar();
             else if (choice === 'username') editCharacterUsername();
             else if (choice === 'show-username' || choice === 'show-mood') setShowUsername(choice === 'show-username');
+            else if (choice === 'social') openSocial();
             else setCustomCharAvatar(getCharacterKey(), null);
         });
     }
@@ -5619,7 +5674,10 @@
             const look = { ...mode, ...looks[id] };
             return `<button class="et-attach-panel-item" type="button" data-mode="${id}"><span class="et-attach-panel-icon"><i class="fa-solid ${look.icon}"></i></span><span class="et-attach-panel-label">${escapeHtml(look.label)}</span></button>`;
         }).join('');
-        return tiles ? `<div class="et-attach-panel-list">${tiles}</div>` : '';
+        // Last, the social account's page
+        const social = socialTheme();
+        const socialTile = social ? `<button class="et-attach-panel-item" type="button" data-et-social><span class="et-attach-panel-icon"><i class="${social.icon}"></i></span><span class="et-attach-panel-label">${escapeHtml(social.label)}</span></button>` : '';
+        return tiles || socialTile ? `<div class="et-attach-panel-list">${tiles}${socialTile}</div>` : '';
     }
 
     // The sticker set the panel shows, until another tab is picked (not kept across reloads)
@@ -5735,6 +5793,10 @@
             e.stopPropagation();
             const mode = jQuery(this).data('mode');
             closeAttachPanel();
+            if (this.hasAttribute('data-et-social')) {
+                openSocial();
+                return;
+            }
             setComposeMode(mode);
             jQuery('#et-input').trigger('focus');
         }).on('click', '#et-attach-panel .et-sticker-item', function (e) {

@@ -1,0 +1,209 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<title>Social account test</title>
+<link rel="stylesheet" href="build/vendor/css/fontawesome.min.css">
+<link rel="stylesheet" href="build/vendor/css/solid.min.css">
+<link rel="stylesheet" href="build/vendor/css/brands.min.css">
+<link rel="stylesheet" href="../../style.css">
+<style>
+    body { background: #1b1d2b; margin: 0; }
+    #et-panel { position: fixed !important; left: 16px !important; top: 10px !important; width: 380px !important; height: 720px !important;
+        opacity: 1 !important; transform: none !important; display: flex !important; flex-direction: column; }
+    #et-panel .et-panel-content { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+</style>
+</head><body>
+<div id="host"></div>
+<script src="build/vendor/jquery-3.5.1.min.js"></script>
+<script src="build/vendor/purify.min.js"></script>
+<script>window.SillyTavern = { libs: { DOMPurify: window.DOMPurify } };</script>
+<script src="../../lib/rich-messages.js"></script>
+<script src="../../lib/features.js"></script>
+<script src="../../lib/stickers.js"></script>
+<script src="../../lib/chat-view-model.js"></script>
+<script src="../../lib/social.js"></script>
+<script src="../../social/x/theme.js"></script>
+<script src="../../platforms/echotext/platform.js"></script>
+<script src="../../platforms/wechat/platform.js"></script>
+<script src="../../platforms/instagram/platform.js"></script>
+<script src="scenarios.js"></script>
+<script src="build/bundle-chrome.js"></script>
+<script>
+/*
+ * The character's social account (docs/platform-plan.md 17a) through the real code:
+ * lib/social.js, the X theme, and index.js's way in (the avatar menu, WeChat's "+" panel).
+ *   ?view=profile (default) | detail | empty   shows that page for a screenshot
+ *   ?platform=echotext | wechat | instagram     the chat look underneath
+ *   runSocialTest()                              the checks
+ */
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const params = new URLSearchParams(location.search);
+const NOW = new Date(2026, 10, 8, 21, 30).getTime();
+const H = 3600000, D = 24 * H;
+
+function picture(colors) {
+    const c = document.createElement('canvas');
+    c.width = c.height = 120;
+    const x = c.getContext('2d');
+    const g = x.createLinearGradient(0, 0, 120, 120);
+    g.addColorStop(0, colors[0]); g.addColorStop(1, colors[1]);
+    x.fillStyle = g; x.fillRect(0, 0, 120, 120);
+    return c.toDataURL();
+}
+const AVATAR = picture(['#5b4a8a', '#c98ab0']);
+
+const REPLY_NAMES = ['夜猫子', 'Kev_in', 'lurker_404', '吃瓜群众', 'nightowl', '阿杰', 'Sora', 'mmm_ok', '路过的', 'ghost_reader', 'Late', 'zz'];
+function mockSettings() {
+    return {
+        socialAccounts: {
+            'mira.png': {
+                theme: 'x', name: 'm.', handle: 'mira_after_dark', bio: '晚上才上线\n不认识的别加 / no DMs',
+                followers: 23800, following: 312,
+                posts: [{ id: 'pin1', at: NOW - 40 * D, text: '新号，旧号被人认出来了。', image: '', likes: 88, reposts: 2, views: 4100, replyCount: 6,
+                    replies: [{ name: 'Sora', handle: 'sora_k', text: '欢迎回来', likes: 3, at: NOW - 39 * D }] }],
+            },
+        },
+        socialPosts: {
+            'mira.png': [
+                { id: 'a', at: NOW - 2 * H, text: '今天又在他面前装了一整天没事人。\n回家路上绕了两站，就为了多看一眼他家楼下那盏灯。', image: '', likes: 2400, reposts: 312, views: 128000, replyCount: 2400,
+                    replies: REPLY_NAMES.map((name, i) => ({ name, text: i === 0 ? '姐你这是暗恋吧' : i === 1 ? 'just tell him lol' : `第 ${i + 1} 条回复 <b>不该加粗</b>`, likes: 900 - i * 70, at: NOW - 2 * H + (i + 1) * 60000 })) },
+                { id: 'b', at: NOW - 5 * D, text: '周末的展。', image: '美术馆白墙前一幅很大的蓝色抽象画，地上是她的影子', likes: 640, reposts: 41, views: 15300, replyCount: 3,
+                    replies: [{ name: '阿杰', text: '这是哪个馆', likes: 2, at: NOW - 5 * D + H }] },
+                { id: 'c', at: NOW - 20 * D, text: 'hot take: 便利店的关东煮比大部分餐厅好吃', image: '', likes: 0, reposts: 0, views: 0, replyCount: 0, replies: [] },
+            ],
+        },
+    };
+}
+
+const platform = params.get('platform') || 'echotext';
+const history = JSON.parse(JSON.stringify(window.EchoTextScenarios[0].history));
+const env = {
+    settings: { ...window.EchoTextScenarios[0].settings, ...mockSettings(), autoScroll: true, defaultPlatform: platform },
+    groupManager: null, FA_REACTIONS: window.EchoTextScenarioReactions, showTypingIndicator: false, BASE_URL: '../..', VERSION_QUERY: '',
+    getCurrentCharacter: () => ({ name: 'Mira', avatar: 'mira.png' }), getCharacterName: () => 'Mira', isTetheredMode: () => true,
+    getUserName: () => '我', getCharacterKey: () => 'mira.png', _pickerAvatarBg: () => '#7c6f9c',
+    isMobileDevice: () => false, getChatHistory: () => history, getUserAvatarUrl: () => null, isCombinedGroupMode: () => false,
+    closeAllDotMenus: () => jQuery('.et-dots-menu').remove(), panelOpen: true, saveSettings: () => {},
+};
+window.SillyTavern.getContext = () => ({ getThumbnailUrl: () => AVATAR });
+const r = window.EchoTextHarness.chrome(env);
+document.getElementById('host').innerHTML = r.buildPanelHtml();
+r.bindAttachPanel();
+r.bindMessageActions();
+r.renderMessages(history);
+r.syncPlatformChrome();
+
+// The page alone, as lib/social.js draws it, for checks on mock data
+function view(settings) {
+    return window.EchoTextSocial.createSocialView({
+        getSettings: () => settings, getCharacterKey: () => 'mira.png', getCharacterName: () => 'Mira',
+        getAvatarUrl: () => AVATAR, getContainer: () => document.getElementById('et-panel'),
+        stylesheetUrl: (theme, file) => `../../social/${theme}/${file}`, now: () => NOW,
+    });
+}
+
+window.runSocialTest = async function () {
+    const res = {};
+    const root = () => document.querySelector('#et-panel .et-social');
+    const texts = sel => [...root().querySelectorAll(sel)].map(e => e.textContent.trim());
+
+    // Data
+    const S = window.EchoTextSocial;
+    const settings = mockSettings();
+    const posts = S.getPosts(settings, 'mira.png');
+    res.postsNewestFirst = posts.map(p => p.id).join(',') === 'a,b,c,pin1';
+    res.pinnedMarked = posts.find(p => p.id === 'pin1').pinned === true && posts.filter(p => p.pinned).length === 1;
+    res.repliesCapped = posts[0].replies.length === 10 && posts[0].replyCount === 2400;
+    const blank = S.getAccount({}, 'Lawrence Wu.png', { name: '劳伦斯' });
+    res.defaults = blank.name === '劳伦斯' && blank.handle === 'LawrenceWu' && blank.theme === 'x' && blank.followers === 0;
+    res.handleFromChinese = /^user\d+$/.test(S.getAccount({}, '劳伦斯.png', { name: '劳伦斯' }).handle);
+    res.formats = [S.timeAgo(NOW - 30000, NOW), S.timeAgo(NOW - 3 * H, NOW), S.timeAgo(NOW - 2 * D, NOW), S.timeAgo(NOW - 20 * D, NOW), S.timeAgo(new Date(2025, 0, 3).getTime(), NOW)].join(' ')
+        === '1m 3h 2d Oct 19 Jan 3, 2025';
+    res.counts = [S.shortCount(980), S.shortCount(2400), S.shortCount(128000), S.shortCount(1300000), S.shortCount(1574, 10000), S.shortCount(23800, 10000)].join(' ') === '980 2.4K 128K 1.3M 1,574 23.8K';
+    res.fullTime = S.fullTime(new Date(2026, 10, 8, 15, 4).getTime()) === '3:04 PM · Nov 8, 2026';
+
+    // The profile
+    const v = view(settings);
+    v.open();
+    await sleep(300);
+    res.overPanel = !!root() && getComputedStyle(root()).position === 'absolute' && root().getBoundingClientRect().height === document.getElementById('et-panel').clientHeight;
+    res.topBar = texts('.x-topbar-name')[0] === 'm.' && texts('.x-topbar-sub')[0] === '4 posts';
+    res.header = texts('.x-profile-handle')[0] === '@mira_after_dark' && texts('.x-profile-follows span').join('|') === '312 Following|23.8K Followers';
+    res.bioLines = root().querySelector('.x-profile-bio').textContent.includes('\n');
+    res.cards = root().querySelectorAll('.x-feed .x-post').length === 4 && texts('.x-post-pinned').join() === 'Pinned';
+    res.cardMeta = texts('.x-feed .x-post-meta')[0] === '@mira_after_dark · 2h';
+    res.cardCounts = texts('.x-feed .x-post:first-child .x-action-count').join(' ') === '2.4K 312 2.4K 128K';
+    res.noCountsWhenZero = root().querySelectorAll('.x-feed .x-post:nth-child(3) .x-action-count').length === 0;
+    res.photoCard = texts('.x-media-text')[0] === '美术馆白墙前一幅很大的蓝色抽象画，地上是她的影子';
+    res.avatar = root().querySelector('.x-profile-avatar').getAttribute('src') === AVATAR;
+    res.onlyPostsTab = texts('.x-tab-active').join() === 'Posts';
+
+    // A post's page and back
+    root().querySelector('.x-feed .x-post[data-post-id="a"]').click();
+    await sleep(50);
+    res.detail = texts('.x-topbar-name')[0] === 'Post' && texts('.x-status-time')[0] === '7:30 PM · Nov 8, 2026';
+    res.detailReplies = root().querySelectorAll('.x-replies .x-reply').length === 10;
+    res.replyingTo = texts('.x-reply-to')[0] === 'Replying to @mira_after_dark';
+    res.replyEscaped = !root().querySelector('.x-replies b') && texts('.x-replies .x-post-text')[2].includes('<b>');
+    res.replyFallback = !!root().querySelector('.x-reply .x-avatar-fallback') && root().querySelector('.x-reply .x-avatar-fallback').textContent === '夜';
+    root().querySelector('[data-social-action="back"]').click();
+    await sleep(50);
+    res.backToProfile = !!root().querySelector('.x-profile');
+    root().querySelector('[data-social-action="back"]').click();
+    await sleep(50);
+    res.backCloses = !root();
+
+    // No posts yet
+    const empty = view({});
+    empty.open();
+    await sleep(50);
+    res.empty = texts('.x-empty-title')[0] === '@mira hasn’t posted';
+    res.emptyCount = texts('.x-topbar-sub')[0] === '0 posts';
+    empty.close();
+
+    // The way in: the avatar menu on Echogram and Instagram, "+" on WeChat
+    const menuItems = () => [...document.querySelectorAll('.et-avatar-menu .et-dots-item')].map(b => b.dataset.avatar);
+    const setPlatform = async id => { env.settings.defaultPlatform = id; await sleep(0); r.renderMessages(history); r.syncPlatformChrome(); await sleep(50); };
+    for (const id of ['echotext', 'instagram']) {
+        await setPlatform(id);
+        r.openAvatarMenu(document.querySelector('#et-panel .et-avatar, #et-panel [data-et-action="avatar"]') || document.getElementById('et-panel'));
+        await sleep(50);
+        const item = document.querySelector('.et-avatar-menu [data-avatar="social"]');
+        res[`menu_${id}`] = !!item && item.textContent.trim() === 'X' && !!item.querySelector('i.fa-brands.fa-x-twitter');
+        item?.click();
+        await sleep(100);
+        res[`menuOpens_${id}`] = !!root() && !!root().querySelector('.x-profile');
+        r.closeSocial();
+        jQuery('.et-dots-menu').remove();
+    }
+    await setPlatform('wechat');
+    r.openAvatarMenu(document.getElementById('et-panel'));
+    await sleep(50);
+    res.wechatMenuWithout = !menuItems().includes('social');
+    jQuery('.et-dots-menu').remove();
+    r.toggleAttachPanel();
+    await sleep(300);
+    const tile = document.querySelector('#et-attach-panel [data-et-social]');
+    res.wechatTile = !!tile && tile.textContent.trim() === 'X' && tile === document.querySelector('#et-attach-panel .et-attach-panel-item:last-child');
+    tile?.click();
+    await sleep(300);
+    res.wechatTileOpens = !!root() && !document.getElementById('et-attach-panel')?.classList.contains('et-attach-panel-open');
+    r.closeSocial();
+
+    res.allPass = Object.values(res).every(v => v === true);
+    return res;
+};
+
+// A page to look at
+(async () => {
+    const which = params.get('view');
+    if (!which) return;
+    await sleep(100);
+    const v = view(which === 'empty' ? {} : mockSettings());
+    v.open();
+    if (which === 'detail') {
+        await sleep(200);
+        document.querySelector('#et-panel .x-post[data-post-id="a"]').click();
+    }
+})();
+</script>
+</body></html>

@@ -1,0 +1,460 @@
+/* X (Twitter), dark, over the chat panel (lib/social.js). Colours are X's own, from
+   vertsan/x-clone-ui-freeapi (tailwind.config.ts, globals.css); the profile header's
+   sizes are the v0 template's phone ones; posts and replies are vertsan's Post.tsx. */
+
+.et-social[data-social-theme="x"] {
+    --x-bg: #000;
+    --x-text: #e7e9ea;
+    --x-gray: #71767b;
+    --x-border: #2f3336;
+    --x-blue: #1d9bf0;
+    --x-green: #00ba7c;
+    --x-pink: #f91880;
+    --x-hover: #080808;
+    --x-banner: #333639;
+    position: absolute;
+    inset: 0;
+    z-index: 60;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    color: var(--x-text);
+    background: var(--x-bg);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font-size: 15px;
+    line-height: 1.5;
+    text-align: left;
+    -webkit-font-smoothing: antialiased;
+    scrollbar-width: none;
+    border-radius: inherit;
+}
+
+.et-social[data-social-theme="x"]::-webkit-scrollbar {
+    display: none;
+}
+
+.et-social[data-social-theme="x"] *,
+.et-social[data-social-theme="x"] *::before,
+.et-social[data-social-theme="x"] *::after {
+    box-sizing: border-box;
+}
+
+.et-social[data-social-theme="x"] .x-icon {
+    width: 18px;
+    height: 18px;
+    fill: currentColor;
+    flex-shrink: 0;
+}
+
+/* ── Top bar: back, the name and "N posts" (v0's sticky header) ── */
+
+.et-social[data-social-theme="x"] .x-topbar {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    min-height: 53px;
+    padding: 4px 16px;
+    background: rgba(0, 0, 0, 0.65);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+}
+
+.et-social[data-social-theme="x"] .x-topbar-back {
+    display: grid;
+    place-items: center;
+    margin: 0 0 0 -8px;
+    padding: 8px;
+    border: 0;
+    border-radius: 9999px;
+    color: var(--x-text);
+    background: none;
+    cursor: pointer;
+}
+
+.et-social[data-social-theme="x"] .x-topbar-back .x-icon {
+    width: 20px;
+    height: 20px;
+}
+
+.et-social[data-social-theme="x"] .x-topbar-back:hover {
+    background: rgba(231, 233, 234, 0.1);
+}
+
+.et-social[data-social-theme="x"] .x-topbar-title {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.et-social[data-social-theme="x"] .x-topbar-name {
+    overflow: hidden;
+    font-size: 20px;
+    font-weight: 700;
+    line-height: 24px;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.et-social[data-social-theme="x"] .x-topbar-sub {
+    color: var(--x-gray);
+    font-size: 13px;
+    line-height: 16px;
+}
+
+/* ── Profile header (v0, phone sizes) ── */
+
+.et-social[data-social-theme="x"] .x-banner {
+    height: 120px;
+    overflow: hidden;
+    background: var(--x-banner);
+}
+
+.et-social[data-social-theme="x"] .x-banner img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.et-social[data-social-theme="x"] .x-profile {
+    padding: 0 16px;
+}
+
+.et-social[data-social-theme="x"] .x-profile-top {
+    display: flex;
+    justify-content: space-between;
+    min-height: 62px;
+}
+
+.et-social[data-social-theme="x"] .x-profile-avatar {
+    display: block;
+    width: 100px;
+    height: 100px;
+    margin-top: -50px;
+    border: 4px solid var(--x-bg);
+    border-radius: 9999px;
+    object-fit: cover;
+    background: var(--x-banner);
+}
+
+.et-social[data-social-theme="x"] .x-avatar-fallback {
+    display: grid;
+    place-items: center;
+    color: #fff;
+    font-weight: 700;
+}
+
+.et-social[data-social-theme="x"] .x-profile-avatar.x-avatar-fallback {
+    font-size: 24px;
+}
+
+.et-social[data-social-theme="x"] .x-profile-name {
+    font-size: 20px;
+    font-weight: 700;
+    line-height: 24px;
+    overflow-wrap: anywhere;
+}
+
+.et-social[data-social-theme="x"] .x-profile-handle {
+    color: var(--x-gray);
+}
+
+.et-social[data-social-theme="x"] .x-profile-bio {
+    margin-top: 12px;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+.et-social[data-social-theme="x"] .x-profile-follows {
+    display: flex;
+    gap: 20px;
+    margin-top: 12px;
+    color: var(--x-gray);
+}
+
+.et-social[data-social-theme="x"] .x-profile-follows b {
+    color: var(--x-text);
+    font-weight: 700;
+}
+
+/* Tabs: only Posts works; the bar under it is as wide as its word */
+.et-social[data-social-theme="x"] .x-tabs {
+    display: flex;
+    margin-top: 4px;
+    overflow-x: auto;
+    border-bottom: 1px solid var(--x-border);
+    scrollbar-width: none;
+}
+
+.et-social[data-social-theme="x"] .x-tabs::-webkit-scrollbar {
+    display: none;
+}
+
+.et-social[data-social-theme="x"] .x-tab {
+    flex: 1 0 auto;
+    padding: 16px;
+    color: var(--x-gray);
+    font-weight: 500;
+    text-align: center;
+    white-space: nowrap;
+}
+
+.et-social[data-social-theme="x"] .x-tab > span {
+    position: relative;
+    display: inline-block;
+}
+
+.et-social[data-social-theme="x"] .x-tab-active {
+    color: var(--x-text);
+    font-weight: 700;
+}
+
+.et-social[data-social-theme="x"] .x-tab-active > span::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: -16px;
+    height: 4px;
+    border-radius: 9999px;
+    background: var(--x-blue);
+}
+
+.et-social[data-social-theme="x"] .x-empty {
+    padding: 32px;
+    margin: 0 auto;
+    max-width: 400px;
+}
+
+.et-social[data-social-theme="x"] .x-empty-title {
+    font-size: 31px;
+    font-weight: 800;
+    line-height: 36px;
+    overflow-wrap: anywhere;
+}
+
+.et-social[data-social-theme="x"] .x-empty-text {
+    margin-top: 8px;
+    color: var(--x-gray);
+}
+
+/* ── Posts (vertsan's Post) ── */
+
+.et-social[data-social-theme="x"] .x-post {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--x-border);
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.et-social[data-social-theme="x"] .x-post:hover {
+    background: var(--x-hover);
+}
+
+.et-social[data-social-theme="x"] .x-reply {
+    cursor: default;
+}
+
+.et-social[data-social-theme="x"] .x-post-pinned {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 4px;
+    padding-left: 24px;
+    color: var(--x-gray);
+    font-size: 13px;
+    font-weight: 700;
+    line-height: 16px;
+}
+
+.et-social[data-social-theme="x"] .x-post-pinned .x-icon {
+    width: 16px;
+    height: 16px;
+}
+
+.et-social[data-social-theme="x"] .x-post-row {
+    display: flex;
+    gap: 12px;
+}
+
+.et-social[data-social-theme="x"] .x-post-avatar {
+    width: 40px;
+    height: 40px;
+    flex-shrink: 0;
+    border-radius: 9999px;
+    object-fit: cover;
+}
+
+.et-social[data-social-theme="x"] .x-post-avatar.x-avatar-fallback {
+    font-size: 17px;
+}
+
+.et-social[data-social-theme="x"] .x-post-body {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.et-social[data-social-theme="x"] .x-post-head {
+    display: flex;
+    align-items: baseline;
+    gap: 4px;
+    min-width: 0;
+    white-space: nowrap;
+}
+
+.et-social[data-social-theme="x"] .x-post-name {
+    overflow: hidden;
+    font-weight: 700;
+    text-overflow: ellipsis;
+    flex-shrink: 1;
+    min-width: 0;
+}
+
+.et-social[data-social-theme="x"] .x-post-meta {
+    overflow: hidden;
+    color: var(--x-gray);
+    text-overflow: ellipsis;
+    flex-shrink: 1;
+    min-width: 0;
+}
+
+.et-social[data-social-theme="x"] .x-post-text,
+.et-social[data-social-theme="x"] .x-status-text {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+.et-social[data-social-theme="x"] .x-reply-to {
+    color: var(--x-gray);
+}
+
+.et-social[data-social-theme="x"] .x-link {
+    color: var(--x-blue);
+}
+
+/* A photo: its description in the frame a picture would have */
+.et-social[data-social-theme="x"] .x-media {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-height: 160px;
+    margin-top: 8px;
+    padding: 20px;
+    border: 1px solid var(--x-border);
+    border-radius: 16px;
+    color: var(--x-gray);
+    background: #16181c;
+    text-align: center;
+}
+
+.et-social[data-social-theme="x"] .x-media-icon {
+    width: 28px;
+    height: 28px;
+    color: var(--x-blue);
+}
+
+.et-social[data-social-theme="x"] .x-media-text {
+    font-size: 14px;
+    line-height: 1.45;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+/* Reply, repost, like, views; bookmark and share apart (vertsan's PostInteractions) */
+.et-social[data-social-theme="x"] .x-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    /* vertsan's gap-4, less: at the panel's phone width the row only fits with the
+       side pair's icons sitting on the edge */
+    gap: 4px;
+    margin: 4px -8px -6px -8px;
+    color: var(--x-gray);
+}
+
+.et-social[data-social-theme="x"] .x-actions-main {
+    display: flex;
+    flex: 1;
+    align-items: center;
+    justify-content: space-between;
+    max-width: 448px;
+}
+
+.et-social[data-social-theme="x"] .x-actions-side {
+    display: flex;
+    align-items: center;
+}
+
+.et-social[data-social-theme="x"] .x-action {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+}
+
+.et-social[data-social-theme="x"] .x-action-icon {
+    display: grid;
+    place-items: center;
+    padding: 8px;
+    border-radius: 9999px;
+}
+
+.et-social[data-social-theme="x"] .x-action-count {
+    font-size: 13px;
+    line-height: 16px;
+}
+
+/* ── A post's page (vertsan's status page) ── */
+
+.et-social[data-social-theme="x"] .x-status {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 12px 16px 4px;
+    border-bottom: 1px solid var(--x-border);
+}
+
+.et-social[data-social-theme="x"] .x-status-author {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+}
+
+.et-social[data-social-theme="x"] .x-status-names {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    line-height: 20px;
+}
+
+.et-social[data-social-theme="x"] .x-status-handle {
+    color: var(--x-gray);
+    font-size: 14px;
+}
+
+.et-social[data-social-theme="x"] .x-status-text {
+    font-size: 17px;
+    line-height: 1.5;
+}
+
+.et-social[data-social-theme="x"] .x-status .x-media {
+    margin-top: 4px;
+}
+
+.et-social[data-social-theme="x"] .x-status-time {
+    color: var(--x-gray);
+}
+
+.et-social[data-social-theme="x"] .x-status .x-actions {
+    padding: 4px 0;
+    border-top: 1px solid var(--x-border);
+    margin-bottom: 0;
+}
