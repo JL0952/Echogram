@@ -7494,8 +7494,8 @@
     }
 
     // ── A bubble's menu: held down (touch, or a mouse button) or right-clicked ──
-    // As in messaging apps: where the platform has tapbacks, a character's bubble gets
-    // the tapback row above it; the menu (Reply, Copy, Edit, Delete…) goes under it.
+    // The menu (Reply, React, Copy, Edit, Delete…) goes under the bubble; React (a
+    // character's bubble, where the platform has tapbacks) opens the tapback row over it.
     // A message's last bubble's menu covers the whole message, the others' their bubble.
     const BUBBLE_HOLD_MS = 500;
     // A finger moving further than this is scrolling, not holding
@@ -7554,7 +7554,7 @@
         bubbleHeld = null;
     }
 
-    /** A bubble's menu, and above a character's bubble the tapback row where the platform has tapbacks. */
+    /** A bubble's menu (a character's has React, where the platform has tapbacks, for the tapback row). */
     function openBubbleMenu(bubble) {
         const msgEl = bubble.closest('[data-et-role~="message"]');
         const msgIndex = parseInt(msgEl?.dataset.index, 10);
@@ -7564,10 +7564,6 @@
         const part = bubble.matches('[data-et-role~="main"]') || bubbles.indexOf(bubble) === bubbles.length - 1 ? null : bubbles.indexOf(bubble);
         closeAllReactOverlays();
         toggleDotsMenu(jQuery(bubble), msgIndex, !!msg.is_user, part);
-        // Opened (a second hold on the same bubble closes it)
-        if (!msg.is_user && platformHas('react') && jQuery('.et-dots-menu:not(.et-dots-menu-closing)').length) {
-            toggleReactOverlay(jQuery(bubble), msgIndex, part);
-        }
     }
 
     /**
@@ -8160,6 +8156,8 @@
         // Build menu items: every bubble's menu replies to, copies, remembers and
         // deletes that bubble; the main (last) bubble's also acts on the whole message
         const items = [{ id: 'copy_part', icon: 'fa-copy', label: 'Copy', cls: '' }];
+        // A character's bubble takes a tapback: the row opens from here, so the menu never covers it
+        if (!isUser && platformHas('react')) items.unshift({ id: 'react', icon: 'fa-face-smile', label: 'React', cls: '' });
         if (platformHas('reply')) items.unshift({ id: 'reply', icon: 'fa-reply', label: 'Reply', cls: '' });
         if (memorySystem && settings.memoryEnabled) items.push({ id: 'add_memory', icon: 'fa-brain', label: 'Add Memory', cls: '' });
         // A photo bubble takes a real image (the footer menu's is the last bubble's)
@@ -8229,9 +8227,13 @@
         // Bind actions
         menu.find('.et-dots-item').on('click', function (e) {
             e.stopPropagation();
-            // The tapback row opened with it goes
-            closeAllReactOverlays();
             const action = jQuery(this).data('action');
+            // React: the menu goes and the tapback row opens over the bubble
+            if (action === 'react') {
+                closeAllDotMenus();
+                toggleReactOverlay(btn, msgIndex, partIndex);
+                return;
+            }
             handleDotsAction(action, msgIndex, isUser, jQuery(this), targetPart);
         });
     }
@@ -8598,15 +8600,17 @@
 
         const btnRect = reactBtn[0].getBoundingClientRect();
         const panelRect = document.getElementById('et-panel').getBoundingClientRect();
-        const overlayW = 340;
-        const overlayH = 72;
+        // Its own size, as the platform draws it (Instagram's bar is lower than Echogram's)
+        const overlayW = overlay.outerWidth() || 340;
+        const overlayH = overlay.outerHeight() || 72;
 
+        // Right on the bubble's top edge; under it when there's no room above
         let left = btnRect.left - panelRect.left;
-        let top = btnRect.top - panelRect.top - overlayH - 8;
+        let top = btnRect.top - panelRect.top - overlayH - 4;
 
         // Clamp within panel
         left = Math.max(8, Math.min(panelRect.width - overlayW - 8, left));
-        if (top < 8) top = btnRect.top - panelRect.top + btnRect.height + 8;
+        if (top < 8) top = btnRect.top - panelRect.top + btnRect.height + 4;
 
         overlay.css({ left: left + 'px', top: top + 'px' });
 
@@ -8621,7 +8625,7 @@
             const emoji = jQuery(this).data('emoji');
             addReaction(msgIndex, emoji, part);
             closeAllReactOverlays();
-            // The bubble's menu opened with it goes too
+            // A menu still open goes too
             closeAllDotMenus();
         });
     }

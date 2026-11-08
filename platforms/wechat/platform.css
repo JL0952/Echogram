@@ -340,7 +340,8 @@
     place-items: center;
     width: 34px;
     height: 32px;
-    margin: 0 0 4px;
+    /* (over Echogram's own margins for the button, which are !important) */
+    margin: 0 0 4px !important;
     padding: 0;
     border: 0;
     color: var(--wx-text);

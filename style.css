@@ -3335,7 +3335,10 @@ html.et-bg-light {
     color: var(--et-text-muted);
 }
 
+/* Level with a one-line field (48px): the bar lines things up at the bottom, so the
+   button sits half the difference up; a field that grows keeps it at the bottom */
 .et-send-btn {
+    margin-bottom: 3px;
     width: 42px;
     height: 42px;
     border-radius: 50%;
@@ -11063,6 +11066,7 @@ textarea.et-mem-save-snippet-edit::placeholder {
     justify-content: center;
     width: 22px;
     height: 22px;
+    min-height: 0;
     margin: 0 -6px 0 8px !important;
     padding: 0 !important;
     border: none !important;
@@ -11070,8 +11074,15 @@ textarea.et-mem-save-snippet-edit::placeholder {
     box-shadow: none !important;
     color: var(--et-text-muted);
     font-size: 1.05rem;
+    line-height: 1;
     cursor: pointer;
     transition: color 0.2s;
+}
+
+/* The face's glyph keeps to the button whatever the page's own button styles */
+.et-sticker-btn i {
+    font-size: 1.05rem;
+    line-height: 1;
 }
 
 .et-sticker-btn:hover:not(:disabled),

@@ -438,7 +438,8 @@
 
         // Every bubble's menu starts with Reply; a card is quoted as its note
         const items = menuItems(1, 1);
-        res.replyFirst = items.map(i => i.dataset.action).join(',') === 'reply,copy_part,add_memory,delete';
+        // (a photo bubble: React for a tapback, Add Photo for its image)
+        res.replyFirst = items.map(i => i.dataset.action).join(',') === 'reply,react,copy_part,add_memory,photo_add,delete';
         res.mainReplyFirst = menuItems(0, null)[0]?.dataset.action === 'reply';
         menuItems(1, 1)[0].click();
         res.draftShown = !draft().hidden && draft().querySelector('.et-reply-draft-name')?.textContent === 'Mira'
@@ -617,7 +618,7 @@
         r.renderMessages(env.settings.chatHistory['mira.png']);
 
         // Every bubble's menu has Add Memory, after Copy; old highlight marks are gone
-        res.partMenu = bubbleMenu(1, 1).map(i => i.dataset.action).join(',') === 'reply,copy_part,add_memory,delete';
+        res.partMenu = bubbleMenu(1, 1).map(i => i.dataset.action).join(',') === 'reply,react,copy_part,add_memory,delete';
         res.userMenu = bubbleMenu(0, null).some(i => i.dataset.action === 'add_memory');
         res.noMarks = !panel.querySelector('mark');
 
@@ -896,7 +897,12 @@
         // (the page stubs closeAllReactOverlays: one left from the photo's menu goes here)
         document.querySelectorAll('.et-dots-menu, .et-react-overlay').forEach(m => m.remove());
         r.openBubbleMenu(row);
-        res.menu = document.querySelector('.et-dots-menu .et-dots-item')?.dataset.action === 'reply' && !!document.querySelector('.et-react-overlay');
+        res.menu = document.querySelector('.et-dots-menu .et-dots-item')?.dataset.action === 'reply' && !document.querySelector('.et-react-overlay');
+        // React in it: the menu goes, the emoji bar sits on the bubble's top edge
+        document.querySelector('.et-dots-menu [data-action="react"]').click();
+        await sleep(400);
+        const bar = document.querySelector('.et-react-overlay').getBoundingClientRect();
+        res.reactFromMenu = !!bar.height && Math.abs(row.getBoundingClientRect().top - bar.bottom - 4) <= 1;
 
         // A tapback on the first bubble shows as emoji on its lower edge, popping in
         // The picker is Instagram's emoji bar
@@ -2282,7 +2288,7 @@
             clear();
             const out = {};
             out.noTools = !panel.querySelector('.et-bubble-tool, .ig-tools, .wx-more, [data-et-action="menu"], [data-et-action="part-menu"]');
-            // The photo bubble held: its menu (Add Photo: that bubble's), the tapback row above where there are tapbacks
+            // The photo bubble held: its menu (Add Photo: that bubble's; React where there are tapbacks), no tapback row yet
             const photo = bubbles(1)[1];
             const photoEl = photo.querySelector('[data-et-action="photo-toggle"]');
             press(photoEl, 'pointerdown');
@@ -2291,12 +2297,20 @@
             await sleep(350);
             out.opened = !!menu() && [...menu().querySelectorAll('.et-dots-item')].some(i => i.dataset.action === 'photo_add')
                 && !menu().querySelector('[data-action="edit"]');
-            out.tapbacks = id === 'wechat' ? !row() : !!row();
+            out.tapbacks = !row() && (id === 'wechat') === !menu().querySelector('[data-action="react"]');
             const m = menu().getBoundingClientRect(), b = photo.getBoundingClientRect();
             out.under = m.top >= b.bottom - 1 || m.bottom <= b.top + 1;
             press(photoEl, 'pointerup');
             photoEl.click();
             out.clickSwallowed = photoEl.getAttribute('aria-expanded') !== 'true';
+            if (id !== 'wechat') {
+                menu().querySelector('[data-action="react"]').click();
+                // (measured once it has popped in; the page stubs the menu's closing)
+                await sleep(400);
+                const bar = row()?.getBoundingClientRect();
+                out.reactRow = !!bar && Math.abs(photo.getBoundingClientRect().top - bar.bottom - 4) <= 1;
+                clear();
+            }
             photoEl.click();
             out.nextClickWorks = photoEl.getAttribute('aria-expanded') === 'true';
             photoEl.click();
@@ -2319,7 +2333,7 @@
             out.rightClick = !!menu() && !!menu().querySelector('[data-action="edit"]');
             clear();
             bubbles(0)[0].dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
-            out.yoursNoRow = !!menu() && !row();
+            out.yoursNoReact = !!menu() && !menu().querySelector('[data-action="react"]');
             clear();
             out.ok = Object.values(out).every(Boolean);
             res[id] = out;

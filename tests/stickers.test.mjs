@@ -81,7 +81,7 @@ test('sticker tags, however the model writes them, read as stickers with their n
 test('the sticker rule lists the names the character can use; with none it says nothing', () => {
     const ctx = { charName: 'Mira', userName: 'Me', reactionIds: [], stickerNames: ['安慰', '害羞'] };
     assert.deepEqual(buildFeaturePrompts(['sticker'], ctx), [
-        "- <sticker>name</sticker>: a sticker, its name copied exactly from this list whatever language the chat is in: 安慰, 害羞. Me's can have other names: a name says what the sticker shows.",
+        "- <sticker>name</sticker>: a sticker, its name copied exactly from this list whatever language the chat is in: 安慰, 害羞.",
     ]);
     assert.deepEqual(buildFeaturePrompts(['sticker'], { ...ctx, stickerNames: [] }), []);
     assert.deepEqual(buildFeaturePrompts(['photo', 'sticker', 'voice'], ctx).map(rule => rule.match(/^- <(\w+)>/)[1]), ['photo', 'voice', 'sticker']);
