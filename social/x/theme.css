@@ -375,9 +375,11 @@
 }
 
 /* A photo, as a photo bubble in the chat: a 4:3 blur of colour (a real image in its own
-   shape); a tap shows the description over it and the image's buttons, another hides them */
+   shape); a tap shows the description over it and the image's buttons, another hides them.
+   Its width at the panel's default size at most: a wider panel doesn't make it bigger */
 .et-social[data-social-theme="x"] .x-media {
     position: relative;
+    max-width: 296px;
     display: flex;
     align-items: center;
     justify-content: center;

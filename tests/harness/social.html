@@ -683,6 +683,18 @@ window.runPhotoTest = async function () {
     const box = media().getBoundingClientRect();
     res.closed = !shown(words()) && !shown(tools()) && shown(media().querySelector('.x-media-icon')) && Math.abs(box.width / box.height - 4 / 3) < 0.03;
 
+    // A wider panel doesn't make it bigger; a narrower one shrinks it
+    const sizeAt = async (width) => {
+        panel.style.setProperty('width', `${width}px`, 'important');
+        await sleep(40);
+        return media().getBoundingClientRect().width;
+    };
+    const atDefault = media().getBoundingClientRect().width;
+    const wide = await sizeAt(760), narrow = await sizeAt(320);
+    panel.style.removeProperty('width');
+    await sleep(40);
+    res.capped = Math.abs(atDefault - 296) < 1 && Math.abs(wide - 296) < 1 && narrow < 250;
+
     // A tap: the words and the button, still on the list. Another: gone
     media().click();
     await sleep(30);
