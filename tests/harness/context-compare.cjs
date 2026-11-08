@@ -12,14 +12,14 @@ const REF = process.argv[2] || 'HEAD';
 const H = __dirname;
 
 global.window = {};
-for (const f of ['lib/rich-messages.js', 'lib/features.js', 'lib/chat-view-model.js', 'platforms/echotext/platform.js', 'platforms/wechat/platform.js', 'platforms/instagram/platform.js']) new Function(fs.readFileSync(`${REPO}/${f}`, 'utf8'))();
+for (const f of ['lib/rich-messages.js', 'lib/features.js', 'lib/stickers.js', 'lib/chat-view-model.js', 'platforms/echotext/platform.js', 'platforms/wechat/platform.js', 'platforms/instagram/platform.js']) new Function(fs.readFileSync(`${REPO}/${f}`, 'utf8'))();
 new Function(fs.readFileSync(`${H}/scenarios.js`, 'utf8'))();
 // index.js before step 9c read the user's tapbacks (whole-message, msg.reactions) with
 // getStoredReactions, which the view model no longer has
 window.EchoTextChatViewModel.getStoredReactions = (msg, ids) => (!msg || msg.is_user ? [] : Object.entries(window.EchoTextChatViewModel.normalizeReactionStore(msg.reactions))
     .filter(([id]) => ids.includes(id)).map(([id, data]) => ({ id, ...data })));
 
-const NAMES = ['RichMessages', 'Features', 'ChatViewModel', 'Platform', 'Platforms', 'activePlatformMemo', 'getActivePlatform', 'getReactionIds', 'getActiveFeatures', 'platformHas',
+const NAMES = ['RichMessages', 'Features', 'ChatViewModel', 'Platform', 'Platforms', 'activePlatformMemo', 'getActivePlatform', 'getReactionIds', 'getActiveFeatures', 'platformHas', 'Stickers', 'stickerPresets', 'getStickerLibrary', 'getCharacterStickerNames', 'getModelFeatures',
     'getContextMessageText', 'buildCombinedReactionTurns', 'getUserReactionIds', 'buildUserReactionText', 'resolveHistoryMessageText', 'buildMessageFormatPrompt',
     'getMessageDisplayParts', 'quoteForBubble'];
 function load(code) {
@@ -30,7 +30,7 @@ function load(code) {
         const names = node.type === 'FunctionDeclaration' ? [node.id.name] : node.type === 'VariableDeclaration' ? node.declarations.map(d => d.id.name) : [];
         if (names.some(n => NAMES.includes(n))) parts.push(code.slice(node.start, node.end));
     }
-    return new Function('env', `const FA_REACTIONS = env.FA_REACTIONS; const settings = env.settings; const getCharacterKey = () => 'mira.png'; const getUserName = () => 'Me'; const getCharacterName = () => 'Mira'; const stripThinkingTags = t => t;
+    return new Function('env', `const FA_REACTIONS = env.FA_REACTIONS; const settings = env.settings; const BASE_URL = ''; const getCharacterKey = () => 'mira.png'; const getUserName = () => 'Me'; const getCharacterName = () => 'Mira'; const stripThinkingTags = t => t;
         ${parts.join('\n')}
         return { getContextMessageText, resolveHistoryMessageText, buildUserReactionText, buildCombinedReactionTurns, buildMessageFormatPrompt };`);
 }

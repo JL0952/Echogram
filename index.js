@@ -64,6 +64,7 @@
     loadEchoTextModule('lib/theme-editor.js', 'EchoTextThemeEditor');
     loadEchoTextModule('lib/rich-messages.js', 'EchoTextRichMessages');
     loadEchoTextModule('lib/features.js', 'EchoTextFeatures');
+    loadEchoTextModule('lib/stickers.js', 'EchoTextStickers');
     loadEchoTextModule('lib/chat-view-model.js', 'EchoTextChatViewModel');
     loadEchoTextModule('lib/music-lookup.js', 'EchoTextMusicLookup');
     loadEchoTextModule('lib/story-texts.js', 'EchoTextStoryTexts');
@@ -83,6 +84,7 @@
 
     const RichMessages = window.EchoTextRichMessages;
     const Features = window.EchoTextFeatures;
+    const Stickers = window.EchoTextStickers;
     const ChatViewModel = window.EchoTextChatViewModel;
     const ChatSummaries = window.EchoTextChatSummaries;
     const StoryTexts = window.EchoTextStoryTexts;
@@ -1424,7 +1426,7 @@
      * lib/rich-messages.js exactly.
      */
     function buildMessageFormatPrompt(charName, userName) {
-        const rules = Features.buildFeaturePrompts(getActiveFeatures(), { charName, userName, reactionIds: getReactionIds() });
+        const rules = Features.buildFeaturePrompts(getModelFeatures(), { charName, userName, reactionIds: getReactionIds(), stickerNames: getCharacterStickerNames() });
         // What every tag below shares, said once
         const tags = rules.length ? ` Each tag below goes on a line of its own too, as one of the texts. Write the texts and what goes inside the tags in the language of the conversation. Use a tag only when ${charName} really would — most replies need none. A tag from ${userName} is something they sent: respond to it.` : '';
         return [`MESSAGES: Put each text on its own line — every line reaches ${userName} as a separate message bubble. Only what ${charName} would actually send: never their unspoken thoughts.${tags}`, ...rules].join('\n');
@@ -2167,6 +2169,30 @@
         return getActiveFeatures().includes(featureId);
     }
 
+    // The built-in sticker sets (lib/stickers.js), their images in this folder
+    const stickerPresets = Stickers.presetSets(BASE_URL);
+
+    /** The sticker sets, in tab order. */
+    function getStickerLibrary() {
+        return stickerPresets;
+    }
+
+    /** The names of the stickers the character can use: those of the sets not turned off for them. */
+    function getCharacterStickerNames() {
+        return Stickers.characterNames(getStickerLibrary(), settings.stickerSetsOff || []);
+    }
+
+    /**
+     * The features as the model sees them: the platform's, but stickers only while the
+     * character has some to use. Without, the tags become plain-text notes as on a
+     * platform without stickers: the user's still read as what they are, and there's
+     * no tag to copy.
+     */
+    function getModelFeatures() {
+        const features = getActiveFeatures();
+        return features.includes('sticker') && !getCharacterStickerNames().length ? features.filter(id => id !== 'sticker') : features;
+    }
+
     /**
      * A message's text as sent to the model: reasoning blocks stripped and
      * rich-content tags rewritten to their canonical form, so the model always
@@ -2175,7 +2201,7 @@
      */
     function getContextMessageText(mes) {
         const text = RichMessages.normalizeMessageTags(stripThinkingTags(mes || ''));
-        return Features.filterContextText(text, getActiveFeatures());
+        return Features.filterContextText(Stickers.canonicalNames(getStickerLibrary(), text), getModelFeatures());
     }
 
     /** Combined mode has no format rules, so the user's tapbacks are spelled out in words. */
@@ -7280,6 +7306,7 @@
             combineMode: !!(groupManager && groupManager.isGroupSession() && groupManager.isCombineMode()),
             swipes: !!settings.swipedMessages,
             songArt: (title, artist) => songArt?.cached(title, artist) ?? null,
+            findSticker: name => Stickers.findSticker(getStickerLibrary(), name),
         };
     }
 

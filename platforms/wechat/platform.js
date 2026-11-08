@@ -119,6 +119,17 @@
     }
 
     /**
+     * A sticker, as WeChat shows one: the image on its own, with no bubble. A name the
+     * library has nothing close to, or an image that won't load, leaves the name in
+     * brackets instead (platform.css, on the empty element).
+     */
+    function sticker(p, ctx) {
+        const name = ctx.escapeHtml(p.name);
+        const img = p.url ? `<img src="${ctx.escapeHtml(p.url)}" alt="${name}" draggable="false" onerror="this.remove()">` : '';
+        return `<div class="wx-sticker" data-name="[${name}]">${img}</div>`;
+    }
+
+    /**
      * A voice message: the bubble shows its length (and a red dot until the user first
      * opens one of the character's); tapping it shows the words underneath, as WeChat's
      * 转文字 does (platform.css shows the transcript while aria-expanded is true).
@@ -202,11 +213,12 @@
         return `<div class="wx-quote"><span>${name ? `${ctx.escapeHtml(name)}：` : ''}${ctx.escapeHtml(text)}</span></div>`;
     }
 
-    /** Inner content of one row: a text bubble, a photo, a voice message, a place, a file, link or song card, or a transfer card. */
+    /** Inner content of one row: a text bubble, a photo, a voice message, a sticker, a place, a file, link or song card, or a transfer card. */
     function part(p, ctx, m) {
         const side = m.isUser ? 'right' : 'left';
         if (p.type === 'photo') return photo(p, ctx);
         if (p.type === 'voice') return voice(p, ctx, side);
+        if (p.type === 'sticker') return sticker(p, ctx);
         if (p.type === 'location') return locationCard(p, ctx, side);
         if (p.type === 'file') return fileCard(p, ctx, side);
         if (p.type === 'link') return linkCard(p, ctx, side);
@@ -282,7 +294,7 @@
     window.EchoTextPlatforms.wechat = {
         id: 'wechat',
         name: 'WeChat',
-        features: ['photo', 'voice', 'location', 'reply', 'transfer', 'file', 'link', 'music'],
+        features: ['photo', 'voice', 'sticker', 'location', 'reply', 'transfer', 'file', 'link', 'music'],
         stylesheet: 'platform.css',
         // Voice messages are typed from the input bar's voice button, as WeChat records them
         voiceButton: { placeholder: '输入要说的话，作为语音发出' },

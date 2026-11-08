@@ -23,7 +23,7 @@ const who = args.find(a => !a.startsWith('--'));
 if (!who) { console.error('usage: node tests/harness/prompt-print.cjs <character> [--values=…] [--big5=…] [--morality=…] [--mode=…] [--nsfw=on|off] [--platform=…] [--verbosity=…] [--tail]'); process.exit(2); }
 
 global.window = {};
-for (const f of ['lib/config.js', 'lib/rich-messages.js', 'lib/features.js', 'lib/chat-view-model.js', 'platforms/echotext/platform.js', 'platforms/wechat/platform.js', 'platforms/instagram/platform.js',
+for (const f of ['lib/config.js', 'lib/rich-messages.js', 'lib/features.js', 'lib/stickers.js', 'lib/chat-view-model.js', 'platforms/echotext/platform.js', 'platforms/wechat/platform.js', 'platforms/instagram/platform.js',
     'lib/emotion-model.js', 'lib/emotion-icons.js', 'lib/texting-behavior.js', 'lib/daily-life.js', 'lib/proactive-rounds.js', 'lib/emotion-system.js', 'lib/memory-recall.js', 'lib/memory-system.js', 'lib/chat-summaries.js']) new Function(fs.readFileSync(`${REPO}/${f}`, 'utf8'))();
 
 // ── SillyTavern's data ──────────────────────────────────────────────────────
@@ -94,12 +94,12 @@ if (opt('big5') || opt('morality')) {
 
 const NAMES = ['buildSystemPrompt', 'MAX_TEXTS', 'splitsLiveContext', 'getSTStoryMessages', 'buildPromptParts', 'buildLifeDate', 'getVerbosityPrompt', 'getCharacterVerbosity', 'getEchoTextFirstMessage', 'getSTStoryContext', 'findSTOpeningIndex',
     'isCharInCurrentSTChat', 'cleanSTMessageText', 'ST_STORY_MAX_MESSAGES', 'ST_STORY_MAX_CHARS', 'replaceMacros', 'buildMessageFormatPrompt',
-    'RichMessages', 'Features', 'Platforms', 'activePlatformMemo', 'getActivePlatform', 'getActiveFeatures', 'platformHas', 'getReactionIds',
+    'RichMessages', 'Features', 'Platforms', 'activePlatformMemo', 'getActivePlatform', 'getActiveFeatures', 'platformHas', 'Stickers', 'stickerPresets', 'getStickerLibrary', 'getCharacterStickerNames', 'getModelFeatures', 'getReactionIds',
     'getActiveWorldInfoEntries', 'buildMemoryContext', 'summariesOn', 'ChatSummaries', 'resolveHistoryMessageText', 'getContextMessageText', 'buildTextingStyleContext', 'buildBehaviorContext', 'buildMoodRules', 'inGroupSession',
     'DailyLife', 'dailyLifeActive', 'activeSchedule', 'activeLife', 'buildDailyLifeContext', 'buildScheduleContext', 'phoneOverride', 'buildLifeRules', 'getEmotionHistory',
     'stripThinkingTags', 'getStripTagsRegex', 'STRIP_TAGS_DEFAULTS', 'SPECIAL_PATTERNS', '_stripTagsRegex', '_stripTagsListHash'];
 const STUBS = `
-    const FA_REACTIONS = window.EchoTextFeatures.REACTIONS; const settings = env.settings; const SillyTavern = env.SillyTavern; const emotionSystem = env.emotionSystem; const memorySystem = env.memorySystem;
+    const FA_REACTIONS = window.EchoTextFeatures.REACTIONS; const settings = env.settings; const BASE_URL = ''; const SillyTavern = env.SillyTavern; const emotionSystem = env.emotionSystem; const memorySystem = env.memorySystem;
     const getCurrentCharacter = () => env.char; const getCharacterKey = () => env.char.avatar;
     const getCharacterName = () => env.char.name; const getUserName = () => env.userName;
     const isCombinedGroupMode = () => false; const groupManager = null;

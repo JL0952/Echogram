@@ -109,6 +109,16 @@
         { is_user: false, mes: '<reply>我: [Photo: my lunch]</reply>\n<react>heart</react>\nyum\n<reply>我: also I finished the book</reply>\n<react>like</react>', send_date: m(2) },
     ];
 
+    // Stickers (月薪喵, the built-in set): the user's, the character's among texts, a name
+    // written loosely, and one the library has nothing close to
+    const stickers = () => [
+        { is_user: true, mes: '<sticker>被迫上班</sticker>', send_date: m(0) },
+        { is_user: true, mes: '今天好累', send_date: m(0) },
+        { is_user: false, mes: '抱抱\n<sticker>安慰</sticker>\n下班来接你\n<sticker>叼花跑来</sticker>', send_date: m(1) },
+        { is_user: true, mes: '<sticker>害羞</sticker>', send_date: m(2) },
+        { is_user: false, mes: '<表情包>发射爱心.gif</表情包>\n<sticker>不存在的表情</sticker>', send_date: m(3) },
+    ];
+
     const baseSettings = {
         showAvatar: true, swipedMessages: true, memoryEnabled: true, memoryAutoExtract: true,
         memoryHighlightStyle: 'underline', autoScroll: true, verbosityByCharacter: { 'mira.png': 'short' },
@@ -137,6 +147,7 @@
         { name: 'songs', history: songs(), settings: { ...baseSettings } },
         { name: 'lyrics', history: lyrics(), settings: { ...baseSettings } },
         { name: 'quoted tapbacks', history: quotedTapbacks(), settings: { ...baseSettings } },
+        { name: 'stickers', history: stickers(), settings: { ...baseSettings } },
     ];
     window.EchoTextScenarioReactions = FA_REACTIONS;
 })();

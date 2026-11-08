@@ -19,17 +19,17 @@ const REF = args.find(a => !a.startsWith('--')) || 'HEAD';
 const PRINT = (args.find(a => a.startsWith('--print=')) || '').slice('--print='.length);
 
 global.window = {};
-for (const f of ['lib/config.js', 'lib/rich-messages.js', 'lib/features.js', 'lib/chat-view-model.js', 'lib/daily-life.js', 'lib/story-texts.js', 'platforms/echotext/platform.js', 'platforms/wechat/platform.js', 'platforms/instagram/platform.js']) new Function(fs.readFileSync(`${REPO}/${f}`, 'utf8'))();
+for (const f of ['lib/config.js', 'lib/rich-messages.js', 'lib/features.js', 'lib/stickers.js', 'lib/chat-view-model.js', 'lib/daily-life.js', 'lib/story-texts.js', 'platforms/echotext/platform.js', 'platforms/wechat/platform.js', 'platforms/instagram/platform.js']) new Function(fs.readFileSync(`${REPO}/${f}`, 'utf8'))();
 new Function(fs.readFileSync(`${__dirname}/scenarios.js`, 'utf8'))();
 
 // Real index.js code: the prompt builder and the helpers it uses
 const NAMES = ['addEchogramToStory', 'buildCharacterToday', 'buildSystemPrompt', 'buildPromptParts', 'MAX_TEXTS', 'buildLifeDate', 'buildApiMessagesFromHistory', 'buildApiMessagesFromHistoryForChar', 'placeLiveContext', 'splitsLiveContext', 'buildChatTurns', 'buildChatMessages', 'getSTStoryMessages', 'stMessageTime', 'StoryTexts', 'ST_STORY_CHUNK_MESSAGES', 'ST_STORY_CHUNK_CHARS', 'getVerbosityPrompt', 'getCharacterVerbosity', 'getEchoTextFirstMessage', 'getSTStoryContext', 'findSTOpeningIndex',
     'isCharInCurrentSTChat', 'cleanSTMessageText', 'ST_STORY_MAX_MESSAGES', 'ST_STORY_MAX_CHARS', 'replaceMacros', 'buildMessageFormatPrompt',
-    'RichMessages', 'Features', 'Platforms', 'activePlatformMemo', 'getActivePlatform', 'getActiveFeatures', 'platformHas', 'getReactionIds', 'isTetheredMode',
+    'RichMessages', 'Features', 'Platforms', 'activePlatformMemo', 'getActivePlatform', 'getActiveFeatures', 'platformHas', 'Stickers', 'stickerPresets', 'getStickerLibrary', 'getCharacterStickerNames', 'getModelFeatures', 'getReactionIds', 'isTetheredMode',
     'DailyLife', 'dailyLifeActive', 'activeSchedule', 'activeLife', 'buildDailyLifeContext', 'buildScheduleContext', 'phoneOverride', 'buildLifeRules', 'getEmotionHistory'];
 // Stubbed: SillyTavern state and the parts with their own data
 const STUBS = `
-    const FA_REACTIONS = env.FA_REACTIONS; const settings = env.settings; const SillyTavern = env.SillyTavern;
+    const FA_REACTIONS = env.FA_REACTIONS; const settings = env.settings; const SillyTavern = env.SillyTavern; const BASE_URL = '';
     const getCurrentCharacter = () => env.char; const getCharacterKey = () => env.char?.avatar || null;
     const getCharacterName = () => env.char?.name || 'Character'; const getUserName = () => 'Qi';
     const isCombinedGroupMode = () => false; const inGroupSession = () => false; const groupManager = null; const stripThinkingTags = t => t;
