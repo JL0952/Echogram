@@ -444,8 +444,9 @@
    EchoText's own input elements: the blue camera button is "+" (it opens the
    photo / voice / transfer menu, and shows the mode's icon while composing), the
    textarea is the round field, the voice button the mic, the send button
-   "Send" (a stop button while a reply is generated). The photo glyph is drawn;
-   the sticker one is the sticker button where the look has stickers. */
+   "Send" (a stop button while a reply is generated). The picture is the photo
+   button (a photo starts there, not from the camera's menu), the smile the
+   sticker button. */
 
 [data-platform="instagram"] [data-et-role~="input-bar"] {
     position: relative;
@@ -485,6 +486,7 @@
 [data-platform="instagram"] #et-attach-btn,
 [data-platform="instagram"] #et-input,
 [data-platform="instagram"] #et-voice-btn,
+[data-platform="instagram"] #et-photo-btn,
 [data-platform="instagram"] #et-sticker-btn,
 [data-platform="instagram"] #et-send-btn,
 [data-platform="instagram"] [data-et-role~="input-bar"]::before,
@@ -614,6 +616,46 @@
     margin-right: 12px;
 }
 
+/* The picture is the photo button itself */
+[data-platform="instagram"] [data-et-role~="input-bar"]:has(#et-photo-btn:not([hidden]))::before {
+    display: none;
+}
+
+[data-platform="instagram"] #et-photo-btn {
+    grid-column: 2;
+    justify-self: end;
+    align-self: end;
+    z-index: 1;
+    display: grid;
+    place-items: center;
+    width: 24px;
+    height: 24px;
+    margin: 0 44px 10px 0 !important;
+    padding: 0;
+    border: 0;
+    color: var(--ig-text);
+    background: none;
+    cursor: pointer;
+}
+
+[data-platform="instagram"] #et-photo-btn[hidden] {
+    display: none;
+}
+
+[data-platform="instagram"] #et-photo-btn > i {
+    display: none;
+}
+
+[data-platform="instagram"] #et-photo-btn::before {
+    content: "";
+    display: block;
+    width: 24px;
+    height: 24px;
+    background: currentColor;
+    -webkit-mask: var(--ig-icon-image) center / contain no-repeat;
+    mask: var(--ig-icon-image) center / contain no-repeat;
+}
+
 /* The smile is the sticker button itself, where the look has stickers; a keyboard while its panel is up */
 [data-platform="instagram"] [data-et-role~="input-bar"]:has(#et-sticker-btn:not([hidden]))::after {
     display: none;
@@ -664,6 +706,7 @@
 [data-platform="instagram"] [data-et-role~="input-bar"]:has(.et-input-wrap-compose)::before,
 [data-platform="instagram"] [data-et-role~="input-bar"]:has(.et-input-wrap-compose)::after,
 [data-platform="instagram"] [data-et-role~="input-bar"]:has(.et-input-wrap-compose) #et-sticker-btn,
+[data-platform="instagram"] [data-et-role~="input-bar"]:has(.et-input-wrap-compose) #et-photo-btn,
 [data-platform="instagram"] [data-et-role~="input-bar"]:has(.et-input-wrap-compose:not([data-et-compose="voice"])) #et-voice-btn {
     display: none;
 }
@@ -730,6 +773,8 @@
 [data-platform="instagram"] [data-et-role~="input-bar"]:has(#et-input:not(:placeholder-shown)) #et-voice-btn,
 [data-platform="instagram"] [data-et-role~="input-bar"]:has(#et-input:not(:placeholder-shown)) #et-sticker-btn,
 [data-platform="instagram"] [data-et-role~="input-bar"]:has(#et-send-btn.et-send-stop) #et-sticker-btn,
+[data-platform="instagram"] [data-et-role~="input-bar"]:has(#et-input:not(:placeholder-shown)) #et-photo-btn,
+[data-platform="instagram"] [data-et-role~="input-bar"]:has(#et-send-btn.et-send-stop) #et-photo-btn,
 [data-platform="instagram"] [data-et-role~="input-bar"]:has(#et-input:not(:placeholder-shown))::before,
 [data-platform="instagram"] [data-et-role~="input-bar"]:has(#et-input:not(:placeholder-shown))::after,
 [data-platform="instagram"] [data-et-role~="input-bar"]:has(#et-send-btn.et-send-stop) #et-voice-btn,

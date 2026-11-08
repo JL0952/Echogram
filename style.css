@@ -11215,6 +11215,7 @@ textarea.et-mem-save-snippet-edit::placeholder {
 /* The platform has nothing to attach / records voice another way / not sharing a file */
 .et-attach-btn[hidden],
 .et-voice-btn[hidden],
+.et-photo-btn[hidden],
 .et-share-type[hidden] {
     display: none !important;
 }

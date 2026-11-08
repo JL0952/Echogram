@@ -836,7 +836,7 @@
             jQuery('#et-char-name').html(`Group: ${escapeHtml(charNames)}<i class="fa-solid fa-chevron-down et-char-name-caret" aria-hidden="true"></i>`);
             setInputPlaceholder(`Message all: ${charNames}...`);
             jQuery('#et-input').prop('disabled', false);
-            jQuery('#et-send-btn, #et-attach-btn, #et-voice-btn, #et-sticker-btn').prop('disabled', false);
+            jQuery('#et-send-btn, #et-attach-btn, #et-voice-btn, #et-photo-btn, #et-sticker-btn').prop('disabled', false);
             setComposeMode(null);
             updatePanelStatusRow();
             updateImageGenerationVisibility();
@@ -858,7 +858,7 @@
         setInputPlaceholder(hasChar ? `Text ${charName}...` : 'Text a character...');
         jQuery('#et-input').prop('disabled', !hasChar);
         renderRecoverRows();
-        jQuery('#et-send-btn, #et-attach-btn, #et-voice-btn, #et-sticker-btn').prop('disabled', !hasChar);
+        jQuery('#et-send-btn, #et-attach-btn, #et-voice-btn, #et-photo-btn, #et-sticker-btn').prop('disabled', !hasChar);
         setComposeMode(null);
         updatePanelStatusRow();
         updateImageGenerationVisibility();
@@ -4363,7 +4363,7 @@
         jQuery('#et-char-name').html(`${escapeHtml(charName)}<i class="fa-solid fa-chevron-down et-char-name-caret" aria-hidden="true"></i>`);
         setInputPlaceholder(`Text ${charName}...`);
         jQuery('#et-input').prop('disabled', false);
-        jQuery('#et-send-btn, #et-attach-btn, #et-voice-btn, #et-sticker-btn').prop('disabled', false);
+        jQuery('#et-send-btn, #et-attach-btn, #et-voice-btn, #et-photo-btn, #et-sticker-btn').prop('disabled', false);
         setComposeMode(null);
         cancelScheduledReply();
 
@@ -4480,6 +4480,7 @@
                     <button class="et-attach-btn" id="et-attach-btn" type="button" title="Attach"${hasChar ? '' : ' disabled'}><i class="fa-solid fa-plus"></i></button>
                     <button class="et-share-type" id="et-share-type" type="button" title="File type" hidden></button>
                     <textarea class="et-input" id="et-input" enterkeyhint="send" placeholder="${escapeHtml(inputPlaceholder(inputText))}" data-et-text-placeholder="${escapeHtml(inputText)}" rows="1"${hasChar ? '' : ' disabled'}></textarea>
+                    <button class="et-photo-btn" id="et-photo-btn" type="button" title="Photo" hidden${hasChar ? '' : ' disabled'}><i class="fa-regular fa-image"></i></button>
                     <button class="et-sticker-btn" id="et-sticker-btn" type="button" title="Stickers" hidden${hasChar ? '' : ' disabled'}><i class="fa-regular fa-face-smile"></i></button>
                 </div>
                 <button class="et-send-btn" id="et-send-btn" title="Send message"${hasChar ? '' : ' disabled'}>
@@ -4758,6 +4759,14 @@
         jQuery('#et-share-type').on('click', function (e) {
             e.stopPropagation();
             toggleShareTypeMenu(jQuery(this));
+        });
+
+        // A platform's own photo button (Instagram's, in the field) starts a photo, as "+" would
+        jQuery('#et-photo-btn').on('click', function (e) {
+            e.stopPropagation();
+            closeAllDotMenus();
+            setComposeMode('photo');
+            jQuery('#et-input').trigger('focus');
         });
 
         // The sticker button raises the sticker panel, or puts it away for the keyboard
@@ -5548,9 +5557,10 @@
             return;
         }
         closeAllDotMenus();
-        // A platform with its own voice button (the mic in Instagram's field) leaves voice out of the menu
+        // A platform with its own voice or photo button (the mic and the picture in Instagram's field) leaves them out of the menu
+        const platform = getActivePlatform();
         const itemsHtml = Object.entries(Features.getComposerModes(getActiveFeatures()))
-            .filter(([id]) => !(id === 'voice' && getActivePlatform().voiceButton)).map(([id, m]) =>
+            .filter(([id]) => !(id === 'voice' && platform.voiceButton) && !(id === 'photo' && platform.photoButton)).map(([id, m]) =>
             `<button class="et-dots-item" data-mode="${id}"><i class="fa-solid ${m.icon}"></i><span>${m.label}</span></button>`
         ).join('');
         // A platform without photos or transfers has nothing to attach
@@ -7738,6 +7748,8 @@
         jQuery('#et-attach-btn').prop('hidden', Object.keys(modes).length === 0);
         // A platform that records voice from the input bar (WeChat) shows its voice button
         jQuery('#et-voice-btn').prop('hidden', !(platform.voiceButton && modes.voice));
+        // One that starts a photo from its own button (Instagram's picture in the field) shows it
+        jQuery('#et-photo-btn').prop('hidden', !(platform.photoButton && modes.photo));
         // A mode the platform lacks ends; one it has is redrawn (voice moves between "+" and the voice button)
         if (composeMode) setComposeMode(modes[composeMode] ? composeMode : null);
         if (!platform.composerPanel && jQuery('#et-attach-panel').attr('data-et-panel') !== 'stickers') closeAttachPanel();

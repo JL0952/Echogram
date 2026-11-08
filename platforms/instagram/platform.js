@@ -294,6 +294,8 @@
         name: 'Instagram',
         // Links show as a preview card; Instagram has no files or transfers
         features: ['photo', 'voice', 'sticker', 'location', 'react', 'reply', 'link', 'music'],
+        // A photo starts from the picture in the field, not from the camera's menu
+        photoButton: true,
         stylesheet: 'platform.css',
         // Your bubbles share one gradient across the visible list (index.js updateSharedFill)
         sharedFill: '.ig-row-me .ig-bubble',
