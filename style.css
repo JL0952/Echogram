@@ -8535,6 +8535,21 @@ textarea.et-sched-in {
     margin-top: 14px;
 }
 
+.et-memo-use {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    margin: 0;
+    font-size: 0.74rem;
+    color: color-mix(in srgb, var(--et-surface-text) 62%, transparent);
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+.et-memo-card-off .et-mem-card-content {
+    opacity: 0.45;
+}
+
 .et-mem-form-keys,
 .et-mem-save-keys {
     margin-bottom: 0;

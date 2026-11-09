@@ -213,6 +213,31 @@ test('the prompt offers the repost form, and the model sees what was reposted', 
     assert.ok(sys.includes('ago] [reposting @pic: a photo]'));
 });
 
+test('a post from over a week ago reaches the model as a date, a newer one as time ago', () => {
+    const now = new Date(2026, 10, 30, 12).getTime();
+    const posts = [{ text: 'new', at: now - 2 * 3600000, image: '' }, { text: 'old', at: new Date(2026, 10, 15, 12).getTime(), image: '' }];
+    const sys = request({}, { posts, now }).systemPrompt;
+    assert.ok(sys.includes('[2h ago] new') && sys.includes('[Nov 15] old'));
+    assert.ok(!sys.includes('Nov 15 ago'));
+});
+
+test('a new archive is empty, and loading it clears the chat\'s posts but not the ones kept in all chats', () => {
+    const s = {
+        socialPosts: { k: [{ id: 'a', at: 1, text: 'this chat' }] },
+        socialAccounts: { k: { posts: [{ id: 'b', at: 2, text: 'kept' }] } },
+    };
+    const source = S.createArchiveSource({
+        getSettings: () => s, saveSettings() {}, getCharacterKey: () => 'k', getCharacterName: () => 'M', now: () => 5, forgetPhoto() {}, onLoad() {},
+    });
+    const empty = source.createEmpty('fresh');
+    assert.deepEqual([empty.name, empty.posts], ['fresh', []]);
+    assert.equal(source.createEmpty('').name.startsWith('M — '), true);
+    assert.equal(s.socialPosts.k.length, 1);
+    source.load(empty.id);
+    assert.deepEqual(s.socialPosts.k, []);
+    assert.equal(s.socialAccounts.k.posts.length, 1);
+});
+
 test('a repost shows when it has anything, and its words and image can be edited away', () => {
     assert.equal(S.normalizePost({ repost: { name: 'n' } }, 0).repost, null);
     assert.equal(S.normalizePost({ repost: { image: 'a pic' } }, 0).repost.name, 'user');

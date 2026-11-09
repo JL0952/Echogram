@@ -5267,6 +5267,11 @@
         return [...new Set(stores.flatMap(store => Object.values(store).map(image => image?.path).filter(Boolean)))];
     }
 
+    /** A photo gone from the chat: its file goes too, unless a chat archive still shows it. */
+    function forgetChatPhoto(path) {
+        if (!JSON.stringify(settings.savedChats || {}).includes(JSON.stringify(path).slice(1, -1))) deleteUserImage(path);
+    }
+
     /** Picks an image for a photo bubble (replacing any it has) and saves it. */
     async function addPhotoImage(msgIndex, partIndex) {
         const charKey = getCharacterKey();
@@ -5288,7 +5293,7 @@
             const previous = getPhotoImages(msg)[partIndex]?.path;
             setPhotoImages(msg, { ...getPhotoImages(msg), [partIndex]: { path, width: image.width, height: image.height } });
             saveChatHistory(history);
-            if (previous && previous !== path) deleteUserImage(previous);
+            if (previous && previous !== path) forgetChatPhoto(previous);
             if (panelOpen) renderMessages(history, true);
         } catch (err) {
             error('Could not add the photo:', err);
@@ -5305,7 +5310,7 @@
         delete store[partIndex];
         setPhotoImages(msg, store);
         saveChatHistory(history);
-        deleteUserImage(previous);
+        forgetChatPhoto(previous);
         if (panelOpen) renderMessages(history, true);
     }
 
@@ -8500,6 +8505,7 @@
         } else {
             items.push({ id: 'delete', icon: 'fa-trash', label: 'Delete', cls: 'et-dots-item-delete' });
         }
+        if (partIndex === null) items.splice(items.findIndex(item => item.id === 'delete'), 0, { id: 'branch', icon: 'fa-code-branch', label: 'Branch', cls: '' });
         // The footer menu's "Delete this" removes the main (last) bubble
         const targetPart = partIndex !== null ? partIndex : (partCount > 1 ? partCount - 1 : null);
 
@@ -8576,7 +8582,7 @@
         // So do the photos' images; the deleted bubble's goes
         const images = getPhotoImages(msg);
         if (Object.keys(images).length) {
-            if (images[partIndex]?.path) deleteUserImage(images[partIndex].path);
+            if (images[partIndex]?.path) forgetChatPhoto(images[partIndex].path);
             setPhotoImages(msg, Object.fromEntries(Object.entries(images)
                 .filter(([j]) => Number(j) !== partIndex)
                 .map(([j, image]) => [Number(j) > partIndex ? Number(j) - 1 : Number(j), image])));
@@ -8586,7 +8592,7 @@
         // <react> tags aren't bubbles, so they survive deleting one
         const reactions = RichMessages.parseMessageParts(msg.mes).filter(part => part.type === 'react');
         if (!remaining.length && !reactions.length && !msg.imageAttachment) {
-            allPhotoImagePaths(msg).forEach(deleteUserImage);
+            allPhotoImagePaths(msg).forEach(forgetChatPhoto);
             history.splice(msgIndex, 1);
             return;
         }
@@ -8746,6 +8752,21 @@
      * @param {number|null} partIndex - the bubble a part-level action targets (Copy /
      *   Delete on one bubble of a multi-bubble message); null for the whole message
      */
+    /** Goes on from this message: the whole chat is kept in the archives, then cut after it. */
+    function branchChat(msgIndex) {
+        // A reply on its way would land in the cut chat
+        if (isGenerating) {
+            toastr.info('Wait for the current reply to finish.');
+            return;
+        }
+        if (!saveLoadModal.saveBeforeBranch()) return;
+        const kept = getChatHistory().slice(0, msgIndex + 1);
+        clearReplyDraft();
+        saveChatHistory(kept);
+        renderMessages(kept);
+        toastr.success('Full chat saved in Archives', 'Echogram');
+    }
+
     function handleDotsAction(action, msgIndex, isUser, btn, partIndex = null) {
         const history = getChatHistory();
         const msg = history[msgIndex];
@@ -8782,7 +8803,7 @@
                 deleteConfirmIndex = -1;
 
                 if (wholeMessage) {
-                    allPhotoImagePaths(msg).forEach(deleteUserImage);
+                    allPhotoImagePaths(msg).forEach(forgetChatPhoto);
                     history.splice(msgIndex, 1);
                 } else deleteMessagePart(history, msgIndex, partIndex);
 
@@ -8802,6 +8823,12 @@
                     btn.find('span').text(originalLabel);
                 }, 3000);
             }
+            return;
+        }
+
+        if (action === 'branch') {
+            closeAllDotMenus();
+            branchChat(msgIndex);
             return;
         }
 
@@ -9302,6 +9329,17 @@
         refreshMemoryLists();
     }
 
+    /** Whether one of the open chat's summaries goes in the prompt; it stays in the list and its messages stay summarized either way. */
+    function setChatSummaryInPrompt(id, on) {
+        const history = getChatHistory();
+        const msg = history.find(m => m.memo && String(m.memo.id) === String(id));
+        if (!msg) return;
+        const { off, ...memo } = msg.memo;
+        msg.memo = on ? memo : { ...memo, off: true };
+        saveChatHistory(history);
+        refreshMemoryLists();
+    }
+
     /** The open chat's memories for the settings list. */
     function getChatMemoriesForList() {
         return memorySystem && !inGroupSession() ? memorySystem.getChatMemories() : [];
@@ -9591,6 +9629,7 @@
         window._etGetRecalledMemoryIds = () => memorySystem.getRecalledIds();
         window._etGetChatSummaries = getChatSummariesForList;
         window._etSetChatSummary = setChatSummary;
+        window._etSetChatSummaryInPrompt = setChatSummaryInPrompt;
         window._etGetChatMemories = getChatMemoriesForList;
         window._etKeepChatSummary = keepChatSummary;
         window._etKeepChatMemory = id => {

@@ -1361,6 +1361,15 @@ window.runPinTest = async function () {
     await openArchives();
     res.archiveWindow = sl('.et-sl-header-title').textContent.includes('Post Archives') && !sl('.et-sl-mode-badge')
         && sl('.et-sl-empty').textContent.includes('No saved posts yet.') && sl('#et-sl-save-cta').textContent.includes('Save Current Posts') && !!sl('#et-sl-import-btn');
+    sl('#et-sl-name-input').value = 'blank';
+    sl('#et-sl-new-btn').click();
+    await sleep(20);
+    res.newEmpty = archives().length === 1 && archives()[0].name === 'blank' && archives()[0].posts.length === 0 && chat().length === 3
+        && sl('.et-sl-item-selected .et-sl-item-name').textContent === 'blank' && sl('.et-sl-preview-msgcount').textContent === '0 posts' && sl('.et-sl-prev-nomsg').textContent === 'No posts';
+    sl('.et-sl-del-btn').click();
+    await sleep(20);
+    sl('.et-sl-del-btn').click();
+    await sleep(20);
     await closeArchives();
     await archive('one');
     res.archived = archives().length === 1 && archives()[0].posts.length === 3 && archives()[0].posts !== chat() && Object.keys(s.savedChats).length === 0;
@@ -1403,7 +1412,7 @@ window.runPinTest = async function () {
     chatModal.openSaveLoadModal();
     await sleep(30);
     res.chatWindowSame = sl('.et-sl-header-title').textContent.includes('Chat Archives') && sl('.et-sl-mode-badge').textContent.includes('Solo Chat')
-        && sl('#et-sl-save-cta').textContent.includes('Save Current Chat') && !sl('#et-sl-import-btn');
+        && sl('#et-sl-save-cta').textContent.includes('Save Current Chat') && !sl('#et-sl-import-btn') && !sl('#et-sl-new-btn');
     sl('#et-sl-save-cta').click();
     await sleep(40);
     const chatEntry = Object.values(s.savedChats.tethered)[0];

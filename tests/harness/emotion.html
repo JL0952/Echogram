@@ -41,6 +41,7 @@
 <script src="../../lib/memory-system.js"></script>
 <script src="../../lib/chat-summaries.js"></script>
 <script src="../../lib/settings-modal.js"></script>
+<script src="../../lib/saveload-modal.js"></script>
 <script>
 // The emotion popup and status chip (lib/emotion-system.js) on the real panel, and
 // how a reply lands in Auto mode (index.js's generateEchoText / generateEchoTextSwipe,
@@ -115,6 +116,11 @@
         // What the engine works out over a catch-up's gap (lib/proactive-messaging.js simulateAway): nothing, unless a test says
         simulateAway: () => ({ events: [], state: {} }) };
     env.memorySystem = window.EchoTextMemorySystem.createMemorySystem({ getSettings: () => env.settings, saveSettings: () => {}, getCharacterKey: () => 'mira.png' });
+    env.saveLoadModal = window.EchoTextSaveLoadModal.createSaveLoadModal({
+        getSettings: () => env.settings, saveSettings() {}, getCharacterKey: () => 'mira.png', getCharacterName: () => 'Mira',
+        getChatHistory: () => r.getChatHistory(), saveChatHistory: h => r.saveChatHistory(h), renderMessages: h => r.renderMessages(h),
+        getEmotionSnapshot: () => null, getLifeSnapshot: () => null, getChatMemoriesSnapshot: () => null,
+    });
     if (params.has('art')) {
         window.__songArt = { cache: {}, requests: [] };
         const offline = params.get('art') === 'offline';
@@ -598,6 +604,7 @@
         window._etKeepChatSummary = r.keepChatSummary;
         window._etKeepChatMemory = id => { env.memorySystem.moveToPermanent(id); r.refreshMemoryLists(); };
         window._etSetChatSummary = r.setChatSummary;
+        window._etSetChatSummaryInPrompt = r.setChatSummaryInPrompt;
         // Once: it binds its handlers on the document
         const sm = settingsModal || (settingsModal = window.EchoTextSettingsModal.createSettingsModal({ getSettings: () => env.settings, saveSettings: () => {},
             buildThemeDropdownHtml: () => '', buildFontDropdownHtml: () => '', refreshProactiveInsights: () => {} }));
@@ -774,6 +781,112 @@
         await r.summarizeOldMessages();
         res.refusalNotKept = asked.length === 6 && !chat().some(m => m.memo?.text?.startsWith('抱歉'));
 
+        res.errors = errors.slice();
+        res.ok = Object.values(res).filter(v => typeof v === 'boolean').every(Boolean) && !errors.length;
+        return res;
+    };
+
+    // A summary's In prompt box and Branch in a bubble's menu, through the real code
+    window.runSummaryBoxTest = async function () {
+        const res = {};
+        errors.length = 0;
+        env.settings.memoryEnabled = true;
+        delete env.settings.memorySummaries;
+        env.settings.characterMemories = {};
+        const lines = Array.from({ length: 100 }, (_, i) => ({ is_user: i % 2 === 0, mes: `line ${i}`, send_date: Date.now() - (100 - i) * 60000 }));
+        lines[29].memo = { id: 'old', text: '他们在京都看了红叶', count: 30, at: 1 };
+        lines[39].memo = { id: 'new', text: '两人吵了一架又和好', count: 10, at: 2 };
+        env.settings.chatHistory['mira.png'] = lines;
+        const { host, render } = await mountSettingsPanel();
+        const card = id => host.querySelector(`.et-memo-card[data-memo-id="${id}"]`);
+        const box = id => card(id).querySelector('.et-memo-use-box');
+        res.startsOn = box('old').checked && box('new').checked && !card('old').classList.contains('et-memo-card-off');
+        res.labelled = card('old').querySelector('.et-memo-use').textContent.trim() === 'In prompt';
+        box('old').click();
+        res.saved = env.settings.chatHistory['mira.png'][29].memo.off === true;
+        render();
+        res.drawnOff = !box('old').checked && card('old').classList.contains('et-memo-card-off') && box('new').checked;
+        const before = r.historyToSend(r.getChatHistory()).length;
+        const ctx = env.memorySystem.buildMemoryContext(['还记得京都吗', '京都'], window.EchoTextChatSummaries.summaries(r.getChatHistory()));
+        res.outOfPrompt = !ctx.includes('京都') && ctx.includes('两人吵了一架');
+        res.stillSummarized = before === 60;
+        box('old').click();
+        render();
+        res.backOn = !('off' in env.settings.chatHistory['mira.png'][29].memo) && box('old').checked;
+        render();
+        host.remove();
+        res.errors = errors.slice();
+        res.ok = Object.values(res).filter(v => typeof v === 'boolean').every(Boolean) && !errors.length;
+        return res;
+    };
+
+    window.runBranchTest = async function () {
+        const res = {};
+        errors.length = 0;
+        const told = [];
+        const success = window.toastr.success;
+        window.toastr.success = m => told.push(m);
+        env.settings.savedChats = {};
+        const seed = () => {
+            const h = Array.from({ length: 6 }, (_, i) => ({ is_user: i % 2 === 0, mes: `line ${i}`, send_date: Date.now() - (6 - i) * 60000 }));
+            h[1].memo = { id: 'kept', text: 'a', count: 2, at: 1 };
+            h[4].memo = { id: 'cut', text: 'b', count: 3, at: 2 };
+            env.settings.chatHistory['mira.png'] = h;
+            r.renderMessages(h);
+        };
+        const archives = () => Object.values(env.settings.savedChats.tethered || {});
+        const texts = () => r.getChatHistory().map(m => m.mes).join('|');
+
+        seed();
+        const items = bubbleMenu(2);
+        res.inMenu = items.some(b => b.dataset.action === 'branch' && b.textContent.trim() === 'Branch');
+        res.beforeDelete = items.findIndex(b => b.dataset.action === 'branch') === items.findIndex(b => b.dataset.action === 'delete') - 1;
+        items.find(b => b.dataset.action === 'branch').click();
+        await sleep(30);
+        res.cut = texts() === 'line 0|line 1|line 2';
+        res.archived = archives().length === 1 && archives()[0].history.length === 6 && archives()[0].name.endsWith('(before branch)');
+        res.told = told.includes('Full chat saved in Archives');
+        res.rendered = document.querySelectorAll('#et-messages .et-msg-row, #et-messages .et-message').length !== 6;
+        res.summaries = window.EchoTextChatSummaries.summaries(r.getChatHistory()).map(s => s.id).join() === 'kept';
+        res.archiveKeepsSummaries = archives()[0].history[4].memo?.id === 'cut';
+        document.querySelectorAll('.et-dots-menu').forEach(m => m.remove());
+
+        // A photo the archive still shows keeps its file, however it leaves the chat; one only the chat had goes
+        const deleted = [];
+        const realFetch = window.fetch;
+        window.fetch = (url, options) => {
+            if (String(url).includes('/api/images/delete')) { deleted.push(JSON.parse(options.body).path); return Promise.resolve(new Response('{}')); }
+            return realFetch(url, options);
+        };
+        const realST = window.SillyTavern;
+        window.SillyTavern = { ...realST, getContext: () => ({ getRequestHeaders: () => ({}) }) };
+        const photo = (i, path) => { r.getChatHistory()[i].photoImages = { 0: { path, width: 4, height: 3 } }; };
+        seed();
+        photo(0, 'user/images/removed.jpg');
+        photo(1, 'user/images/whole.jpg');
+        env.saveLoadModal.saveBeforeBranch();
+        r.removePhotoImage(0, 0);
+        const button = () => jQuery('<button><span>Delete</span></button>');
+        r.handleDotsAction('delete', 1, false, button(), null);
+        r.handleDotsAction('delete', 1, false, button(), null);
+        res.archivePhotosKept = deleted.length === 0 && r.getChatHistory().length === 5;
+        photo(0, 'user/images/only-chat.jpg');
+        r.removePhotoImage(0, 0);
+        res.chatPhotoDeleted = deleted.join() === 'user/images/only-chat.jpg';
+        window.fetch = realFetch;
+        window.SillyTavern = realST;
+
+        // A reply on its way: told to wait, nothing archived or cut
+        seed();
+        const info = window.toastr.info;
+        const asked = [];
+        window.toastr.info = m => asked.push(m);
+        env.buildApiMessagesFromHistory = async () => ({ apiMessages: [], rawPrompt: '', systemPrompt: '' });
+        env.requestEchoTextCompletion = async () => { r.branchChat(1); return 'Mira 的回复'; };
+        await r.generateEchoText(r.getChatHistory());
+        res.waits = asked.some(m => m.includes('Wait for the current reply')) && archives().length === 2 && r.getChatHistory().length >= 6;
+        window.toastr.info = info;
+        window.toastr.success = success;
         res.errors = errors.slice();
         res.ok = Object.values(res).filter(v => typeof v === 'boolean').every(Boolean) && !errors.length;
         return res;

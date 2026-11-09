@@ -105,3 +105,21 @@ test('in the prompt: the latest summary always, earlier ones when the chat bring
     settings.memoryEnabled = false;
     assert.equal(memory.buildMemoryContext(['京都'], summaries), '');
 });
+
+test('a summary switched off stays out of the prompt, its messages stay summarized, and the one before it does not step in', () => {
+    const settings = { memoryEnabled: true };
+    const memory = window.EchoTextMemorySystem.createMemorySystem({ getSettings: () => settings, saveSettings() {}, getCharacterKey: () => 'mira.png' });
+    const offOld = [{ id: 'a', text: '他们在京都看了红叶', off: true }, { id: 'b', text: '两人吵了一架又和好' }];
+    const old = memory.buildMemoryContext(['还记得京都吗', '京都'], offOld);
+    assert.doesNotMatch(old, /京都/);
+    assert.match(old, /两人吵了一架/);
+    assert.ok(!memory.getRecalledIds().has('memo:a'));
+    const offLatest = [{ id: 'a', text: '他们在京都看了红叶' }, { id: 'b', text: '两人吵了一架又和好', off: true }];
+    assert.equal(memory.buildMemoryContext(['在干嘛'], offLatest), '');
+
+    const h = [...Array(5)].map((_, i) => ({ mes: `m${i}` }));
+    h[2].memo = { id: 's', text: 'x', count: 3, off: true };
+    assert.deepEqual(S.summaries(h).map(s => s.off), [true]);
+    assert.deepEqual(S.toSend(h, { keep: 2 }).map(m => m.mes), ['m3', 'm4']);
+    assert.equal(S.nextChunk(h, { keep: 1, size: 1 }).start, 3);
+});

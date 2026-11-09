@@ -298,6 +298,18 @@
     flex-wrap: wrap !important;
 }
 
+/* Three buttons: the name gets its own line */
+.et-sl-save-bar:has(#et-sl-new-btn) .et-sl-name-input {
+    flex: 1 1 100%;
+}
+
+.et-sl-save-bar:has(#et-sl-new-btn) .et-sl-save-cta {
+    flex: 1 1 auto;
+    justify-content: center;
+    padding-left: 8px;
+    padding-right: 8px;
+}
+
 .et-sl-body {
     flex-direction: column !important;
 }
