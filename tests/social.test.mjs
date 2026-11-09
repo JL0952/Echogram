@@ -131,11 +131,16 @@ test('a post with only a real image still counts as having a photo for the model
     assert.ok(request({}, { posts }).systemPrompt.includes(', with a photo] hi'));
 });
 
-test('a reply\'s words change, and nothing else about it', () => {
+test('a reply is edited whole; a post\'s time and numbers only when given', () => {
     const s = postsFor();
-    s.socialPosts.k[0].replies = [{ name: 'n', text: 'old', likes: 4 }, { name: 'm', text: 'other' }];
-    S.editPostContent(s, 'k', 'a', { text: 't', image: '', replies: { 0: '  new  ', 9: 'nobody there' } });
-    assert.deepEqual(s.socialPosts.k[0].replies, [{ name: 'n', text: 'new', likes: 4 }, { name: 'm', text: 'other' }]);
+    s.socialPosts.k[0].replies = [{ id: 'r0', name: 'n', handle: 'n', text: 'old', likes: 4, at: 1 }, { name: 'm', text: 'other' }];
+    S.editPostContent(s, 'k', 'a', { text: 't', image: '', replies: { 0: { text: '  new  ', name: ' N2 ', handle: '@n 2', likes: 9, at: 7 }, 9: { text: 'nobody there' } } });
+    assert.deepEqual(s.socialPosts.k[0].replies, [{ id: 'r0', name: 'N2', handle: 'n2', text: 'new', likes: 9, at: 7 }, { name: 'm', text: 'other' }]);
+    assert.equal(s.socialPosts.k[0].at, 30);
+    assert.ok(!('likes' in s.socialPosts.k[0]));
+    S.editPostContent(s, 'k', 'a', { text: 't', image: '', at: 99, likes: 1200, reposts: 0, views: 5, replyCount: 900 });
+    const { at, likes, reposts, views, replyCount } = s.socialPosts.k[0];
+    assert.deepEqual({ at, likes, reposts, views, replyCount }, { at: 99, likes: 1200, reposts: 0, views: 5, replyCount: 900 });
 });
 
 test('freestyle: a repost with a comment, a plain one, words only, a photo only; a post without one has no repost', () => {

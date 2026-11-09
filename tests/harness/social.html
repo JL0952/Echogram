@@ -1105,7 +1105,7 @@ window.runPostEditTest = async function () {
     const replyFields = () => [...modal().querySelectorAll('[data-social-field^="reply-"]')];
     await openEdit(post('a'));
     res.replyFields = replyFields().length === 5 && replyFields()[0].value === a().replies[0].text
-        && replyFields()[0].closest('.x-field').querySelector('.x-field-label').textContent === `${REPLY_NAMES[0]} @${window.EchoTextSocial.normalizePost(a(), 0).replies[0].handle}`;
+        && field('replyName-0').value === REPLY_NAMES[0] && field('replyHandle-0').value === window.EchoTextSocial.normalizePost(a(), 0).replies[0].handle;
     res.replyNoHtml = !modal().querySelector('.x-field-label b') && replyFields()[2].value.includes('<b>');
     replyFields()[1].value = 'never kept';
     await cancel();
@@ -1131,6 +1131,62 @@ window.runPostEditTest = async function () {
     await openEdit(post('c'));
     res.noRepliesNoFields = replyFields().length === 0;
     await cancel();
+
+    // The post's time and numbers, as the scripted dialog reads them; left alone, the time keeps its seconds
+    s.socialAccounts = mockSettings().socialAccounts;
+    s.socialPosts = mockSettings().socialPosts;
+    await reopen();
+    const b = () => stored('b');
+    const realNow = Date.now();
+    b().at = new Date(2026, 5, 1, 10, 30, 37).getTime();
+    await reopen();
+    const atBefore = b().at;
+    await openEdit(post('b'));
+    res.numbersShown = /^2026-06-01T10:30$/.test(field('time').value) && field('likes').value === String(b().likes) && field('reposts').value === String(b().reposts)
+        && field('views').value === String(b().views) && field('replyCount').value === String(b().replyCount) && field('time').max.length === 16;
+    await save();
+    res.untouchedTimeKept = b().at === atBefore;
+    await openEdit(post('b'));
+    type('time', '2020-01-02T03:04');
+    type('likes', '1.2K');
+    type('reposts', '7');
+    type('views', '');
+    type('replyCount', '900');
+    await save();
+    res.numbersSaved = b().at === new Date(2020, 0, 2, 3, 4).getTime() && b().likes === 1200 && b().reposts === 7 && b().views === 0 && b().replyCount === 900;
+    res.movedInOrder = [...page().querySelectorAll('.x-feed .x-post')].pop().getAttribute('data-post-id') === 'b' && post('b').querySelector('.x-post-meta').textContent.includes('2020');
+    const counts = [...post('b').querySelectorAll('.x-action-count')].map(n => n.textContent).join(' ');
+    res.countsShown = counts === '900 7 1.2K';
+    await openEdit(post('b'));
+    type('time', '2099-01-01T00:00');
+    await save();
+    res.futureClamped = Math.abs(b().at - realNow) < 60000;
+    await openEdit(post('b'));
+    field('time').value = '';
+    await save();
+    res.blankTimeKept = Math.abs(b().at - realNow) < 60000;
+
+    // A reply's name, @id, time and likes; what's typed survives a picked image's redraw
+    await reopen();
+    await openEdit(post('a'));
+    type('replyName-0', '新名字');
+    type('replyHandle-0', '@new id');
+    type('replyLikes-0', '2K');
+    type('replyTime-0', '2021-03-04T05:06');
+    type('likes', '42');
+    window.__nextFile = await imageFile(400, 400, '#333');
+    modal().querySelector('[data-social-action="post-edit-photo"]').click();
+    await sleep(400);
+    window.__nextFile = null;
+    res.typedSurvivesPick = field('replyName-0').value === '新名字' && field('replyTime-0').value === '2021-03-04T05:06' && field('likes').value === '42';
+    await save();
+    const edited = a().replies[0];
+    res.replyWhole = edited.name === '新名字' && edited.handle === 'newid' && edited.likes === 2000 && edited.at === new Date(2021, 2, 4, 5, 6).getTime() && a().likes === 42;
+    res.replyOthersAlone = a().replies[1].text === 'just tell him lol' && a().replies[1].name === REPLY_NAMES[1];
+    post('a').click();
+    await sleep(40);
+    const card = page().querySelector('.x-replies .x-post, .x-replies article');
+    res.replyDrawn = card.textContent.includes('新名字') && card.textContent.includes('@newid') && card.textContent.includes('2K');
 
     // The page closing with a picked image open: its file goes
     await reopen();

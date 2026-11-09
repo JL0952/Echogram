@@ -319,13 +319,33 @@
                         ${e.error ? `<p class="x-edit-error">${ctx.esc(e.error)}</p>` : ''}
                         ${field('Text', 'text', e.text, ctx, { area: true, rows: 5 })}
                         ${field('Photo description', 'image', e.image, ctx, { area: true })}
+                        <div class="x-outline-row x-edit-when">
+                            ${field('Time', 'time', e.time, ctx, { type: 'datetime-local', latest: e.latest })}
+                            ${field('Replies', 'replyCount', e.replyCount, ctx, { numeric: true })}
+                        </div>
+                        <div class="x-outline-row x-outline-numbers">
+                            ${field('Likes', 'likes', e.likes, ctx, { numeric: true })}
+                            ${field('Reposts', 'reposts', e.reposts, ctx, { numeric: true })}
+                            ${field('Views', 'views', e.views, ctx, { numeric: true })}
+                        </div>
                         ${e.repost ? `<div class="x-outline-title x-edit-section">Repost</div>
                         ${photoSlot(e.repost.photo, 'repostPhoto')}
                         ${field('Name', 'repostName', e.repost.name, ctx)}
                         ${field('Username', 'repostHandle', e.repost.handle, ctx, { prefix: '@' })}
                         ${field('Text', 'repostText', e.repost.text, ctx, { area: true })}
                         ${field('Photo description', 'repostImage', e.repost.image, ctx, { area: true })}` : ''}
-                        ${e.replies.map(reply => field(ctx.esc(reply.label), reply.field, reply.text, ctx, { area: true, rows: 2 })).join('')}
+                        ${e.replies.length ? '<div class="x-outline-title x-edit-section">Replies</div>' : ''}
+                        ${e.replies.map(reply => `<section class="x-outline">
+                            ${field('Text', `reply-${reply.i}`, reply.text, ctx, { area: true, rows: 2 })}
+                            <div class="x-outline-row x-edit-two">
+                                ${field('Name', `replyName-${reply.i}`, reply.name, ctx)}
+                                ${field('Username', `replyHandle-${reply.i}`, reply.handle, ctx, { prefix: '@' })}
+                            </div>
+                            <div class="x-outline-row x-edit-when">
+                                ${field('Time', `replyTime-${reply.i}`, reply.time, ctx, { type: 'datetime-local', latest: e.latest })}
+                                ${field('Likes', `replyLikes-${reply.i}`, reply.likes, ctx, { numeric: true })}
+                            </div>
+                        </section>`).join('')}
                     </div>
                 </div>
             </div>
