@@ -57,7 +57,7 @@ function mockSettings() {
     return {
         socialAccounts: {
             'mira.png': {
-                theme: 'x', name: 'm.', handle: 'mira_after_dark', bio: '晚上才上线\n不认识的别加 / no DMs',
+                theme: 'x', pinnedId: 'pin1', name: 'm.', handle: 'mira_after_dark', bio: '晚上才上线\n不认识的别加 / no DMs',
                 followers: 23800, following: 312,
                 posts: [{ id: 'pin1', at: NOW - 40 * D, text: '新号，旧号被人认出来了。', image: '', likes: 88, reposts: 2, views: 4100, replyCount: 6,
                     replies: [{ name: 'Sora', handle: 'sora_k', text: '欢迎回来', likes: 3, at: NOW - 39 * D }] }],
@@ -163,9 +163,10 @@ window.runSocialTest = async function () {
     res.header = texts('.x-profile-handle')[0] === '@mira_after_dark' && texts('.x-profile-follows span').join('|') === '312 Following|23.8K Followers';
     res.bioLines = root().querySelector('.x-profile-bio').textContent.includes('\n');
     res.cards = root().querySelectorAll('.x-feed .x-post').length === 4 && texts('.x-post-pinned').join() === 'Pinned';
-    res.cardMeta = texts('.x-feed .x-post-meta')[0] === '@mira_after_dark · 2h';
-    res.cardCounts = texts('.x-feed .x-post:first-child .x-action-count').join(' ') === '2.4K 312 2.4K 128K';
-    res.noCountsWhenZero = root().querySelectorAll('.x-feed .x-post:nth-child(3) .x-action-count').length === 0;
+    res.pinnedFirst = root().querySelector('.x-feed .x-post:first-child').getAttribute('data-post-id') === 'pin1';
+    res.cardMeta = texts('.x-feed .x-post[data-post-id="a"] .x-post-meta')[0] === '@mira_after_dark · 2h';
+    res.cardCounts = texts('.x-feed .x-post[data-post-id="a"] .x-action-count').join(' ') === '2.4K 312 2.4K 128K';
+    res.noCountsWhenZero = root().querySelectorAll('.x-feed .x-post[data-post-id="c"] .x-action-count').length === 0;
     res.photoCard = texts('.x-media-text')[0] === '美术馆白墙前一幅很大的蓝色抽象画，地上是她的影子';
     res.avatar = root().querySelector('.x-profile-avatar').getAttribute('src') === AVATAR;
     res.onlyPostsTab = texts('.x-tab-active').join() === 'Posts';
@@ -268,6 +269,22 @@ window.runEditTest = async function () {
     res.values = [field('name').value, field('handle').value, field('bio').value, field('followers').value, field('following').value].join('|')
         === 'm.|mira_after_dark|晚上才上线\n不认识的别加 / no DMs|23800|312';
     res.counters = modal().querySelector('[data-social-count="name"]').textContent === '2' && !modal().querySelector('[data-social-count="handle"]');
+    {
+        // A SillyTavern theme's rules for every input (the user's own, 2026-11-08): the field stays one box
+        const themeRules = document.createElement('style');
+        themeRules.textContent = 'input[type="text"], input:not([type]), textarea:not([type="search"]) { background-color: #363636 !important; border: 1px solid #363636 !important; }'
+            + ' input[type="text"]:focus, textarea:not([type="search"]):focus { border: 1px solid #a6f !important; } textarea:focus-visible { outline: 1px solid #a6f !important; }';
+        document.head.appendChild(themeRules);
+        const oneBox = el => { const g = getComputedStyle(el); return g.backgroundColor === 'rgba(0, 0, 0, 0)' && g.borderTopWidth === '0px' && g.outlineStyle === 'none'; };
+        res.oneBoxTyped = oneBox(field('name')) && oneBox(field('bio')) && oneBox(field('postingStyle'));
+        field('bio').focus();
+        await sleep(20);
+        res.oneBoxFocused = oneBox(field('bio'));
+        field('bio').blur();
+        themeRules.remove();
+    }
+    res.styleBlank = field('postingStyle').value === '' && field('postingStyle').tagName === 'TEXTAREA';
+    typeInto('postingStyle', '  posts in English  ');
     typeInto('name', 'Mira 的小号');
     res.counterFollows = modal().querySelector('[data-social-count="name"]').textContent === '8';
     res.ownAvatarDrop = !modal().querySelector('[data-social-action="edit-avatar-drop"]');
@@ -297,6 +314,7 @@ window.runEditTest = async function () {
     res.stored = st.name === 'Mira 的小号' && st.handle === 'NewHandle' && st.followers === 1200 && !('following' in st)
         && /echogram-social-avatar-\d+\.jpg$/.test(st.avatar) && /echogram-social-banner-\d+\.jpg$/.test(st.banner) && st.posts.length === 1 && st.theme === 'x';
     res.saved = saves === savesBefore + 1 && !modal();
+    res.styleSaved = st.postingStyle === 'posts in English';
     const page = panel.querySelector('.et-social');
     res.redrawn = page.querySelector('.x-profile-name').textContent === 'Mira 的小号' && page.querySelector('.x-profile-handle').textContent === '@NewHandle'
         && page.querySelector('.x-banner img')?.getAttribute('src') === st.banner && page.querySelector('.x-profile-avatar').getAttribute('src') === st.avatar
@@ -309,6 +327,7 @@ window.runEditTest = async function () {
     const oldAvatar = st.avatar, oldBanner = st.banner;
     await click('[data-social-action="edit-avatar-drop"]');
     await click('[data-social-action="edit-banner-drop"]');
+    res.styleShown = field('postingStyle').value === 'posts in English';
     res.dropPreview = modal().querySelector('.x-edit-avatar-img').getAttribute('src') === AVATAR && !modal().querySelector('.x-edit-banner img');
     await click('[data-social-action="edit-save"]', 200);
     res.dropped = !stored().avatar && !stored().banner && JSON.stringify(imageRequests) === JSON.stringify([['/api/images/delete', oldAvatar], ['/api/images/delete', oldBanner]]);
@@ -516,7 +535,7 @@ ${replies}
     res.photoAndReply = photo.image === '酒店前台的台灯，旁边一杯冷掉的咖啡' && photo.replies[0].name === 'Kai' && photo.replies[0].handle === 'Kai' && photo.replies[0].at > photo.at;
     res.ids = new Set(kept.map(p => p.id)).size === 6 && saves > 0;
     res.closedAndShown = !modal() && page().querySelector('.x-topbar-sub').textContent === '7 posts' && page().scrollTop === 0
-        && page().querySelector('.x-feed .x-post-text').textContent === 'no closing tag and no time';
+        && page().querySelector('.x-feed .x-post:nth-child(2) .x-post-text').textContent === 'no closing tag and no time';
     res.clampedAfterLatest = Math.abs(added[0].at - (realNow - 2 * H + 60000)) < 5000;
 
     // No posts in the answer: said so, nothing kept, try again
@@ -835,20 +854,31 @@ window.runPinTest = async function () {
     await sleep(40);
     page().scrollTop = 0;
 
-    // Pinned: moved to the character, replies and all; unpinned: back
+    // Pinned: moved to the character, replies and all, on top; only one; unpinned: still kept, back in time order
+    const feedOrder = () => [...page().querySelectorAll('.x-feed .x-post')].map(p => p.getAttribute('data-post-id')).join();
+    const tap = async (id, action) => { button(post(id), 'post-menu').click(); await sleep(20); button(post(id), action).click(); await sleep(30); };
     const repliesBefore = chat().find(p => p.id === 'a').replies.length;
     const saved = saves;
-    button(post('a'), 'post-menu').click();
-    await sleep(20);
-    button(post('a'), 'post-pin').click();
-    await sleep(30);
+    res.pinOnTop = feedOrder() === 'pin1,a,b,c';
+    await tap('a', 'post-pin');
     res.pinned = account().posts.some(p => p.id === 'a' && p.replies.length === repliesBefore) && !chat().some(p => p.id === 'a') && !!post('a').querySelector('.x-post-pinned') && saves > saved;
     res.pinLabel = list(post('a')).textContent.includes('Unpin from profile');
-    button(post('a'), 'post-menu').click();
-    await sleep(20);
-    button(post('a'), 'post-pin').click();
-    await sleep(30);
-    res.unpinned = chat().some(p => p.id === 'a') && !account().posts.some(p => p.id === 'a') && !post('a').querySelector('.x-post-pinned');
+    res.onePin = page().querySelectorAll('.x-post-pinned').length === 1 && account().posts.some(p => p.id === 'pin1') && feedOrder() === 'a,b,c,pin1';
+    await tap('a', 'post-pin');
+    res.unpinned = account().pinnedId === '' && account().posts.some(p => p.id === 'a') && !chat().some(p => p.id === 'a') && !post('a').querySelector('.x-post-pinned') && feedOrder() === 'a,b,c,pin1';
+    res.unpinnedLabel = list(post('a')).textContent.includes('Pin to your profile') && list(post('a')).textContent.includes('Only in this chat');
+
+    // Kept in all chats without a pin: in time order among the chat's posts, and back
+    await tap('b', 'post-keep');
+    res.kept = account().posts.some(p => p.id === 'b') && !chat().some(p => p.id === 'b') && !post('b').querySelector('.x-post-pinned') && feedOrder() === 'a,b,c,pin1';
+    res.keptLabel = list(post('b')).textContent.includes('Only in this chat');
+    await tap('b', 'post-keep');
+    res.keptBack = chat().some(p => p.id === 'b') && !account().posts.some(p => p.id === 'b') && list(post('b')).textContent.includes('Keep in all chats');
+    await tap('a', 'post-pin');
+    await tap('a', 'post-keep');
+    res.onlyHereLosesPin = account().pinnedId === '' && chat().some(p => p.id === 'a') && !post('a').querySelector('.x-post-pinned');
+    reset();
+    await reopen();
 
     // Delete takes a second tap; closing the menu takes the first one back
     const del = root => button(root, 'post-delete');
@@ -1060,7 +1090,20 @@ window.runPinTest = async function () {
     await sleep(40);
     res.fileDeleted = imageRequests.some(([url, path]) => url === '/api/images/delete' && path === P);
 
-    // Clearing the chat: its posts and their images go, pinned ones stay
+    // @mentions are blue in a bio, a post, its page and a reply; an address isn't
+    reset();
+    account().bio = 'ask @theosis_lab455, not a@b.com';
+    chat().find(p => p.id === 'b').text = '<b>@someone</b> 你好@other';
+    chat().find(p => p.id === 'b').replies = [{ id: 'r1', at: 1, name: 'x', handle: 'x', text: '@mira no', likes: 0 }];
+    await reopen();
+    const links = el => [...el.querySelectorAll('.x-link')].map(n => n.textContent);
+    res.bioMention = links(page().querySelector('.x-profile-bio')).join() === '@theosis_lab455' && getComputedStyle(page().querySelector('.x-profile-bio .x-link')).color !== getComputedStyle(page().querySelector('.x-profile-bio')).color;
+    res.postMention = links(post('b').querySelector('.x-post-text')).join() === '@someone,@other' && !post('b').querySelector('.x-post-text b');
+    post('b').querySelector('.x-post-text').click();
+    await sleep(40);
+    res.statusMention = links(page().querySelector('.x-status-text')).join() === '@someone,@other';
+    res.replyMention = [...page().querySelectorAll('.x-post-text')].some(n => links(n).join() === '@mira');
+
     reset();
     chat().find(p => p.id === 'b').photo = { path: P, width: 800, height: 600 };
     await reopen();

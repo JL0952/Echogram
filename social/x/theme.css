@@ -943,14 +943,20 @@
     min-width: 0;
     margin: 0;
     padding: 0;
-    border: 0;
-    outline: none;
     color: var(--x-text);
-    background: transparent;
-    box-shadow: none;
     font: inherit;
     font-size: 16px;
     resize: none;
+}
+
+/* The field's own box is the only one: a SillyTavern theme's rule for every input can't draw a second inside it */
+.et-social-modal[data-social-theme="x"] .x-field-input,
+.et-social-modal[data-social-theme="x"] .x-field-input:focus,
+.et-social-modal[data-social-theme="x"] .x-field-input:focus-visible {
+    border: 0 !important;
+    outline: none !important;
+    background: transparent !important;
+    box-shadow: none !important;
 }
 
 /* ── New posts: X's compose button, and vertsan's compose modal ── */

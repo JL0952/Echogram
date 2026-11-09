@@ -438,6 +438,7 @@
         for (const field of ['socialAccounts', 'socialPosts', 'socialArchives']) {
             if (!s[field] || typeof s[field] !== 'object' || Array.isArray(s[field])) s[field] = {};
         }
+        Social.pinNewestKept(s);
         if (!s.proactiveCharacterConfig || typeof s.proactiveCharacterConfig !== 'object' || Array.isArray(s.proactiveCharacterConfig)) {
             s.proactiveCharacterConfig = {};
         }
@@ -4973,13 +4974,13 @@
         return banner ? (await fitImageDataUrl(cropped, SOCIAL_BANNER_WIDTH)).dataUrl : shrinkImageDataUrl(cropped, AVATAR_SIZE);
     }
 
-    /** Deletes an image file unless a post, pinned or the chat's, or a post archive still has it. */
+    /** Deletes an image file unless a post, kept or the chat's, or a post archive still has it. */
     function forgetSocialPhoto(path) {
         const kept = JSON.stringify([settings.socialPosts, settings.socialAccounts, settings.socialArchives]);
         if (!kept.includes(JSON.stringify(path).slice(1, -1))) deleteUserImage(path);
     }
 
-    /** The chat's posts go with it: pinned ones stay on the character, and images only an old post had are deleted. */
+    /** The chat's posts go with it: kept ones stay on the character, and images only an old post had are deleted. */
     function forgetChatPosts(key) {
         const posts = Array.isArray(settings.socialPosts?.[key]) ? settings.socialPosts[key] : [];
         delete settings.socialPosts?.[key];
@@ -5044,6 +5045,7 @@
             charName: name,
             userName: getUserName(),
             platform: socialTheme()?.label || 'X',
+            culture: socialTheme()?.culture || '',
             card: await buildCharacterReference(char, name),
             account: Social.getAccount(settings, key, { name }),
             posts,

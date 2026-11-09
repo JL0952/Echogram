@@ -10,6 +10,7 @@
      */
 
     const ICONS = {
+        layers: 'M12 2L1.5 8 12 14l10.5-6L12 2zM12 4.3L18.5 8 12 11.7 5.5 8 12 4.3zM3.2 11.9L1.5 13 12 19l10.5-6-1.7-1.1-8.8 4.8-8.8-4.8z',
         posts: 'M5.5 3h13A2.5 2.5 0 0 1 21 5.5v13a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 18.5v-13A2.5 2.5 0 0 1 5.5 3zm0 2a.5.5 0 0 0-.5.5v13a.5.5 0 0 0 .5.5h13a.5.5 0 0 0 .5-.5v-13a.5.5 0 0 0-.5-.5h-13zM8 9h8v2H8V9zm0 4h5v2H8v-2z',
         chevron: 'M3.543 8.96l1.414-1.42L12 14.59l7.043-7.05 1.414 1.42L12 17.41 3.543 8.96z',
         bookmark: 'M4 4.5C4 3.12 5.119 2 6.5 2h11C18.881 2 20 3.12 20 4.5v18.44l-8-5.71-8 5.71V4.5zM6.5 4c-.276 0-.5.22-.5.5v14.56l6-4.29 6 4.29V4.5c0-.28-.224-.5-.5-.5h-11z',
@@ -92,6 +93,7 @@
             <button class="x-more-btn" type="button" data-social-action="post-menu" aria-label="More">${icon('more')}</button>
             <div class="x-more-list" data-social-action="post-menu-list">
                 <button class="x-more-item" type="button" data-social-action="post-pin" data-post-id="${id}" data-pinned="${post.pinned ? 'true' : 'false'}">${icon('pin')}<span>${post.pinned ? 'Unpin from profile' : 'Pin to your profile'}</span></button>
+                <button class="x-more-item" type="button" data-social-action="post-keep" data-post-id="${id}" data-kept="${post.kept ? 'true' : 'false'}">${icon('layers')}<span>${post.kept ? 'Only in this chat' : 'Keep in all chats'}</span></button>
                 <button class="x-more-item x-more-delete" type="button" data-social-action="post-delete" data-post-id="${id}" data-label="Delete" data-confirm="Tap Again to Confirm">${icon('trash')}<span>Delete</span></button>
             </div>
         </div>`;
@@ -109,7 +111,7 @@
                         <span class="x-post-meta">@${ctx.esc(account.handle)} · ${ctx.esc(post.time)}</span>
                         ${postMenu(post, ctx)}
                     </div>
-                    <div class="x-post-text">${ctx.esc(post.text)}</div>
+                    <div class="x-post-text">${ctx.mentions(post.text, 'x-link')}</div>
                     ${media(post, ctx)}
                     ${actions(post.counts)}
                 </div>
@@ -128,7 +130,7 @@
                         <span class="x-post-meta">@${ctx.esc(reply.handle)} · ${ctx.esc(reply.time)}</span>
                     </div>
                     <div class="x-reply-to">Replying to <span class="x-link">@${ctx.esc(reply.replyingTo)}</span></div>
-                    <div class="x-post-text">${ctx.esc(reply.text)}</div>
+                    <div class="x-post-text">${ctx.mentions(reply.text, 'x-link')}</div>
                     ${actions({ replies: '', reposts: '', likes: reply.likes, views: '' })}
                 </div>
             </div>
@@ -155,7 +157,7 @@
             </div>
             <div class="x-profile-name">${ctx.esc(a.name)}</div>
             <div class="x-profile-handle">@${ctx.esc(a.handle)}</div>
-            ${a.bio ? `<div class="x-profile-bio">${ctx.esc(a.bio)}</div>` : ''}
+            ${a.bio ? `<div class="x-profile-bio">${ctx.mentions(a.bio, 'x-link')}</div>` : ''}
             <div class="x-profile-follows">
                 <span><b>${a.following}</b> Following</span>
                 <span><b>${a.followers}</b> Followers</span>
@@ -237,7 +239,7 @@
                 </div>
                 ${postMenu(post, ctx)}
             </div>
-            <div class="x-status-text">${ctx.esc(post.text)}</div>
+            <div class="x-status-text">${ctx.mentions(post.text, 'x-link')}</div>
             ${media(post, ctx)}
             <div class="x-status-time">${ctx.esc(post.fullTime)}</div>
             ${actions(post.counts)}
@@ -245,8 +247,8 @@
         <div class="x-replies">${post.replies.map(reply => replyCard(reply, ctx)).join('')}</div>`;
     }
 
-    function field(label, name, value, ctx, { max = 0, area = false, rows = 3, numeric = false, prefix = '', type = 'text', latest = '', disabled = false } = {}) {
-        const attrs = `data-social-field="${name}"${max ? ` maxlength="${max}"` : ''}${numeric ? ' inputmode="numeric"' : ''}${latest ? ` max="${latest}"` : ''}${disabled ? ' disabled' : ''} autocomplete="off" spellcheck="false"`;
+    function field(label, name, value, ctx, { max = 0, area = false, rows = 3, numeric = false, prefix = '', type = 'text', latest = '', disabled = false, placeholder = '' } = {}) {
+        const attrs = `data-social-field="${name}"${max ? ` maxlength="${max}"` : ''}${numeric ? ' inputmode="numeric"' : ''}${latest ? ` max="${latest}"` : ''}${placeholder ? ` placeholder="${ctx.esc(placeholder)}"` : ''}${disabled ? ' disabled' : ''} autocomplete="off" spellcheck="false"`;
         const input = area
             ? `<textarea class="x-field-input" rows="${rows}" ${attrs}>${ctx.esc(value)}</textarea>`
             : `<span class="x-field-row">${prefix ? `<span class="x-field-prefix">${prefix}</span>` : ''}<input class="x-field-input" type="${type}" value="${ctx.esc(value)}" ${attrs}></span>`;
@@ -295,6 +297,7 @@
                         ${field('Bio', 'bio', e.bio, ctx, { max: e.maxBio, area: true })}
                         ${field('Followers', 'followers', e.followers, ctx, { numeric: true })}
                         ${field('Following', 'following', e.following, ctx, { numeric: true })}
+                        ${field('Posting style', 'postingStyle', e.postingStyle, ctx, { area: true, placeholder: 'e.g. posts in English, deadpan, mostly about work' })}
                     </div>
                 </div>
             </div>
@@ -305,6 +308,8 @@
     window.EchoTextSocialThemes.x = {
         id: 'x',
         label: 'X',
+        // How people talk here, for the system prompt
+        culture: 'On X everyone talks sharp and shows no mercy. Politics comes up constantly. Personal attacks, abuse and extreme opinions are normal there, in posts and replies alike.',
         icon: 'fa-brands fa-x-twitter',
         stylesheet: 'theme.css',
         templates: { profile, detail, editProfile, compose },
