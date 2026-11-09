@@ -34,7 +34,7 @@
  * lib/social.js, the X theme, and index.js's way in (the avatar menu, WeChat's "+" panel).
  *   ?view=profile (default) | detail | empty | edit | compose   shows that page for a screenshot
  *   ?platform=echotext | wechat | instagram     the chat look underneath
- *   runSocialTest(), runEditTest(), runFrameTest(), runComposeTest(), runScriptedTest(), runPhotoTest(), runPinTest()   the checks
+ *   runSocialTest(), runEditTest(), runFrameTest(), runComposeTest(), runScriptedTest(), runPhotoTest(), runPinTest(), runPostEditTest()   the checks
  */
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const params = new URLSearchParams(location.search);
@@ -783,6 +783,211 @@ window.runPhotoTest = async function () {
 
     window.__uploadPath = null;
     r.closeSocial();
+    res.allPass = Object.values(res).every(v => v === true);
+    return res;
+};
+
+/** Edit post: the words, an image added, changed, taken off or dropped on Cancel, any post, from its page too. */
+window.runPostEditTest = async function () {
+    const res = {};
+    const panel = document.getElementById('et-panel');
+    const page = () => panel.querySelector('.et-social');
+    const post = id => page().querySelector(`.x-feed .x-post[data-post-id="${id}"]`);
+    const modal = () => panel.querySelector('.et-social-modal');
+    const inDialog = action => modal().querySelector(`[data-social-action="${action}"]`);
+    const field = name => modal().querySelector(`[data-social-field="${name}"]`);
+    const type = (name, value) => { field(name).value = value; field(name).dispatchEvent(new Event('input', { bubbles: true })); };
+    const s = env.settings;
+    const stored = id => [...s.socialAccounts['mira.png'].posts, ...s.socialPosts['mira.png']].find(p => p.id === id);
+    const deleted = () => imageRequests.filter(([url]) => url === '/api/images/delete').map(([, path]) => path);
+    const uploads = () => imageRequests.filter(([url]) => url === '/api/images/upload').length;
+    const reopen = async () => { r.closeSocial(); r.openSocial(); await sleep(150); };
+    const openEdit = async (root) => {
+        root.querySelector('[data-social-action="post-menu"]').click();
+        await sleep(20);
+        root.querySelector('[data-social-action="post-edit"]').click();
+        await sleep(30);
+    };
+    const pick = async (w, h, color) => {
+        window.__nextFile = await imageFile(w, h, color);
+        inDialog('post-edit-photo').click();
+        await sleep(400);
+        window.__nextFile = null;
+    };
+    const save = async () => { inDialog('post-edit-save').click(); await sleep(40); };
+    const cancel = async () => { inDialog('post-edit-close').click(); await sleep(40); };
+
+    s.defaultPlatform = 'echotext';
+    s.socialAccounts = mockSettings().socialAccounts;
+    s.socialPosts = mockSettings().socialPosts;
+    s.socialArchives = {};
+    await reopen();
+
+    // Opens from the menu, over the feed, with the post's own words
+    post('c').querySelector('[data-social-action="post-menu"]').click();
+    await sleep(20);
+    res.menuHasEdit = post('c').querySelector('.x-more-item').textContent.trim() === 'Edit';
+    post('c').querySelector('[data-social-action="post-edit"]').click();
+    await sleep(30);
+    res.opens = !!modal() && !page().querySelector('.x-status') && field('text').value === stored('c').text && field('image').value === '';
+    res.addPhotoOffered = inDialog('post-edit-photo').getAttribute('aria-label') === 'Add photo' && !inDialog('post-edit-photo-drop');
+
+    // Saved: the words on the card, @s blue; Cancel leaves it
+    const savesBefore = saves;
+    type('text', '  改过了 @someone  ');
+    await save();
+    res.saved = !modal() && stored('c').text === '改过了 @someone' && saves === savesBefore + 1;
+    res.shown = post('c').querySelector('.x-post-text .x-link')?.textContent === '@someone';
+    await openEdit(post('c'));
+    type('text', 'never kept');
+    await cancel();
+    res.cancelled = !modal() && stored('c').text === '改过了 @someone';
+
+    // An image on a post with none: uploaded when picked, kept only on Save, what's typed stays; Cancel deletes the file
+    imageRequests.length = 0;
+    await openEdit(post('c'));
+    type('text', 'typed before picking');
+    await pick(800, 400, '#c33');
+    res.picked = uploads() === 1 && !stored('c').photo && !!modal().querySelector('.x-edit-post-photo img') && field('text').value === 'typed before picking'
+        && inDialog('post-edit-photo').getAttribute('aria-label') === 'Change photo' && !!inDialog('post-edit-photo-drop');
+    const shape = modal().querySelector('.x-edit-post-photo').getBoundingClientRect();
+    res.pickedShape = Math.abs(shape.width / shape.height - 2) < 0.05;
+    await cancel();
+    res.cancelDeletesPicked = deleted().length === 1 && !stored('c').photo && stored('c').text === '改过了 @someone';
+
+    imageRequests.length = 0;
+    await openEdit(post('c'));
+    window.__uploadPath = picture(['#c33', '#3a7']);
+    await pick(800, 400, '#c33');
+    window.__uploadPath = undefined;
+    await save();
+    await sleep(60);
+    const first = stored('c').photo?.path;
+    res.added = !!first && stored('c').photo.width === 800 && deleted().length === 0 && post('c').querySelector('.x-media-img')?.getAttribute('src').endsWith(first);
+    res.noDescriptionNeeded = !stored('c').image && !!post('c').querySelector('.x-media');
+
+    // Changed: the old file goes. Picked twice: the first pick's goes at once
+    imageRequests.length = 0;
+    await openEdit(post('c'));
+    await pick(300, 600, '#3a7');
+    await sleep(5);
+    const middle = imageRequests.length;
+    await pick(600, 300, '#37a');
+    res.secondPickDropsFirst = deleted().length === 1 && deleted()[0] !== first && middle === 1;
+    await save();
+    const second = stored('c').photo?.path;
+    res.changed = second && second !== first && deleted().includes(first) && stored('c').photo.width === 600;
+
+    // Taken off in the dialog, then cancelled: nothing changes. Then saved: gone, its file too, and no card left
+    imageRequests.length = 0;
+    await openEdit(post('c'));
+    inDialog('post-edit-photo-drop').click();
+    await sleep(30);
+    res.dropShown = !modal().querySelector('.x-edit-post-photo img') && !inDialog('post-edit-photo-drop');
+    await cancel();
+    res.dropCancelled = stored('c').photo?.path === second && deleted().length === 0;
+    await openEdit(post('c'));
+    inDialog('post-edit-photo-drop').click();
+    await sleep(30);
+    await save();
+    res.dropped = !stored('c').photo && deleted().includes(second) && !post('c').querySelector('.x-media');
+
+    // An image an archive still has isn't deleted
+    stored('c').photo = { path: 'user/images/Mira/kept.jpg', width: 800, height: 600 };
+    s.socialArchives = { 'mira.png': [{ id: 'sa', name: 'x', posts: [{ id: 'c', photo: { path: 'user/images/Mira/kept.jpg' } }] }] };
+    await reopen();
+    imageRequests.length = 0;
+    await openEdit(post('c'));
+    inDialog('post-edit-photo-drop').click();
+    await sleep(30);
+    await save();
+    res.archivedFileStays = !stored('c').photo && deleted().length === 0;
+    s.socialArchives = {};
+
+    // Nothing left: not saved, it says why
+    await openEdit(post('c'));
+    type('text', '   ');
+    await save();
+    res.emptyRefused = !!modal() && modal().querySelector('.x-edit-error')?.textContent === "A post can't be empty." && stored('c').text === '改过了 @someone' && field('text').value === '   ';
+    type('image', '一张照片');
+    await save();
+    res.descriptionIsEnough = !modal() && stored('c').text === '' && stored('c').image === '一张照片';
+
+    // A description and an existing real image both stay when only the words change
+    stored('b').photo = { path: 'user/images/Mira/b.jpg', width: 800, height: 600 };
+    await reopen();
+    imageRequests.length = 0;
+    await openEdit(post('b'));
+    res.existingShown = modal().querySelector('.x-edit-post-photo img')?.getAttribute('src') === '/user/images/Mira/b.jpg' && field('image').value === stored('b').image;
+    type('text', 'b again');
+    await save();
+    res.photoLeftAlone = stored('b').photo.path === 'user/images/Mira/b.jpg' && deleted().length === 0 && stored('b').text === 'b again';
+
+    // A kept post and one on its own page; Escape and the backdrop close it
+    await openEdit(post('pin1'));
+    type('text', 'pinned, edited');
+    await save();
+    res.keptEdited = s.socialAccounts['mira.png'].posts[0].text === 'pinned, edited' && !!post('pin1').querySelector('.x-post-pinned');
+    post('a').click();
+    await sleep(40);
+    const status = page().querySelector('.x-status');
+    await openEdit(status);
+    type('text', 'from its page');
+    await save();
+    res.fromItsPage = stored('a').text === 'from its page' && page().querySelector('.x-status-text').textContent === 'from its page';
+    await openEdit(page().querySelector('.x-status'));
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await sleep(30);
+    res.escapeCloses = !modal() && !!page().querySelector('.x-status');
+    await openEdit(page().querySelector('.x-status'));
+    modal().querySelector('.x-modal-backdrop').click();
+    await sleep(30);
+    res.backdropCloses = !modal();
+
+    // Replies: one field each for those the post shows, named by who wrote them; kept on Save, all as they were on Cancel
+    await reopen();
+    const a = () => stored('a');
+    const replyFields = () => [...modal().querySelectorAll('[data-social-field^="reply-"]')];
+    await openEdit(post('a'));
+    res.replyFields = replyFields().length === 5 && replyFields()[0].value === a().replies[0].text
+        && replyFields()[0].closest('.x-field').querySelector('.x-field-label').textContent === `${REPLY_NAMES[0]} @${window.EchoTextSocial.normalizePost(a(), 0).replies[0].handle}`;
+    res.replyNoHtml = !modal().querySelector('.x-field-label b') && replyFields()[2].value.includes('<b>');
+    replyFields()[1].value = 'never kept';
+    await cancel();
+    res.replyCancelled = a().replies[1].text === 'just tell him lol';
+    await openEdit(post('a'));
+    const others = JSON.stringify(a().replies.slice(2));
+    const likes = a().replies[0].likes;
+    replyFields()[0].value = '  改过的回复 @mira  ';
+    await save();
+    res.replySaved = !modal() && a().replies[0].text === '改过的回复 @mira' && a().replies[0].likes === likes && a().replies[0].name === REPLY_NAMES[0] && JSON.stringify(a().replies.slice(2)) === others;
+    post('a').click();
+    await sleep(40);
+    res.replyShown = [...page().querySelectorAll('.x-post-text')].some(n => n.textContent === '改过的回复 @mira' && n.querySelector('.x-link')?.textContent === '@mira');
+    await openEdit(page().querySelector('.x-status'));
+    replyFields()[0].value = '  ';
+    await save();
+    res.replyEmptyRefused = !!modal() && modal().querySelector('.x-edit-error')?.textContent === "A reply can't be empty." && a().replies[0].text === '改过的回复 @mira' && replyFields()[0].value === '  ';
+    await cancel();
+    await openEdit(page().querySelector('.x-status'));
+    await cancel();
+    await reopen();
+    stored('c').replies = [];
+    await openEdit(post('c'));
+    res.noRepliesNoFields = replyFields().length === 0;
+    await cancel();
+
+    // The page closing with a picked image open: its file goes
+    await reopen();
+    imageRequests.length = 0;
+    await openEdit(post('b'));
+    await pick(400, 400, '#333');
+    r.closeSocial();
+    await sleep(20);
+    res.closingDeletesPicked = deleted().length === 1;
+
+    s.socialAccounts = mockSettings().socialAccounts;
+    s.socialPosts = mockSettings().socialPosts;
     res.allPass = Object.values(res).every(v => v === true);
     return res;
 };

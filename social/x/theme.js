@@ -10,6 +10,7 @@
      */
 
     const ICONS = {
+        pencil: 'M14.06 3.94a2.5 2.5 0 0 1 3.54 0l2.46 2.46a2.5 2.5 0 0 1 0 3.54L9.41 20.59 3 21l.41-6.41L14.06 3.94zm2.12 1.42a.5.5 0 0 0-.7 0L13.6 7.24l3.16 3.16 1.88-1.88a.5.5 0 0 0 0-.7l-2.46-2.46zm-.84 6.46l-3.16-3.16-6.8 6.8-.24 3.4 3.4-.24 6.8-6.8z',
         layers: 'M12 2L1.5 8 12 14l10.5-6L12 2zM12 4.3L18.5 8 12 11.7 5.5 8 12 4.3zM3.2 11.9L1.5 13 12 19l10.5-6-1.7-1.1-8.8 4.8-8.8-4.8z',
         posts: 'M5.5 3h13A2.5 2.5 0 0 1 21 5.5v13a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 18.5v-13A2.5 2.5 0 0 1 5.5 3zm0 2a.5.5 0 0 0-.5.5v13a.5.5 0 0 0 .5.5h13a.5.5 0 0 0 .5-.5v-13a.5.5 0 0 0-.5-.5h-13zM8 9h8v2H8V9zm0 4h5v2H8v-2z',
         chevron: 'M3.543 8.96l1.414-1.42L12 14.59l7.043-7.05 1.414 1.42L12 17.41 3.543 8.96z',
@@ -72,7 +73,7 @@
 
     /** A photo as a photo bubble is: a blank frame or the real image; a tap shows the words and its image buttons. */
     function media(post, ctx) {
-        if (!post.image) return '';
+        if (!post.image && !post.photo) return '';
         const photo = post.photo;
         const id = ctx.esc(post.id);
         return `<div class="x-media" role="button" tabindex="0" aria-expanded="false" data-social-action="photo-toggle"${photo ? ` style="aspect-ratio:${photo.ratio}"` : ''}>
@@ -92,6 +93,7 @@
         return `<div class="x-more" data-social-menu>
             <button class="x-more-btn" type="button" data-social-action="post-menu" aria-label="More">${icon('more')}</button>
             <div class="x-more-list" data-social-action="post-menu-list">
+                <button class="x-more-item" type="button" data-social-action="post-edit" data-post-id="${id}">${icon('pencil')}<span>Edit</span></button>
                 <button class="x-more-item" type="button" data-social-action="post-pin" data-post-id="${id}" data-pinned="${post.pinned ? 'true' : 'false'}">${icon('pin')}<span>${post.pinned ? 'Unpin from profile' : 'Pin to your profile'}</span></button>
                 <button class="x-more-item" type="button" data-social-action="post-keep" data-post-id="${id}" data-kept="${post.kept ? 'true' : 'false'}">${icon('layers')}<span>${post.kept ? 'Only in this chat' : 'Keep in all chats'}</span></button>
                 <button class="x-more-item x-more-delete" type="button" data-social-action="post-delete" data-post-id="${id}" data-label="Delete" data-confirm="Tap Again to Confirm">${icon('trash')}<span>Delete</span></button>
@@ -259,6 +261,37 @@
         </label>`;
     }
 
+    /** Edit post, in Edit profile's dialog: the post's image, then its words. */
+    function editPost(view, ctx) {
+        const e = view.editPost;
+        return `<div class="x-modal-backdrop" data-social-action="post-edit-backdrop">
+            <div class="x-modal x-edit-post" role="dialog" aria-label="Edit post">
+                <header class="x-modal-head" data-et-drag>
+                    <div class="x-modal-title">
+                        <button class="x-topbar-back" type="button" data-social-action="post-edit-close" aria-label="Close">${icon('back')}</button>
+                        <span>Edit post</span>
+                    </div>
+                    <button class="x-save-btn" type="button" data-social-action="post-edit-save">Save</button>
+                </header>
+                <div class="x-modal-body">
+                    <div class="x-edit-post-photo"${e.photo ? ` style="aspect-ratio:${e.photo.ratio}"` : ''}>
+                        ${e.photo ? `<img src="${ctx.esc(e.photo.url)}" alt="" draggable="false">` : ''}
+                        <div class="x-edit-image-veil">
+                            <button class="x-edit-image-btn" type="button" data-social-action="post-edit-photo" aria-label="${e.photo ? 'Change photo' : 'Add photo'}">${icon('image')}</button>
+                            ${e.photo ? '<button class="x-edit-image-btn x-edit-image-drop" type="button" data-social-action="post-edit-photo-drop" aria-label="Remove photo">×</button>' : ''}
+                        </div>
+                    </div>
+                    <div class="x-edit-fields">
+                        ${e.error ? `<p class="x-edit-error">${ctx.esc(e.error)}</p>` : ''}
+                        ${field('Text', 'text', e.text, ctx, { area: true, rows: 5 })}
+                        ${field('Photo description', 'image', e.image, ctx, { area: true })}
+                        ${e.replies.map(reply => field(ctx.esc(reply.label), reply.field, reply.text, ctx, { area: true, rows: 2 })).join('')}
+                    </div>
+                </div>
+            </div>
+        </div>`;
+    }
+
     /** Edit profile (vertsan's EditProfileModal): banner and avatar to change, then the fields. */
     function editProfile(view, ctx) {
         const e = view.edit;
@@ -312,6 +345,6 @@
         culture: 'On X everyone talks sharp and shows no mercy. Politics comes up constantly. Personal attacks, abuse and extreme opinions are normal there, in posts and replies alike.',
         icon: 'fa-brands fa-x-twitter',
         stylesheet: 'theme.css',
-        templates: { profile, detail, editProfile, compose },
+        templates: { profile, detail, editProfile, editPost, compose },
     };
 })();

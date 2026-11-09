@@ -887,6 +887,26 @@
     font-size: 24px;
 }
 
+.et-social-modal[data-social-theme="x"] .x-edit-post-photo {
+    position: relative;
+    max-width: 296px;
+    aspect-ratio: 3 / 1;
+    overflow: hidden;
+    border-radius: 16px;
+    background: var(--x-banner);
+}
+
+.et-social-modal[data-social-theme="x"] .x-edit-post-photo img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.et-social-modal[data-social-theme="x"] .x-edit-post .x-edit-fields {
+    margin-top: 16px;
+}
+
 .et-social-modal[data-social-theme="x"] .x-edit-fields {
     display: flex;
     flex-direction: column;

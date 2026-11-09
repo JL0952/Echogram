@@ -109,3 +109,31 @@ test('an account from when every kept post was pinned keeps its newest pinned, o
     S.pinNewestKept(fresh);
     assert.equal(fresh.socialAccounts.k.pinnedId, '');
 });
+
+test('the user\'s words for a post, and its image only when given one', () => {
+    const s = postsFor();
+    s.socialPosts.k[0].photo = { path: 'a.jpg', width: 1, height: 1 };
+    assert.equal(S.editPostContent(s, 'k', 'a', { text: ' new ', image: ' pic ' }), 'a.jpg');
+    assert.equal(s.socialPosts.k[0].text, 'new');
+    assert.equal(s.socialPosts.k[0].image, 'pic');
+    assert.equal(s.socialPosts.k[0].photo.path, 'a.jpg');
+    assert.equal(S.editPostContent(s, 'k', 'a', { text: 't', image: '', photo: { path: 'b.jpg', width: 2, height: 2 } }), 'a.jpg');
+    assert.equal(s.socialPosts.k[0].photo.path, 'b.jpg');
+    assert.equal(S.editPostContent(s, 'k', 'a', { text: 't', image: '', photo: null }), 'b.jpg');
+    assert.ok(!('photo' in s.socialPosts.k[0]));
+    assert.equal(S.editPostContent(s, 'k', 'p', { text: 'kept', image: '' }), '');
+    assert.equal(s.socialAccounts.k.posts[0].text, 'kept');
+    assert.equal(S.editPostContent(s, 'k', 'nobody', { text: 'x', image: '' }), null);
+});
+
+test('a post with only a real image still counts as having a photo for the model', () => {
+    const posts = [{ text: 'hi', at: 500, image: '', photo: { path: 'a.jpg' } }];
+    assert.ok(request({}, { posts }).systemPrompt.includes(', with a photo] hi'));
+});
+
+test('a reply\'s words change, and nothing else about it', () => {
+    const s = postsFor();
+    s.socialPosts.k[0].replies = [{ name: 'n', text: 'old', likes: 4 }, { name: 'm', text: 'other' }];
+    S.editPostContent(s, 'k', 'a', { text: 't', image: '', replies: { 0: '  new  ', 9: 'nobody there' } });
+    assert.deepEqual(s.socialPosts.k[0].replies, [{ name: 'n', text: 'new', likes: 4 }, { name: 'm', text: 'other' }]);
+});
