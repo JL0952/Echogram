@@ -44,6 +44,27 @@ test('a rename moves everything filed under the old key', () => {
     assert.equal(D.moveCharacterData(settings(), 'mira.png', 'mira.png'), false);
 });
 
+test('a rename takes the social account along: its pinned posts and the chat\'s', () => {
+    const s = settings();
+    s.socialAccounts = { 'mira.png': { name: 'm.', posts: [{ id: 'pin1', text: 'pinned', photo: { path: 'a.jpg' } }] } };
+    s.socialPosts = { 'mira.png': [{ id: 'a', text: 'hello' }] };
+    s.socialArchives = { 'mira.png': [{ id: 'sa1', name: 'one', posts: [] }] };
+    D.moveCharacterData(s, 'mira.png', 'mira2.png');
+    assert.deepEqual(s.socialArchives['mira2.png'].map(a => a.id), ['sa1']);
+    assert.ok(!('mira.png' in s.socialArchives));
+    assert.deepEqual(s.socialAccounts['mira2.png'].posts.map(p => p.id), ['pin1']);
+    assert.equal(s.socialAccounts['mira2.png'].posts[0].photo.path, 'a.jpg');
+    assert.deepEqual(s.socialPosts['mira2.png'].map(p => p.id), ['a']);
+    assert.ok(!('mira.png' in s.socialAccounts) && !('mira.png' in s.socialPosts));
+});
+
+test('moved onto a character with posts of their own: the posts are joined, one with the same id once', () => {
+    const s = settings();
+    s.socialPosts = { 'mira.png': [{ id: 'a' }, { id: 'b' }], 'qi.png': [{ id: 'b' }, { id: 'c' }] };
+    D.moveCharacterData(s, 'mira.png', 'qi.png');
+    assert.deepEqual(s.socialPosts['qi.png'].map(p => p.id), ['b', 'c', 'a']);
+});
+
 test('moved onto a character with data of their own: chats by time, lists joined, the rest replaced', () => {
     const s = settings();
     s.chatHistory['mira2.png'] = [{ is_user: true, mes: 'after the rename', send_date: 5 }, { is_user: false, mes: 'same time', send_date: 1 }];

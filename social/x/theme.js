@@ -10,6 +10,9 @@
      */
 
     const ICONS = {
+        posts: 'M5.5 3h13A2.5 2.5 0 0 1 21 5.5v13a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 18.5v-13A2.5 2.5 0 0 1 5.5 3zm0 2a.5.5 0 0 0-.5.5v13a.5.5 0 0 0 .5.5h13a.5.5 0 0 0 .5-.5v-13a.5.5 0 0 0-.5-.5h-13zM8 9h8v2H8V9zm0 4h5v2H8v-2z',
+        chevron: 'M3.543 8.96l1.414-1.42L12 14.59l7.043-7.05 1.414 1.42L12 17.41 3.543 8.96z',
+        bookmark: 'M4 4.5C4 3.12 5.119 2 6.5 2h11C18.881 2 20 3.12 20 4.5v18.44l-8-5.71-8 5.71V4.5zM6.5 4c-.276 0-.5.22-.5.5v14.56l6-4.29 6 4.29V4.5c0-.28-.224-.5-.5-.5h-11z',
         back: 'M7.414 13l5.043 5.04-1.414 1.42L3.586 12l7.457-7.46 1.414 1.42L7.414 11H21v2H7.414z',
         reply: 'M1.751 10c0-4.42 3.584-8 8.005-8h4.366c4.49 0 8.129 3.64 8.129 8.13 0 2.96-1.607 5.68-4.196 7.11l-8.054 4.46v-3.69h-.067c-4.49.1-8.183-3.51-8.183-8.01zm8.005-6c-3.317 0-6.005 2.69-6.005 6 0 3.37 2.77 6.08 6.138 6.01l.351-.01h1.761v2.3l5.087-2.81c1.951-1.08 3.163-3.13 3.163-5.36 0-3.39-2.744-6.13-6.129-6.13H9.756z',
         repost: 'M4.75 3.79l4.603 4.3-1.706 1.82L6 8.38v7.37c0 .97.784 1.75 1.75 1.75H13V20H7.75c-2.347 0-4.25-1.9-4.25-4.25V8.38L1.853 9.91.147 8.09l4.603-4.3zm11.5 2.71H11V4h5.25c2.347 0 4.25 1.9 4.25 4.25v7.37l1.647-1.53 1.706 1.82-4.603 4.3-4.603-4.3 1.706-1.82L18 15.62V8.25c0-.97-.784-1.75-1.75-1.75z',
@@ -18,6 +21,9 @@
         bookmark: 'M4 4.5C4 3.12 5.119 2 6.5 2h11C18.881 2 20 3.12 20 4.5v18.44l-8-5.71-8 5.71V4.5zM6.5 4c-.276 0-.5.22-.5.5v14.56l6-4.29 6 4.29V4.5c0-.28-.224-.5-.5-.5h-11z',
         share: 'M12 2.59l5.7 5.7-1.41 1.42L13 6.41V16h-2V6.41l-3.3 3.3-1.41-1.42L12 2.59zM21 15l-.02 3.51c0 1.38-1.12 2.49-2.5 2.49H5.5C4.11 21 3 19.88 3 18.5V15h2v3.5c0 .28.22.5.5.5h12.98c.28 0 .5-.22.5-.5L19 15h2z',
         pin: 'M7 4.5C7 3.12 8.12 2 9.5 2h5C15.88 2 17 3.12 17 4.5v5.26L20.12 16H13v5l-1 2-1-2v-5H3.88L7 9.76V4.5z',
+        // X's own ⋯ and delete
+        more: 'M3 12c0-1.1.9-2 2-2s2 .9 2 2-.9 2-2 2-2-.9-2-2zm9 2c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm7 0c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2z',
+        trash: 'M16 6V4.5C16 3.12 14.88 2 13.5 2h-3C9.11 2 8 3.12 8 4.5V6H3v2h1.06l.81 11.21C4.98 20.78 6.28 22 7.86 22h8.27c1.58 0 2.88-1.22 3-2.79L19.93 8H21V6h-5zm-6-1.5c0-.28.22-.5.5-.5h3c.28 0 .5.22.5.5V6h-4V4.5zm7.13 14.57c-.04.52-.47.93-1 .93H7.86c-.53 0-.96-.41-1-.93L6.07 8h11.85l-.79 11.07zM9 17v-6h2v6H9zm4 0v-6h2v6h-2z',
         // X's own "post" (vertsan's icons/post.svg) and close
         compose: 'M23 3c-6.62-.1-10.38 2.421-13.05 6.03C7.29 12.61 6 17.331 6 22h2c0-1.007.07-2.012.19-3H12c4.1 0 7.48-3.082 7.94-7.054C22.79 10.147 23.17 6.359 23 3zm-7 8h-1.5v2H16c.63-.016 1.2-.08 1.72-.188C16.95 15.24 14.68 17 12 17H8.55c.57-2.512 1.57-4.851 3-6.78 2.16-2.912 5.29-4.911 9.45-5.187C20.95 8.079 19.9 11 16 11zM4 9V6H1V4h3V1h2v3h3v2H6v3H4z',
         close: 'M10.59 12L4.54 5.96l1.42-1.42L12 10.59l6.04-6.05 1.42 1.42L13.41 12l6.05 6.04-1.42 1.42L12 13.41l-6.04 6.05-1.42-1.42L10.59 12z',
@@ -79,6 +85,18 @@
         </div>`;
     }
 
+    /** A post's ⋯: pin it or delete it, the menu scrolling with the post. */
+    function postMenu(post, ctx) {
+        const id = ctx.esc(post.id);
+        return `<div class="x-more" data-social-menu>
+            <button class="x-more-btn" type="button" data-social-action="post-menu" aria-label="More">${icon('more')}</button>
+            <div class="x-more-list" data-social-action="post-menu-list">
+                <button class="x-more-item" type="button" data-social-action="post-pin" data-post-id="${id}" data-pinned="${post.pinned ? 'true' : 'false'}">${icon('pin')}<span>${post.pinned ? 'Unpin from profile' : 'Pin to your profile'}</span></button>
+                <button class="x-more-item x-more-delete" type="button" data-social-action="post-delete" data-post-id="${id}" data-label="Delete" data-confirm="Tap Again to Confirm">${icon('trash')}<span>Delete</span></button>
+            </div>
+        </div>`;
+    }
+
     /** A post in the list (vertsan's Post): the avatar beside it, the name, handle and time on one line. */
     function postCard(post, account, ctx) {
         return `<article class="x-post" data-social-action="open-post" data-post-id="${ctx.esc(post.id)}">
@@ -89,6 +107,7 @@
                     <div class="x-post-head">
                         <span class="x-post-name">${ctx.esc(account.name)}</span>
                         <span class="x-post-meta">@${ctx.esc(account.handle)} · ${ctx.esc(post.time)}</span>
+                        ${postMenu(post, ctx)}
                     </div>
                     <div class="x-post-text">${ctx.esc(post.text)}</div>
                     ${media(post, ctx)}
@@ -116,7 +135,8 @@
         </article>`;
     }
 
-    const TABS = ['Posts', 'Replies', 'Highlights', 'Articles', 'Media', 'Likes'];
+    // As X's app has them: the open one's name beside its icon, the others only their icons
+    const TABS = [['Posts', 'posts'], ['Replies', 'reply'], ['Reposts', 'repost'], ['Likes', 'like']];
 
     function profile(view, ctx) {
         const a = view.account;
@@ -124,11 +144,14 @@
             ? view.posts.map(post => postCard(post, a, ctx)).join('')
             : `<div class="x-empty"><div class="x-empty-title">@${ctx.esc(a.handle)} hasn’t posted</div><div class="x-empty-text">When they do, their posts will show up here.</div></div>`;
         return `<div class="x-page">${topBar(a.name, a.postCount, ctx)}
-        <div class="x-banner">${a.bannerUrl ? `<img src="${ctx.esc(a.bannerUrl)}" alt="">` : ''}</div>
+        <div class="x-banner">
+            ${a.bannerUrl ? `<img src="${ctx.esc(a.bannerUrl)}" alt="">` : ''}
+            <button class="x-banner-more" type="button" data-social-action="edit" aria-label="More">${icon('more')}</button>
+        </div>
         <div class="x-profile">
             <div class="x-profile-top">
                 ${avatar(a.avatarUrl, a.avatarFallback, 'x-profile-avatar', ctx)}
-                <button class="x-edit-btn" type="button" data-social-action="edit">Edit profile</button>
+                <button class="x-archive-btn" type="button" data-social-action="archives" aria-label="Archives" title="Archives">${icon('bookmark')}</button>
             </div>
             <div class="x-profile-name">${ctx.esc(a.name)}</div>
             <div class="x-profile-handle">@${ctx.esc(a.handle)}</div>
@@ -138,7 +161,7 @@
                 <span><b>${a.followers}</b> Followers</span>
             </div>
         </div>
-        <div class="x-tabs">${TABS.map((tab, i) => `<span class="x-tab${i === 0 ? ' x-tab-active' : ''}"><span>${tab}</span></span>`).join('')}</div>
+        <div class="x-tabs">${TABS.map(([tab, name], i) => `<span class="x-tab${i === 0 ? ' x-tab-active' : ''}" aria-label="${tab}"><span>${icon(name)}${i === 0 ? `${tab}${icon('chevron', 'x-tab-chevron')}` : ''}</span></span>`).join('')}</div>
         <div class="x-feed">${posts}</div>
         <div class="x-fab-row"><button class="x-fab" type="button" data-social-action="compose" aria-label="New posts">${icon('compose')}</button></div>
         </div>`;
@@ -212,6 +235,7 @@
                     <span class="x-post-name">${ctx.esc(a.name)}</span>
                     <span class="x-status-handle">@${ctx.esc(a.handle)}</span>
                 </div>
+                ${postMenu(post, ctx)}
             </div>
             <div class="x-status-text">${ctx.esc(post.text)}</div>
             ${media(post, ctx)}

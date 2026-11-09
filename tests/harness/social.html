@@ -21,6 +21,7 @@
 <script src="../../lib/stickers.js"></script>
 <script src="../../lib/chat-view-model.js"></script>
 <script src="../../lib/social.js"></script>
+<script src="../../lib/saveload-modal.js"></script>
 <script src="../../social/x/theme.js"></script>
 <script src="../../platforms/echotext/platform.js"></script>
 <script src="../../platforms/wechat/platform.js"></script>
@@ -33,7 +34,7 @@
  * lib/social.js, the X theme, and index.js's way in (the avatar menu, WeChat's "+" panel).
  *   ?view=profile (default) | detail | empty | edit | compose   shows that page for a screenshot
  *   ?platform=echotext | wechat | instagram     the chat look underneath
- *   runSocialTest(), runEditTest(), runFrameTest(), runComposeTest(), runScriptedTest(), runPhotoTest()   the checks
+ *   runSocialTest(), runEditTest(), runFrameTest(), runComposeTest(), runScriptedTest(), runPhotoTest(), runPinTest()   the checks
  */
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const params = new URLSearchParams(location.search);
@@ -168,6 +169,15 @@ window.runSocialTest = async function () {
     res.photoCard = texts('.x-media-text')[0] === '美术馆白墙前一幅很大的蓝色抽象画，地上是她的影子';
     res.avatar = root().querySelector('.x-profile-avatar').getAttribute('src') === AVATAR;
     res.onlyPostsTab = texts('.x-tab-active').join() === 'Posts';
+    {
+        const tabs = [...root().querySelectorAll('.x-tab')];
+        res.tabIcons = tabs.map(t => t.getAttribute('aria-label')).join() === 'Posts,Replies,Reposts,Likes' && tabs.every(t => t.querySelector('svg.x-icon path')?.getAttribute('d'))
+            && tabs.slice(1).every(t => !t.textContent.trim());
+        const face = root().querySelector('.x-profile-avatar');
+        const box = face.getBoundingClientRect();
+        const hit = document.elementFromPoint(box.left + box.width / 2, box.top + 12);
+        res.avatarOverBanner = hit === face || face.contains(hit);
+    }
 
     // A post's page and back
     root().querySelector('.x-feed .x-post[data-post-id="a"]').click();
@@ -246,6 +256,13 @@ window.runEditTest = async function () {
     await sleep(200);
 
     // Opens with the account's values
+    {
+        const page = panel.querySelector('.et-social');
+        const banner = page.querySelector('.x-banner').getBoundingClientRect();
+        const more = page.querySelector('.x-banner [data-social-action="edit"]').getBoundingClientRect();
+        res.moreOnBanner = Math.abs(banner.right - more.right - 8) < 1 && Math.abs(more.top - banner.top - 8) < 1;
+        res.noEditLabel = !page.textContent.includes('Edit profile') && page.querySelectorAll('[data-social-action="edit"]').length === 1;
+    }
     await click('.et-social [data-social-action="edit"]');
     res.opens = !!modal() && modal().getBoundingClientRect().height === panel.clientHeight;
     res.values = [field('name').value, field('handle').value, field('bio').value, field('followers').value, field('following').value].join('|')
@@ -746,6 +763,314 @@ window.runPhotoTest = async function () {
     res.removed = !stored().photo && !media().querySelector('.x-media-img') && imageRequests.some(([url, path]) => url === '/api/images/delete' && path === B);
 
     window.__uploadPath = null;
+    r.closeSocial();
+    res.allPass = Object.values(res).every(v => v === true);
+    return res;
+};
+
+/** A post's ⋯ menu (17e): pinned and unpinned, deleted, and the chat's posts through a real archive and a clear. */
+window.runPinTest = async function () {
+    const res = {};
+    const panel = document.getElementById('et-panel');
+    const page = () => panel.querySelector('.et-social');
+    const post = id => page().querySelector(`.x-feed .x-post[data-post-id="${id}"]`);
+    const shown = el => getComputedStyle(el).display !== 'none';
+    const list = root => root.querySelector('.x-more-list');
+    const button = (root, action) => root.querySelector(`[data-social-action="${action}"]`);
+    const s = env.settings;
+    const P = 'user/images/Mira/echogram-social-photo-1.jpg';
+    const reset = () => {
+        s.defaultPlatform = 'echotext';
+        s.socialAccounts = mockSettings().socialAccounts;
+        s.socialPosts = mockSettings().socialPosts;
+        s.savedChats = {};
+        s.socialArchives = {};
+        s.chatHistory = { 'mira.png': [] };
+        s.lifeState = {};
+    };
+    const account = () => s.socialAccounts['mira.png'];
+    const chat = () => s.socialPosts['mira.png'] || [];
+    const reopen = async () => { r.closeSocial(); r.openSocial(); await sleep(150); };
+    reset();
+    await reopen();
+
+    // The menu: closed, opens without going into the post, one at a time, closes on a click elsewhere and Escape
+    res.closed = !shown(list(post('a')));
+    button(post('a'), 'post-menu').click();
+    await sleep(20);
+    res.opens = shown(list(post('a'))) && !page().querySelector('.x-status') && list(post('a')).textContent.includes('Pin to your profile');
+    button(post('b'), 'post-menu').click();
+    await sleep(20);
+    res.oneOpen = !shown(list(post('a'))) && shown(list(post('b')));
+    document.body.click();
+    await sleep(20);
+    res.outsideCloses = !shown(list(post('b')));
+    button(post('a'), 'post-menu').click();
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await sleep(20);
+    res.escapeCloses = !shown(list(post('a'))) && !!page();
+
+    // It scrolls with its post
+    panel.style.setProperty('height', '420px', 'important');
+    await sleep(40);
+    button(post('b'), 'post-menu').click();
+    await sleep(20);
+    const gap = () => list(post('b')).getBoundingClientRect().top - post('b').getBoundingClientRect().top;
+    const before = gap();
+    page().style.scrollBehavior = 'auto';
+    page().scrollTop += 70;
+    await sleep(40);
+    res.scrollsWithPost = Math.abs(gap() - before) <= 1;
+    document.body.click();
+
+    // No room below: it opens above
+    page().scrollTop = page().scrollHeight;
+    await sleep(30);
+    const last = [...page().querySelectorAll('.x-feed .x-post')].at(-1);
+    button(last, 'post-menu').click();
+    await sleep(20);
+    res.flipsUp = last.querySelector('.x-more').hasAttribute('data-up') && list(last).getBoundingClientRect().bottom <= page().getBoundingClientRect().bottom;
+    document.body.click();
+    panel.style.removeProperty('height');
+    await sleep(40);
+    page().scrollTop = 0;
+
+    // Pinned: moved to the character, replies and all; unpinned: back
+    const repliesBefore = chat().find(p => p.id === 'a').replies.length;
+    const saved = saves;
+    button(post('a'), 'post-menu').click();
+    await sleep(20);
+    button(post('a'), 'post-pin').click();
+    await sleep(30);
+    res.pinned = account().posts.some(p => p.id === 'a' && p.replies.length === repliesBefore) && !chat().some(p => p.id === 'a') && !!post('a').querySelector('.x-post-pinned') && saves > saved;
+    res.pinLabel = list(post('a')).textContent.includes('Unpin from profile');
+    button(post('a'), 'post-menu').click();
+    await sleep(20);
+    button(post('a'), 'post-pin').click();
+    await sleep(30);
+    res.unpinned = chat().some(p => p.id === 'a') && !account().posts.some(p => p.id === 'a') && !post('a').querySelector('.x-post-pinned');
+
+    // Delete takes a second tap; closing the menu takes the first one back
+    const del = root => button(root, 'post-delete');
+    button(post('c'), 'post-menu').click();
+    await sleep(20);
+    del(post('c')).click();
+    await sleep(20);
+    res.firstTap = del(post('c')).textContent === 'Tap Again to Confirm' && chat().some(p => p.id === 'c');
+    document.body.click();
+    await sleep(20);
+    res.closeDisarms = del(post('c')).textContent === 'Delete' && chat().some(p => p.id === 'c');
+    button(post('c'), 'post-menu').click();
+    await sleep(20);
+    del(post('c')).click();
+    await sleep(20);
+    del(post('c')).click();
+    await sleep(30);
+    res.deleted = !chat().some(p => p.id === 'c') && !post('c');
+
+    // A pinned one can go too, and on its own page the page goes with it
+    post('pin1').click();
+    await sleep(60);
+    const status = () => page().querySelector('.x-status');
+    button(status(), 'post-menu').click();
+    await sleep(20);
+    del(status()).click();
+    await sleep(20);
+    del(status()).click();
+    await sleep(30);
+    res.deletedOnItsPage = !account().posts.some(p => p.id === 'pin1') && !status() && !!page().querySelector('.x-feed');
+
+    // The posts' own archives: opened from the profile, apart from the chat's
+    reset();
+    const b = chat().find(p => p.id === 'b');
+    b.photo = { path: P, width: 800, height: 600 };
+    window.EchoTextEmotionIcons = window.EchoTextEmotionIcons || { iconHtml: () => '' };
+    await reopen();
+    const sl = sel => document.querySelector(sel);
+    const archives = () => s.socialArchives['mira.png'] || [];
+    const openArchives = async () => { button(page(), 'archives').click(); await sleep(40); };
+    const closeArchives = async () => { sl('#et-sl-close-btn').click(); await sleep(260); };
+    const archive = async (name) => {
+        await openArchives();
+        sl('#et-sl-name-input').value = name;
+        sl('#et-sl-save-cta').click();
+        await sleep(40);
+        await closeArchives();
+    };
+    const load = async () => {
+        await openArchives();
+        sl('.et-sl-item').click();
+        await sleep(40);
+        sl('.et-sl-preview-load-btn').click();
+        await sleep(260);
+    };
+    const removeArchive = async () => {
+        await openArchives();
+        sl('.et-sl-del-btn').click();
+        await sleep(20);
+        sl('.et-sl-del-btn').click();
+        await sleep(40);
+        await closeArchives();
+    };
+    await openArchives();
+    res.archiveWindow = sl('.et-sl-header-title').textContent.includes('Post Archives') && !sl('.et-sl-mode-badge')
+        && sl('.et-sl-empty').textContent.includes('No saved posts yet.') && sl('#et-sl-save-cta').textContent.includes('Save Current Posts') && !!sl('#et-sl-import-btn');
+    await closeArchives();
+    await archive('one');
+    res.archived = archives().length === 1 && archives()[0].posts.length === 3 && archives()[0].posts !== chat() && Object.keys(s.savedChats).length === 0;
+    await openArchives();
+    sl('.et-sl-item').click();
+    await sleep(40);
+    res.archivePreview = sl('.et-sl-preview-msgcount').textContent === '3 posts' && sl('.et-sl-prev-msgs').querySelectorAll('.et-sl-prev-msg').length === 3
+        && sl('.et-sl-preview-load-btn').textContent.includes('Load These Posts');
+    sl('.et-sl-item-name').click();
+    await sleep(20);
+    sl('.et-sl-rename-input').value = 'renamed';
+    sl('.et-sl-rename-input').dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    await sleep(20);
+    res.archiveRenamed = archives()[0].name === 'renamed';
+    await closeArchives();
+    await reopen();
+    imageRequests.length = 0;
+    button(post('b'), 'post-menu').click();
+    await sleep(20);
+    del(post('b')).click();
+    await sleep(20);
+    del(post('b')).click();
+    await sleep(40);
+    res.archivedFileKept = !chat().some(p => p.id === 'b') && imageRequests.length === 0;
+    await load();
+    res.loadBringsBack = chat().length === 3 && chat().find(p => p.id === 'b')?.photo?.path === P && !!post('b');
+
+    // Pinned after the archive was made: loading it doesn't bring a second copy
+    window.EchoTextSocial.setPostPinned(s, 'mira.png', 'a', true);
+    await load();
+    res.noDuplicate = account().posts.filter(p => p.id === 'a').length === 1 && !chat().some(p => p.id === 'a') && chat().length === 2;
+
+    // The chat's archives don't touch the posts
+    const chatModal = window.EchoTextSaveLoadModal.createSaveLoadModal({
+        getSettings: () => s, saveSettings: () => { saves++; }, getCharacterKey: () => 'mira.png', getCharacterName: () => 'Mira',
+        getChatHistory: () => [], saveChatHistory: () => {}, renderMessages: () => {},
+        getEmotionSnapshot: () => null, getLifeSnapshot: () => null, getChatMemoriesSnapshot: () => null,
+        isPanelOpen: () => true, isGroupSession: () => false, isCombineMode: () => false, getCurrentGroupId: () => null,
+    });
+    chatModal.openSaveLoadModal();
+    await sleep(30);
+    res.chatWindowSame = sl('.et-sl-header-title').textContent.includes('Chat Archives') && sl('.et-sl-mode-badge').textContent.includes('Solo Chat')
+        && sl('#et-sl-save-cta').textContent.includes('Save Current Chat') && !sl('#et-sl-import-btn');
+    sl('#et-sl-save-cta').click();
+    await sleep(40);
+    const chatEntry = Object.values(s.savedChats.tethered)[0];
+    res.chatArchiveNoPosts = !!chatEntry && !('socialPostsSnapshot' in chatEntry);
+    chat().pop();
+    sl('.et-sl-preview-load-btn').click();
+    await sleep(260);
+    res.chatLoadLeavesPosts = chat().length === 1;
+    s.savedChats = {};
+
+    // Export: a file with the images in it. Import: a new archive, the images uploaded again
+    reset();
+    const JPEG = 'data:image/jpeg;base64,/9j/4AAQ';
+    chat().find(p => p.id === 'b').photo = { path: JPEG, width: 800, height: 600 };
+    chat().find(p => p.id === 'a').photo = { path: '/no-such-file.jpg', width: 10, height: 10 };
+    await reopen();
+    await archive('中文: 名');
+    let exported = null;
+    let fileName = '';
+    const realUrl = URL.createObjectURL;
+    const realClick = HTMLAnchorElement.prototype.click;
+    URL.createObjectURL = (blob) => { exported = blob; return realUrl.call(URL, blob); };
+    HTMLAnchorElement.prototype.click = function () { fileName = this.download; };
+    await openArchives();
+    sl('.et-sl-item').click();
+    await sleep(40);
+    sl('.et-sl-preview-export-btn').click();
+    await sleep(200);
+    URL.createObjectURL = realUrl;
+    HTMLAnchorElement.prototype.click = realClick;
+    const raw = exported ? await exported.text() : '{}';
+    const file = JSON.parse(raw);
+    const exportedPost = id => file.posts?.find(p => p.id === id);
+    res.exported = fileName === '中文_ 名.json' && file.format === 'echogram-social-posts' && file.posts?.length === 3
+        && exportedPost('b')?.photo?.data?.startsWith('data:image/jpeg') && !exportedPost('b')?.photo?.path;
+    res.exportMissingImage = !!exportedPost('a') && !exportedPost('a').photo;
+    res.exportKeepsArchive = archives()[0].posts.find(p => p.id === 'b').photo.path === JPEG;
+    const pickFile = async (content, name) => {
+        const dt = new DataTransfer();
+        dt.items.add(new File([content], name, { type: 'application/json' }));
+        const input = sl('#et-sl-import-file');
+        input.files = dt.files;
+        input.dispatchEvent(new Event('change', { bubbles: true }));
+        await sleep(200);
+    };
+    imageRequests.length = 0;
+    await pickFile(raw, 'x.json');
+    const imported = archives().find(a => a.id !== archives()[0].id) && archives()[archives().length - 1];
+    res.imported = archives().length === 2 && imported.name === '中文: 名' && imported.posts.length === 3
+        && /echogram-social-photo-\d+\.jpg$/.test(imported.posts.find(p => p.id === 'b').photo.path);
+    res.importUploads = imageRequests.length === 1 && imageRequests[0].join() === '/api/images/upload,echogram-social-photo-N';
+    res.importShown = sl('.et-sl-item-selected .et-sl-item-name')?.textContent === '中文: 名';
+    const realToastr = window.toastr;
+    let told = 0;
+    window.toastr = { error: () => { told++; } };
+    await pickFile('{"format":"other"}', 'bad.json');
+    await pickFile('not json', 'bad2.json');
+    window.toastr = realToastr;
+    res.badFile = told === 2 && archives().length === 2;
+    res.importButtonBack = !sl('#et-sl-import-btn').disabled;
+    await closeArchives();
+
+    // A file with a path in it: the path is ignored, only an image inside the file counts
+    await openArchives();
+    await pickFile(JSON.stringify({ format: 'echogram-social-posts', name: 'p', posts: [{ id: 'z', text: 't', at: 1, photo: { path: 'http://x/y.jpg' } }, 'junk'] }), 'p.json');
+    const pathFile = archives()[archives().length - 1];
+    res.importIgnoresPath = pathFile.name === 'p' && pathFile.posts.length === 1 && !pathFile.posts[0].photo;
+    await closeArchives();
+
+    // Files: kept while a post or an archive has them, deleted with the last
+    reset();
+    chat().find(p => p.id === 'b').photo = { path: P, width: 800, height: 600 };
+    await reopen();
+    await archive('files');
+    imageRequests.length = 0;
+    await removeArchive();
+    res.archiveDeletedPostKeeps = archives().length === 0 && imageRequests.length === 0;
+    await archive('files');
+    window.EchoTextSocial.deletePost(s, 'mira.png', 'b');
+    imageRequests.length = 0;
+    await removeArchive();
+    res.archiveDeletedFileGoes = imageRequests.some(([url, path]) => url === '/api/images/delete' && path === P);
+    const Q = 'user/images/Mira/echogram-social-photo-2.jpg';
+    await archive('empty of Q');
+    chat().find(p => p.id === 'c').photo = { path: Q, width: 800, height: 600 };
+    imageRequests.length = 0;
+    await load();
+    res.loadDropsUnsavedFile = imageRequests.some(([url, path]) => url === '/api/images/delete' && path === Q);
+
+    // Not in an archive any more: deleting the post deletes the file
+    reset();
+    chat().find(p => p.id === 'b').photo = { path: P, width: 800, height: 600 };
+    await reopen();
+    imageRequests.length = 0;
+    button(post('b'), 'post-menu').click();
+    await sleep(20);
+    del(post('b')).click();
+    await sleep(20);
+    del(post('b')).click();
+    await sleep(40);
+    res.fileDeleted = imageRequests.some(([url, path]) => url === '/api/images/delete' && path === P);
+
+    // Clearing the chat: its posts and their images go, pinned ones stay
+    reset();
+    chat().find(p => p.id === 'b').photo = { path: P, width: 800, height: 600 };
+    await reopen();
+    r.closeSocial();
+    imageRequests.length = 0;
+    r.clearChatHistory();
+    await sleep(30);
+    res.cleared = !s.socialPosts['mira.png'] && account().posts.length === 1 && imageRequests.some(([url, path]) => url === '/api/images/delete' && path === P);
+
+    reset();
     r.closeSocial();
     res.allPass = Object.values(res).every(v => v === true);
     return res;

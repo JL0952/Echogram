@@ -120,6 +120,7 @@
 /* ── Profile header (v0, phone sizes) ── */
 
 .et-social[data-social-theme="x"] .x-banner {
+    position: relative;
     height: 120px;
     overflow: hidden;
     background: var(--x-banner);
@@ -130,6 +131,36 @@
     width: 100%;
     height: 100%;
     object-fit: cover;
+}
+
+.et-social[data-social-theme="x"] .x-banner-more {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    display: grid;
+    place-items: center;
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    border: 0;
+    border-radius: 9999px;
+    color: #fff;
+    background: rgba(0, 0, 0, 0.5);
+    cursor: pointer;
+    transition: background-color 0.2s, transform 0.1s;
+}
+
+.et-social[data-social-theme="x"] .x-banner-more .x-icon {
+    width: 20px;
+    height: 20px;
+}
+
+.et-social[data-social-theme="x"] .x-banner-more:hover {
+    background: rgba(0, 0, 0, 0.7);
+}
+
+.et-social[data-social-theme="x"] .x-banner-more:active {
+    transform: scale(0.95);
 }
 
 .et-social[data-social-theme="x"] .x-profile {
@@ -143,6 +174,7 @@
 }
 
 .et-social[data-social-theme="x"] .x-profile-avatar {
+    position: relative; /* the banner is positioned too, for its ⋯: this keeps the avatar on top of it */
     display: block;
     width: 100px;
     height: 100px;
@@ -161,25 +193,32 @@
     font-weight: 700;
 }
 
-.et-social[data-social-theme="x"] .x-edit-btn {
+.et-social[data-social-theme="x"] .x-archive-btn {
+    display: grid;
+    place-items: center;
     align-self: flex-start;
+    width: 36px;
+    height: 36px;
     margin-top: 12px;
-    padding: 6px 20px;
+    padding: 0;
     border: 1px solid var(--x-border);
     border-radius: 9999px;
     color: var(--x-text);
     background: transparent;
-    font: inherit;
-    font-weight: 600;
     cursor: pointer;
     transition: background-color 0.2s, transform 0.1s;
 }
 
-.et-social[data-social-theme="x"] .x-edit-btn:hover {
+.et-social[data-social-theme="x"] .x-archive-btn .x-icon {
+    width: 18px;
+    height: 18px;
+}
+
+.et-social[data-social-theme="x"] .x-archive-btn:hover {
     background: var(--x-hover-strong);
 }
 
-.et-social[data-social-theme="x"] .x-edit-btn:active {
+.et-social[data-social-theme="x"] .x-archive-btn:active {
     transform: scale(0.95);
 }
 
@@ -240,7 +279,20 @@
 
 .et-social[data-social-theme="x"] .x-tab > span {
     position: relative;
-    display: inline-block;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    vertical-align: top;
+}
+
+.et-social[data-social-theme="x"] .x-tab .x-icon {
+    width: 20px;
+    height: 20px;
+}
+
+.et-social[data-social-theme="x"] .x-tab .x-tab-chevron {
+    width: 14px;
+    height: 14px;
 }
 
 .et-social[data-social-theme="x"] .x-tab-active {
@@ -358,6 +410,89 @@
     text-overflow: ellipsis;
     flex-shrink: 1;
     min-width: 0;
+}
+
+/* A post's ⋯ and its menu: inside the post, so it scrolls with it */
+.et-social[data-social-theme="x"] .x-more {
+    position: relative;
+    flex-shrink: 0;
+    align-self: center;
+    margin: -6px -6px -6px auto;
+}
+
+.et-social[data-social-theme="x"] .x-more-btn {
+    display: grid;
+    place-items: center;
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    border: 0;
+    border-radius: 9999px;
+    color: var(--x-gray);
+    background: none;
+    cursor: pointer;
+    transition: background-color 0.2s, color 0.2s;
+}
+
+.et-social[data-social-theme="x"] .x-more-btn:hover {
+    color: var(--x-blue);
+    background: rgba(29, 155, 240, 0.1);
+}
+
+.et-social[data-social-theme="x"] .x-more-btn .x-icon {
+    width: 18px;
+    height: 18px;
+}
+
+.et-social[data-social-theme="x"] .x-more-list {
+    display: none;
+    position: absolute;
+    top: 100%;
+    right: 0;
+    z-index: 1;
+    min-width: 220px;
+    overflow: hidden;
+    border-radius: 12px;
+    background: var(--x-bg);
+    box-shadow: 0 0 10px rgba(255, 255, 255, 0.2), 0 0 3px 1px rgba(255, 255, 255, 0.15);
+}
+
+.et-social[data-social-theme="x"] .x-more[data-open] .x-more-list {
+    display: block;
+}
+
+.et-social[data-social-theme="x"] .x-more[data-up] .x-more-list {
+    top: auto;
+    bottom: 100%;
+}
+
+.et-social[data-social-theme="x"] .x-more-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    padding: 12px 16px;
+    border: 0;
+    color: var(--x-text);
+    background: none;
+    font: inherit;
+    font-weight: 700;
+    text-align: left;
+    cursor: pointer;
+}
+
+.et-social[data-social-theme="x"] .x-more-item:hover {
+    background: var(--x-hover-strong);
+}
+
+.et-social[data-social-theme="x"] .x-more-item .x-icon {
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
+}
+
+.et-social[data-social-theme="x"] .x-more-delete {
+    color: #f4212e;
 }
 
 .et-social[data-social-theme="x"] .x-post-text,

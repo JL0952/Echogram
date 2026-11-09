@@ -435,7 +435,7 @@
         if (!s.characterNames || typeof s.characterNames !== 'object' || Array.isArray(s.characterNames)) {
             s.characterNames = {};
         }
-        for (const field of ['socialAccounts', 'socialPosts']) {
+        for (const field of ['socialAccounts', 'socialPosts', 'socialArchives']) {
             if (!s[field] || typeof s[field] !== 'object' || Array.isArray(s[field])) s[field] = {};
         }
         if (!s.proactiveCharacterConfig || typeof s.proactiveCharacterConfig !== 'object' || Array.isArray(s.proactiveCharacterConfig)) {
@@ -1960,6 +1960,7 @@
         delete settings.phoneOverrides?.[key];
         delete settings.chatMemories?.[key];
         delete settings.catchUpLast?.[key];
+        forgetChatPosts(key);
         saveSettings();
     }
 
@@ -4920,6 +4921,7 @@
 
     // The character's social account page, over the panel; made on first use
     let socialView = null;
+    let socialArchives = null;
 
     /** The open character's account theme (social/<id>/theme.js), or null with none loaded. */
     function socialTheme() {
@@ -4945,6 +4947,8 @@
                 now: () => Date.now(),
                 pickImage: pickSocialImage,
                 pickPhoto: pickSocialPhoto,
+                forgetPhoto: forgetSocialPhoto,
+                openArchives: openSocialArchives,
                 generatePosts: generateSocialPosts,
                 uploadImage: (dataUrl, kind) => uploadUserImage(dataUrl, getCharacterName(), `echogram-social-${kind}`),
                 deleteImage: deleteUserImage,
@@ -4967,6 +4971,44 @@
             { cropAspect: banner ? 3 : 1, cropImage: await readFileAsDataUrl(file) });
         if (!cropped) return null;
         return banner ? (await fitImageDataUrl(cropped, SOCIAL_BANNER_WIDTH)).dataUrl : shrinkImageDataUrl(cropped, AVATAR_SIZE);
+    }
+
+    /** Deletes an image file unless a post, pinned or the chat's, or a post archive still has it. */
+    function forgetSocialPhoto(path) {
+        const kept = JSON.stringify([settings.socialPosts, settings.socialAccounts, settings.socialArchives]);
+        if (!kept.includes(JSON.stringify(path).slice(1, -1))) deleteUserImage(path);
+    }
+
+    /** The chat's posts go with it: pinned ones stay on the character, and images only an old post had are deleted. */
+    function forgetChatPosts(key) {
+        const posts = Array.isArray(settings.socialPosts?.[key]) ? settings.socialPosts[key] : [];
+        delete settings.socialPosts?.[key];
+        posts.map(post => post?.photo?.path).filter(Boolean).forEach(forgetSocialPhoto);
+    }
+
+    /** The window that saves, loads, exports and imports the posts, on its own: the chat's archives don't hold them. */
+    function openSocialArchives() {
+        if (!socialArchives) {
+            socialArchives = window.EchoTextSaveLoadModal.createSaveLoadModal({
+                source: Social.createArchiveSource({
+                    getSettings: () => settings,
+                    saveSettings,
+                    getCharacterKey,
+                    getCharacterName,
+                    now: () => Date.now(),
+                    forgetPhoto: forgetSocialPhoto,
+                    readPhoto: async (path) => {
+                        const response = await fetch(Social.photoUrl(path));
+                        if (!response.ok) throw new Error(`read failed (${response.status})`);
+                        return readFileAsDataUrl(await response.blob());
+                    },
+                    uploadPhoto: dataUrl => uploadUserImage(dataUrl, getCharacterName(), 'echogram-social-photo'),
+                    onLoad: () => socialView?.render(),
+                }),
+            });
+        }
+        socialArchives.openSaveLoadModal();
+        moveModalToPortal('#et-sl-overlay');
     }
 
     /** An image for a post's photo, saved to the user's images; null if cancelled or it failed (a toast says so). */
