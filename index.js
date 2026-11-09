@@ -4984,7 +4984,7 @@
     function forgetChatPosts(key) {
         const posts = Array.isArray(settings.socialPosts?.[key]) ? settings.socialPosts[key] : [];
         delete settings.socialPosts?.[key];
-        posts.map(post => post?.photo?.path).filter(Boolean).forEach(forgetSocialPhoto);
+        Social.photoPaths(posts).forEach(forgetSocialPhoto);
     }
 
     /** The window that saves, loads, exports and imports the posts, on its own: the chat's archives don't hold them. */

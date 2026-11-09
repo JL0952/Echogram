@@ -72,7 +72,7 @@
     }
 
     /** A photo as a photo bubble is: a blank frame or the real image; a tap shows the words and its image buttons. */
-    function media(post, ctx) {
+    function media(post, ctx, { tools = true } = {}) {
         if (!post.image && !post.photo) return '';
         const photo = post.photo;
         const id = ctx.esc(post.id);
@@ -80,11 +80,30 @@
             ${photo ? `<img class="x-media-img" src="${ctx.esc(photo.url)}" alt="" draggable="false" onerror="this.remove()">` : ''}
             ${icon('image', 'x-media-icon')}
             <div class="x-media-text"><span>${ctx.esc(post.image)}</span></div>
-            <div class="x-media-tools">
+            ${tools ? `<div class="x-media-tools">
                 <button class="x-media-btn" type="button" data-social-action="photo-add" data-post-id="${id}" aria-label="${photo ? 'Change photo' : 'Add photo'}">${icon('image')}</button>
                 ${photo ? `<button class="x-media-btn x-media-drop" type="button" data-social-action="photo-drop" data-post-id="${id}" aria-label="Remove photo">×</button>` : ''}
-            </div>
+            </div>` : ''}
         </div>`;
+    }
+
+    /** The post a post reposts, in a box of its own under the post's words. */
+    function repostCard(repost, ctx) {
+        if (!repost) return '';
+        return `<div class="x-quote">
+            <div class="x-quote-head">
+                ${avatar('', repost.avatar, 'x-quote-avatar', ctx)}
+                <span class="x-post-name">${ctx.esc(repost.name)}</span>
+                <span class="x-post-meta">@${ctx.esc(repost.handle)}</span>
+            </div>
+            ${repost.text ? `<div class="x-quote-text">${ctx.mentions(repost.text, 'x-link')}</div>` : ''}
+            ${media(repost, ctx, { tools: false })}
+        </div>`;
+    }
+
+    /** "m. reposted", over a post with no words of its own. */
+    function repostedLine(post, account, ctx) {
+        return post.repost && !post.text ? `<div class="x-post-pinned x-post-reposted">${icon('repost')}<span>${ctx.esc(account.name)} reposted</span></div>` : '';
     }
 
     /** A post's ⋯: pin it or delete it, the menu scrolling with the post. */
@@ -105,6 +124,7 @@
     function postCard(post, account, ctx) {
         return `<article class="x-post" data-social-action="open-post" data-post-id="${ctx.esc(post.id)}">
             ${post.pinned ? `<div class="x-post-pinned">${icon('pin')}<span>Pinned</span></div>` : ''}
+            ${repostedLine(post, account, ctx)}
             <div class="x-post-row">
                 ${avatar(account.avatarUrl, account.avatarFallback, 'x-post-avatar', ctx)}
                 <div class="x-post-body">
@@ -115,6 +135,7 @@
                     </div>
                     <div class="x-post-text">${ctx.mentions(post.text, 'x-link')}</div>
                     ${media(post, ctx)}
+                    ${repostCard(post.repost, ctx)}
                     ${actions(post.counts)}
                 </div>
             </div>
@@ -175,16 +196,26 @@
     function outlineCard(outline, i, c, ctx) {
         const opts = { disabled: c.generating };
         const name = key => `outline-${i}-${key}`;
+        const check = (label, key, on, cls = '') => `<label class="x-field x-field-check ${cls}">
+                    <span class="x-field-label">${label}</span>
+                    <input type="checkbox" data-social-field="${name(key)}"${on ? ' checked' : ''}${c.generating ? ' disabled' : ''}>
+                </label>`;
+        // A plain repost has no words or photo of its own for the outline to set
+        const plain = outline.repost && !outline.repostComment;
         return `<section class="x-outline">
             ${c.count > 1 ? `<div class="x-outline-title">Post ${i + 1}</div>` : ''}
-            ${field('Topic', name('topic'), outline.topic, ctx, { ...opts, area: true, rows: 2 })}
+            ${plain ? '' : field('Topic', name('topic'), outline.topic, ctx, { ...opts, area: true, rows: 2 })}
             <div class="x-outline-row x-outline-when">
                 ${field('Time', name('time'), outline.time, ctx, { ...opts, type: 'datetime-local', latest: c.latestTime })}
-                <label class="x-field x-field-check">
-                    <span class="x-field-label">Photo</span>
-                    <input type="checkbox" data-social-field="${name('photo')}"${outline.photo ? ' checked' : ''}${c.generating ? ' disabled' : ''}>
-                </label>
+                ${plain ? '' : check('Photo', 'photo', outline.photo)}
             </div>
+            ${check('Repost', 'repost', outline.repost, 'x-field-check-wide')}
+            ${outline.repost ? `${field('Repost topic', name('repostTopic'), outline.repostTopic, ctx, { ...opts, area: true, rows: 2 })}
+            <div class="x-outline-row x-outline-repost">
+                ${check('Text', 'repostText', outline.repostText)}
+                ${check('Photo', 'repostPhoto', outline.repostPhoto)}
+                ${check('Comment', 'repostComment', outline.repostComment)}
+            </div>` : ''}
             <div class="x-outline-row x-outline-numbers">
                 ${field('Likes', name('likes'), outline.likes, ctx, { ...opts, numeric: true })}
                 ${field('Reposts', name('reposts'), outline.reposts, ctx, { ...opts, numeric: true })}
@@ -233,6 +264,7 @@
         const post = view.post;
         return `${topBar('Post', '', ctx)}
         <article class="x-status">
+            ${repostedLine(post, a, ctx)}
             <div class="x-status-author">
                 ${avatar(a.avatarUrl, a.avatarFallback, 'x-post-avatar', ctx)}
                 <div class="x-status-names">
@@ -243,6 +275,7 @@
             </div>
             <div class="x-status-text">${ctx.mentions(post.text, 'x-link')}</div>
             ${media(post, ctx)}
+            ${repostCard(post.repost, ctx)}
             <div class="x-status-time">${ctx.esc(post.fullTime)}</div>
             ${actions(post.counts)}
         </article>
@@ -264,6 +297,13 @@
     /** Edit post, in Edit profile's dialog: the post's image, then its words. */
     function editPost(view, ctx) {
         const e = view.editPost;
+        const photoSlot = (photo, slot) => `<div class="x-edit-post-photo"${photo ? ` style="aspect-ratio:${photo.ratio}"` : ''}>
+                        ${photo ? `<img src="${ctx.esc(photo.url)}" alt="" draggable="false">` : ''}
+                        <div class="x-edit-image-veil">
+                            <button class="x-edit-image-btn" type="button" data-social-action="post-edit-photo" data-slot="${slot}" aria-label="${photo ? 'Change photo' : 'Add photo'}">${icon('image')}</button>
+                            ${photo ? `<button class="x-edit-image-btn x-edit-image-drop" type="button" data-social-action="post-edit-photo-drop" data-slot="${slot}" aria-label="Remove photo">×</button>` : ''}
+                        </div>
+                    </div>`;
         return `<div class="x-modal-backdrop" data-social-action="post-edit-backdrop">
             <div class="x-modal x-edit-post" role="dialog" aria-label="Edit post">
                 <header class="x-modal-head" data-et-drag>
@@ -274,17 +314,17 @@
                     <button class="x-save-btn" type="button" data-social-action="post-edit-save">Save</button>
                 </header>
                 <div class="x-modal-body">
-                    <div class="x-edit-post-photo"${e.photo ? ` style="aspect-ratio:${e.photo.ratio}"` : ''}>
-                        ${e.photo ? `<img src="${ctx.esc(e.photo.url)}" alt="" draggable="false">` : ''}
-                        <div class="x-edit-image-veil">
-                            <button class="x-edit-image-btn" type="button" data-social-action="post-edit-photo" aria-label="${e.photo ? 'Change photo' : 'Add photo'}">${icon('image')}</button>
-                            ${e.photo ? '<button class="x-edit-image-btn x-edit-image-drop" type="button" data-social-action="post-edit-photo-drop" aria-label="Remove photo">×</button>' : ''}
-                        </div>
-                    </div>
+                    ${photoSlot(e.photo, 'photo')}
                     <div class="x-edit-fields">
                         ${e.error ? `<p class="x-edit-error">${ctx.esc(e.error)}</p>` : ''}
                         ${field('Text', 'text', e.text, ctx, { area: true, rows: 5 })}
                         ${field('Photo description', 'image', e.image, ctx, { area: true })}
+                        ${e.repost ? `<div class="x-outline-title x-edit-section">Repost</div>
+                        ${photoSlot(e.repost.photo, 'repostPhoto')}
+                        ${field('Name', 'repostName', e.repost.name, ctx)}
+                        ${field('Username', 'repostHandle', e.repost.handle, ctx, { prefix: '@' })}
+                        ${field('Text', 'repostText', e.repost.text, ctx, { area: true })}
+                        ${field('Photo description', 'repostImage', e.repost.image, ctx, { area: true })}` : ''}
                         ${e.replies.map(reply => field(ctx.esc(reply.label), reply.field, reply.text, ctx, { area: true, rows: 2 })).join('')}
                     </div>
                 </div>

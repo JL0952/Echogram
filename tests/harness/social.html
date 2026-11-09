@@ -34,7 +34,7 @@
  * lib/social.js, the X theme, and index.js's way in (the avatar menu, WeChat's "+" panel).
  *   ?view=profile (default) | detail | empty | edit | compose   shows that page for a screenshot
  *   ?platform=echotext | wechat | instagram     the chat look underneath
- *   runSocialTest(), runEditTest(), runFrameTest(), runComposeTest(), runScriptedTest(), runPhotoTest(), runPinTest(), runPostEditTest()   the checks
+ *   runSocialTest(), runEditTest(), runFrameTest(), runComposeTest(), runScriptedTest(), runPhotoTest(), runPinTest(), runPostEditTest(), runRepostTest()   the checks
  */
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const params = new URLSearchParams(location.search);
@@ -783,6 +783,161 @@ window.runPhotoTest = async function () {
 
     window.__uploadPath = null;
     r.closeSocial();
+    res.allPass = Object.values(res).every(v => v === true);
+    return res;
+};
+
+/** Reposts: drawn, in a scripted post's dialog, editable, their images kept and deleted with everything else's. */
+window.runRepostTest = async function () {
+    const res = {};
+    const panel = document.getElementById('et-panel');
+    const page = () => panel.querySelector('.et-social');
+    const post = id => page().querySelector(`.x-feed .x-post[data-post-id="${id}"]`);
+    const modal = () => panel.querySelector('.et-social-modal');
+    const field = name => modal().querySelector(`[data-social-field="${name}"]`);
+    const type = (name, value) => { field(name).value = value; field(name).dispatchEvent(new Event('input', { bubbles: true })); };
+    const s = env.settings;
+    const chat = () => s.socialPosts['mira.png'];
+    const stored = id => chat().find(p => p.id === id);
+    const deleted = () => imageRequests.filter(([url]) => url === '/api/images/delete').map(([, path]) => path);
+    const reopen = async () => { r.closeSocial(); r.openSocial(); await sleep(150); };
+    const openEdit = async (root) => {
+        root.querySelector('[data-social-action="post-menu"]').click();
+        await sleep(20);
+        root.querySelector('[data-social-action="post-edit"]').click();
+        await sleep(30);
+    };
+    const slot = (action, name) => modal().querySelector(`[data-social-action="${action}"][data-slot="${name}"]`);
+    const save = async () => { modal().querySelector('[data-social-action="post-edit-save"]').click(); await sleep(40); };
+    const cancel = async () => { modal().querySelector('[data-social-action="post-edit-close"]').click(); await sleep(40); };
+    const R = 'user/images/Mira/repost.jpg';
+
+    s.defaultPlatform = 'echotext';
+    s.socialAccounts = mockSettings().socialAccounts;
+    s.socialPosts = mockSettings().socialPosts;
+    s.socialArchives = {};
+    stored('a').repost = { name: 'Big <b>Acct</b>', handle: 'big_acct', text: 'their take @someone', image: '一张图表' };
+    stored('c').text = '';
+    stored('c').repost = { name: 'Words', handle: 'words', text: 'only words', image: '' };
+    stored('b').text = '配文';
+    stored('b').image = '';
+    stored('b').repost = { name: 'Pic', handle: 'pic', text: '', image: '只有图' };
+    await reopen();
+
+    // A quote: the comment, then the box. A plain repost: "reposted" over it. Words, a photo, or both
+    const quote = id => post(id).querySelector('.x-quote');
+    res.quote = !!quote('a') && post('a').querySelector('.x-post-text').textContent.length > 0 && !post('a').querySelector('.x-post-reposted');
+    res.quoteHead = quote('a').querySelector('.x-post-name').textContent === 'Big <b>Acct</b>' && !quote('a').querySelector('.x-post-name b') && quote('a').querySelector('.x-post-meta').textContent === '@big_acct';
+    res.quoteBoth = quote('a').querySelector('.x-quote-text').textContent === 'their take @someone' && quote('a').querySelector('.x-quote-text .x-link')?.textContent === '@someone' && !!quote('a').querySelector('.x-media');
+    res.wordsOnly = !!quote('c').querySelector('.x-quote-text') && !quote('c').querySelector('.x-media');
+    res.photoOnly = !quote('b').querySelector('.x-quote-text') && !!quote('b').querySelector('.x-media');
+    res.plain = post('c').querySelector('.x-post-reposted')?.textContent.trim() === 'm. reposted';
+    res.noRepostNoBox = !post('pin1').querySelector('.x-quote');
+    res.noToolsInBox = !quote('a').querySelector('[data-social-action="photo-add"]');
+    quote('a').querySelector('.x-media').click();
+    await sleep(20);
+    res.tapShowsWords = quote('a').querySelector('.x-media').getAttribute('aria-expanded') === 'true' && !page().querySelector('.x-status');
+    quote('a').click();
+    await sleep(40);
+    res.detailBox = page().querySelector('.x-status .x-quote .x-quote-text')?.textContent === 'their take @someone';
+    await reopen();
+
+    // Edit: what's reposted, its own image; Cancel leaves it, a picked image goes
+    imageRequests.length = 0;
+    await openEdit(post('a'));
+    res.editFields = field('repostName').value === 'Big <b>Acct</b>' && field('repostHandle').value === 'big_acct' && field('repostText').value === 'their take @someone' && field('repostImage').value === '一张图表'
+        && slot('post-edit-photo', 'repostPhoto').getAttribute('aria-label') === 'Add photo';
+    window.__nextFile = await imageFile(800, 400, '#c33');
+    slot('post-edit-photo', 'repostPhoto').click();
+    await sleep(400);
+    window.__nextFile = null;
+    const previews = () => [...modal().querySelectorAll('.x-edit-post-photo')].map(b => !!b.querySelector('img')).join();
+    res.pickedInRepostSlot = previews() === 'false,true' && !stored('a').repost.photo;
+    await cancel();
+    res.pickCancelled = deleted().length === 1 && !stored('a').repost.photo;
+    await openEdit(post('a'));
+    type('repostName', 'New Name');
+    type('repostHandle', '@new handle');
+    type('repostText', '改过的转发');
+    type('repostImage', '');
+    type('text', '改过的配文');
+    window.__nextFile = await imageFile(800, 400, '#c33');
+    slot('post-edit-photo', 'repostPhoto').click();
+    await sleep(400);
+    window.__nextFile = null;
+    res.typedKept = field('repostName').value === 'New Name' && field('text').value === '改过的配文';
+    await save();
+    const ra = () => stored('a').repost;
+    const firstPhoto = ra().photo?.path;
+    res.editSaved = !modal() && ra().name === 'New Name' && ra().handle === 'newhandle' && ra().text === '改过的转发' && ra().image === '' && !!firstPhoto && stored('a').text === '改过的配文' && !stored('a').photo;
+    res.editShown = quote('a').querySelector('.x-post-name').textContent === 'New Name' && quote('a').querySelector('.x-quote-text').textContent === '改过的转发' && !post('a').querySelector('.x-post-row > .x-post-body > .x-media');
+
+    // Removing it deletes the file; all of it gone and the post has words: no longer a repost
+    imageRequests.length = 0;
+    await openEdit(post('a'));
+    slot('post-edit-photo-drop', 'repostPhoto').click();
+    await sleep(30);
+    await save();
+    res.photoDropped = !ra().photo && deleted().join() === firstPhoto;
+    await openEdit(post('a'));
+    type('repostText', '');
+    await save();
+    res.repostGone = !stored('a').repost && !post('a').querySelector('.x-quote') && stored('a').text === '改过的配文';
+
+    // A plain repost with nothing left is refused; a post that isn't a repost has none of it
+    await openEdit(post('c'));
+    type('repostText', '  ');
+    await save();
+    res.emptyRefused = modal().querySelector('.x-edit-error')?.textContent === "A post can't be empty." && stored('c').repost.text === 'only words';
+    await cancel();
+    await openEdit(post('pin1'));
+    res.noRepostFields = !modal().querySelector('[data-social-field="repostName"]') && !slot('post-edit-photo', 'repostPhoto');
+    await cancel();
+
+    // Its image goes with the post, and stays while an archive has it
+    stored('b').repost.photo = { path: R, width: 800, height: 600 };
+    await reopen();
+    res.realImageInBox = !!quote('b').querySelector('.x-media').getAttribute('style')?.includes('aspect-ratio:1.333');
+    const del = root => root.querySelector('[data-social-action="post-delete"]');
+    const remove = async (id) => { post(id).querySelector('[data-social-action="post-menu"]').click(); await sleep(20); del(post(id)).click(); await sleep(20); del(post(id)).click(); await sleep(40); };
+    s.socialArchives = { 'mira.png': [{ id: 'x', name: 'x', posts: [{ id: 'b', repost: { photo: { path: R } } }] }] };
+    imageRequests.length = 0;
+    const keep = JSON.parse(JSON.stringify(stored('b')));
+    await remove('b');
+    res.archivedStays = !stored('b') && deleted().length === 0;
+    s.socialArchives = {};
+    chat().push(keep);
+    await reopen();
+    imageRequests.length = 0;
+    await remove('b');
+    res.deletedWithPost = deleted().join() === R;
+
+    // Scripted: Repost shows its fields, Comment off hides what a plain repost doesn't have; what's typed stays
+    s.socialAccounts = mockSettings().socialAccounts;
+    s.socialPosts = mockSettings().socialPosts;
+    await reopen();
+    page().querySelector('[data-social-action="compose"]').click();
+    await sleep(30);
+    modal().querySelector('[data-social-action="compose-mode"][data-mode="scripted"]').click();
+    await sleep(30);
+    res.scriptedOff = !field('outline-0-repostTopic') && !!field('outline-0-repost') && !field('outline-0-repost').checked;
+    type('outline-0-topic', '我的话题');
+    field('outline-0-repost').click();
+    await sleep(40);
+    res.scriptedOn = !!field('outline-0-repostTopic') && field('outline-0-repostText').checked && !field('outline-0-repostPhoto').checked && field('outline-0-repostComment').checked && field('outline-0-topic').value === '我的话题';
+    type('outline-0-repostTopic', '转发话题');
+    field('outline-0-repostComment').click();
+    await sleep(40);
+    res.scriptedPlain = !field('outline-0-topic') && !field('outline-0-photo') && field('outline-0-repostTopic').value === '转发话题';
+    field('outline-0-repostComment').click();
+    await sleep(40);
+    res.scriptedBack = field('outline-0-topic').value === '我的话题' && !!field('outline-0-photo');
+    modal().querySelector('[data-social-action="compose-close"]').click();
+    await sleep(30);
+
+    r.closeSocial();
+    s.socialAccounts = mockSettings().socialAccounts;
+    s.socialPosts = mockSettings().socialPosts;
     res.allPass = Object.values(res).every(v => v === true);
     return res;
 };
