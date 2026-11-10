@@ -275,3 +275,33 @@ test('an archive file carries a repost\'s image, and a path in one counts for no
     assert.equal(saved.posts[1].repost.photo, null);
     assert.equal(saved.posts[1].repost.text, 'w');
 });
+
+test('Retry: a scripted post to its outline as the post is now, any other freestyle; its place, pin and photo kept', () => {
+    const now = 10 * 3600000;
+    const base = { charName: 'Mira', userName: 'Me', platform: 'X', card: 'c', account: S.getAccount({}, 'k', { name: 'Mira' }), now };
+    const [made] = scripted({ topic: 'rain', replyStyle: 'mean', likes: '9', replies: '1', photo: true }, '<post n="1"><text>wet</text><image>sky</image><reply name="a" handle="a">ha</reply></post>').posts;
+    assert.deepEqual(made.script, { topic: 'rain', repostTopic: '', replyStyle: 'mean' });
+
+    const post = { ...made, id: 'x1', at: 2 * 3600000, likes: 50, text: 'edited', photo: { path: 'u/p.png', width: 1, height: 1 } };
+    const other = { id: 'x2', at: 3600000, text: 'older', image: '', replies: [] };
+    const settings = { socialAccounts: { k: { posts: [post], pinnedId: 'x1' } }, socialPosts: { k: [other] } };
+    const again = S.buildRetryRequest({ ...base, post, posts: S.getPosts(settings, 'k') });
+    assert.equal(again.outlines.length, 1);
+    assert.equal(again.outlines[0].at, post.at);
+    assert.ok(again.prompt.includes('Topic: rain') && again.prompt.includes('Reply style: mean') && again.prompt.includes('50 likes') && again.prompt.includes('Photo: yes'));
+    assert.ok(again.systemPrompt.includes('older') && !again.systemPrompt.includes('edited'));
+    assert.ok(S.buildRetryRequest({ ...base, post: other, posts: [] }).prompt.startsWith('Write 1 new post. Choose everything'));
+
+    const [fresh] = S.parseOutlinedPosts('<post n="1"><text>new</text><image>sea</image><reply name="b" handle="b">lol</reply></post>', { outlines: again.outlines, now });
+    assert.deepEqual(S.replacePost(settings, 'k', 'x1', fresh, now), []);
+    const [shown] = S.getPosts(settings, 'k');
+    assert.deepEqual([shown.id, shown.at, shown.text, shown.image, shown.pinned, shown.photo.path, shown.replies[0].text], ['x1', post.at, 'new', 'sea', true, 'u/p.png', 'lol']);
+    assert.equal(settings.socialAccounts.k.posts[0].script.topic, 'rain');
+
+    // Freestyle, at another time: moved to the post's, replies after it; no photo now: its image goes
+    const [loose] = S.parsePosts('<post ago="1m"><text>plain</text><reply name="c" handle="c" ago="30s">hm</reply></post>', { now, count: 1 });
+    assert.deepEqual(S.replacePost(settings, 'k', 'x1', loose, now), ['u/p.png']);
+    const stored = settings.socialAccounts.k.posts[0];
+    assert.deepEqual([stored.at, stored.text, 'photo' in stored, stored.replies[0].at > stored.at, stored.replies[0].at <= now], [post.at, 'plain', false, true, true]);
+    assert.equal(S.replacePost(settings, 'k', 'gone', loose, now), null);
+});

@@ -4951,6 +4951,7 @@
                 forgetPhoto: forgetSocialPhoto,
                 openArchives: openSocialArchives,
                 generatePosts: generateSocialPosts,
+                retryPost: retrySocialPost,
                 uploadImage: (dataUrl, kind) => uploadUserImage(dataUrl, getCharacterName(), `echogram-social-${kind}`),
                 deleteImage: deleteUserImage,
             });
@@ -5069,6 +5070,52 @@
         Social.addChatPosts(settings, key, added, `p${now}`);
         saveSettings();
         return added.length;
+    }
+
+    /**
+     * A post written again in its place (lib/social.js buildRetryRequest): a scripted one
+     * to its outline, any other freestyle. A failure says so in a toast; a stopped one, or
+     * one whose post is gone meanwhile, keeps nothing.
+     */
+    async function retrySocialPost({ postId, signal = new AbortController().signal }) {
+        const char = getCurrentCharacter();
+        const key = getCharacterKey();
+        try {
+            const post = char && key ? Social.storedPost(settings, key, postId) : null;
+            if (!post) throw new Error('the post is gone');
+            const name = char.name || 'Character';
+            const request = Social.buildRetryRequest({
+                post,
+                posts: Social.getPosts(settings, key),
+                charName: name,
+                userName: getUserName(),
+                platform: socialTheme()?.label || 'X',
+                culture: socialTheme()?.culture || '',
+                card: await buildCharacterReference(char, name),
+                account: Social.getAccount(settings, key, { name }),
+                now: Date.now(),
+            });
+            const systemPrompt = withRefusalFrame(request.systemPrompt);
+            const raw = await sendCompletionRequest({
+                apiMessages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: request.prompt }],
+                rawPrompt: request.prompt, systemPrompt, signal,
+            });
+            if (signal.aborted) return;
+            const now = Date.now();
+            const answer = stripThinkingTags(String(raw ?? ''));
+            const [fresh] = request.outlines
+                ? Social.parseOutlinedPosts(answer, { outlines: request.outlines, now })
+                : Social.parsePosts(answer, { now, count: 1 });
+            if (!fresh) throw new Error('the model sent back no post');
+            const unused = Social.replacePost(settings, key, postId, fresh, now);
+            if (!unused) return;
+            saveSettings();
+            unused.forEach(forgetSocialPhoto);
+        } catch (err) {
+            if (signal.aborted) return;
+            error('Could not retry the post:', err);
+            toastr.error(`Could not retry the post: ${err?.message || err}`, 'Echogram');
+        }
     }
 
     function closeSocial() {

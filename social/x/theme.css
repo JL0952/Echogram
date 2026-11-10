@@ -530,6 +530,22 @@
     color: #f4212e;
 }
 
+/* A post being written again: faded and pulsing until it's back */
+.et-social[data-social-theme="x"] [data-retrying] .x-post-text,
+.et-social[data-social-theme="x"] [data-retrying] .x-status-text,
+.et-social[data-social-theme="x"] [data-retrying] .x-media,
+.et-social[data-social-theme="x"] [data-retrying] .x-quote,
+.et-social[data-social-theme="x"] [data-retrying] .x-actions,
+.et-social[data-social-theme="x"] [data-retrying] + .x-replies {
+    animation: x-retrying 1.2s ease-in-out infinite alternate;
+    pointer-events: none;
+}
+
+@keyframes x-retrying {
+    from { opacity: 0.55; }
+    to { opacity: 0.2; }
+}
+
 .et-social[data-social-theme="x"] .x-post-text,
 .et-social[data-social-theme="x"] .x-status-text {
     white-space: pre-wrap;

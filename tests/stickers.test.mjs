@@ -19,22 +19,22 @@ const presets = presetSets(BASE);
 const cats = { id: 'cats', name: 'cats', stickers: [{ name: '小猫摸摸头', url: '/u/1.gif' }, { name: '小猫摸摸头2', url: '/u/2.gif' }, { name: '上班累死猫', url: '/u/3.jpg' }] };
 const library = [...presets, cats];
 
-test('月薪喵 is the built-in set: 37 stickers, each one\'s file named after it in the extension\'s folder', () => {
+test('月薪喵 is the built-in set: 38 stickers, each one\'s file named after it in the extension\'s folder', () => {
     assert.equal(presets.length, 1);
     const [set] = presets;
-    assert.deepEqual([set.id, set.name, set.builtIn, set.stickers.length], ['yuexinmiao', '月薪喵', true, 37]);
+    assert.deepEqual([set.id, set.name, set.builtIn, set.stickers.length], ['yuexinmiao', '月薪喵', true, 38]);
     assert.equal(set.stickers[0].url, `${BASE}/assets/stickers/yuexinmiao/${encodeURIComponent('安慰')}.gif`);
     for (const { name } of set.stickers) {
         assert.ok(existsSync(new URL(`../assets/stickers/yuexinmiao/${name}.gif`, import.meta.url)), name);
     }
-    assert.equal(new Set(set.stickers.map(s => s.name)).size, 37);
+    assert.equal(new Set(set.stickers.map(s => s.name)).size, 38);
 });
 
 test('the character can use the stickers of the sets turned on for them, in tab order; none at first', () => {
     assert.deepEqual(characterNames(library), []);
     assert.deepEqual(characterNames(library, ['cats']), ['小猫摸摸头', '小猫摸摸头2', '上班累死猫']);
     const both = characterNames(library, ['cats', 'yuexinmiao']);
-    assert.equal(both.length, 40);
+    assert.equal(both.length, 41);
     assert.deepEqual(both.slice(0, 2), ['安慰', '好的']);
     assert.deepEqual(both.slice(-3), ['小猫摸摸头', '小猫摸摸头2', '上班累死猫']);
     assert.deepEqual(characterNames(library, ['gone']), []);

@@ -1544,6 +1544,120 @@ window.runPinTest = async function () {
     return res;
 };
 
+/**
+ * Retry in a post's ⋯, through index.js's real retrySocialPost with the model stubbed: the
+ * item, the post faded and only Stop in its menu while it's written, what the model is
+ * sent (freestyle; a scripted post to its outline), the post swapped in its place, Stop,
+ * a failure, a dialog left as typed, the post's page.
+ */
+window.runRetryTest = async function () {
+    const res = {};
+    const panel = document.getElementById('et-panel');
+    const page = () => panel.querySelector('.et-social');
+    const modal = () => panel.querySelector('.et-social-modal');
+    const card = id => page().querySelector(`[data-post-id="${id}"].x-post, .x-status`);
+    const items = id => [...card(id).querySelectorAll('.x-more-item')].map(b => b.textContent.trim());
+    const tap = async (root, action, wait = 60) => { root.querySelector(`[data-social-action="${action}"]`).click(); await sleep(wait); };
+    const realNow = Date.now();
+    const H = 3600000;
+    const s = env.settings;
+    s.socialAccounts = mockSettings().socialAccounts;
+    s.socialPosts = { 'mira.png': mockSettings().socialPosts['mira.png'].map((p, i) => ({ ...p, at: realNow - [2, 5 * 24, 20 * 24][i] * H })) };
+    s.socialPosts['mira.png'][2].script = { topic: '关东煮', repostTopic: '', replyStyle: '很凶' };
+    s.socialPosts['mira.png'][2].replyCount = 2;
+    const realToastr = window.toastr;
+    let told = 0;
+    window.toastr = { error: () => { told++; } };
+    r.closeSocial();
+    r.openSocial();
+    await sleep(200);
+
+    // The item, after Edit
+    res.item = items('b').join('|') === 'Edit|Retry|Pin to your profile|Keep in all chats|Delete';
+
+    // Freestyle: one post asked for, the others as the latest, this one not
+    let answer;
+    window.__answer = new Promise(res => { answer = res; });
+    modelRequests.length = 0;
+    const before = s.socialPosts['mira.png'][1].at;
+    await tap(card('b'), 'post-menu');
+    await tap(card('b'), 'post-retry');
+    const req = modelRequests.at(-1);
+    res.oneRequest = modelRequests.length === 1 && /^Write 1 new post\. Choose everything yourself/.test(req.rawPrompt);
+    const latest = req.systemPrompt.split('Its latest posts, oldest first:\n')[1].split('\n\n')[0];
+    res.othersOnly = !latest.includes('周末的展') && latest.includes('关东煮') && latest.includes('今天又在他面前');
+    res.faded = card('b').hasAttribute('data-retrying') && getComputedStyle(card('b').querySelector('.x-post-text')).animationName === 'x-retrying'
+        && !card('a').hasAttribute('data-retrying');
+    res.onlyStop = items('b').join() === 'Stop' && items('a').includes('Retry');
+    answer('<post ago="1m" likes="7" views="90" replies="1"><text>换了个说法的展</text><image>新的照片</image><reply name="路人" handle="lurker" ago="10s">嗯</reply></post>');
+    await sleep(150);
+    const b = s.socialPosts['mira.png'][1];
+    res.swapped = b.id === 'b' && b.at === before && b.text === '换了个说法的展' && b.image === '新的照片' && b.likes === 7 && b.replies.length === 1 && b.replies[0].at > b.at;
+    res.shown = !card('b').hasAttribute('data-retrying') && card('b').querySelector('.x-post-text').textContent === '换了个说法的展'
+        && page().querySelectorAll('.x-feed .x-post')[2] === card('b') && items('b').includes('Retry');
+
+    // Scripted: to its outline, as the post is now
+    window.__answer = new Promise(res => { answer = res; });
+    await tap(card('c'), 'post-menu');
+    await tap(card('c'), 'post-retry');
+    const scripted = modelRequests.at(-1).rawPrompt;
+    res.scripted = /^Write 1 new post to this outline\./.test(scripted) && scripted.includes('Topic: 关东煮') && scripted.includes('Reply style: 很凶')
+        && scripted.includes('Photo: no') && scripted.includes('Replies: write 2');
+    answer('<post n="1"><text>关东煮是神</text><reply name="x" handle="x">滚</reply><reply name="y" handle="y">不是</reply></post>');
+    await sleep(150);
+    const c = s.socialPosts['mira.png'][2];
+    res.scriptedKept = c.text === '关东煮是神' && c.replies.length === 2 && c.script.topic === '关东煮' && c.likes === 0;
+
+    // Stop: nothing kept, nothing said
+    window.__answer = new Promise(res => { answer = res; });
+    await tap(card('c'), 'post-menu');
+    await tap(card('c'), 'post-retry');
+    await tap(card('c'), 'post-menu');
+    await tap(card('c'), 'post-retry-stop');
+    res.stopped = !card('c').hasAttribute('data-retrying') && items('c').includes('Retry');
+    answer('<post n="1"><text>不该留下</text></post>');
+    await sleep(150);
+    res.stopKeepsNothing = s.socialPosts['mira.png'][2].text === '关东煮是神' && told === 0;
+
+    // A failure: said, the post as it was
+    window.__answer = Promise.resolve('sorry');
+    await tap(card('a'), 'post-menu');
+    await tap(card('a'), 'post-retry', 150);
+    res.failure = told === 1 && s.socialPosts['mira.png'][0].text.startsWith('今天又在他面前') && !card('a').hasAttribute('data-retrying');
+
+    // Ending while the new-posts dialog is open: what's typed in it stays
+    window.__answer = new Promise(res => { answer = res; });
+    await tap(card('a'), 'post-menu');
+    await tap(card('a'), 'post-retry');
+    await tap(page(), 'compose');
+    await tap(modal(), 'compose-mode');
+    modal().querySelectorAll('.x-compose-mode button, [data-social-action="compose-mode"]').forEach(b => b.getAttribute('data-mode') === 'scripted' && b.click());
+    await sleep(60);
+    const topic = modal().querySelector('[data-social-field="outline-0-topic"]');
+    topic.value = '打字中';
+    answer('<post ago="1m"><text>新的 a</text></post>');
+    await sleep(150);
+    res.dialogKept = modal().querySelector('[data-social-field="outline-0-topic"]')?.value === '打字中' && s.socialPosts['mira.png'][0].text === '新的 a';
+    await tap(modal(), 'compose-close');
+
+    // The post's page
+    page().querySelector('.x-feed .x-post[data-post-id="b"]').click();
+    await sleep(60);
+    window.__answer = new Promise(res => { answer = res; });
+    await tap(page().querySelector('.x-status'), 'post-menu');
+    await tap(page().querySelector('.x-status'), 'post-retry');
+    res.pageFaded = page().querySelector('.x-status').hasAttribute('data-retrying') && getComputedStyle(page().querySelector('.x-replies')).animationName === 'x-retrying';
+    answer('<post ago="1m"><text>页面上的新版</text></post>');
+    await sleep(150);
+    res.pageShown = page().querySelector('.x-status-text').textContent === '页面上的新版' && !page().querySelector('.x-status').hasAttribute('data-retrying');
+
+    window.toastr = realToastr;
+    modelRequests.length = 0;
+    r.closeSocial();
+    res.allPass = Object.values(res).every(v => v === true);
+    return res;
+};
+
 // A page to look at
 (async () => {
     const which = params.get('view');

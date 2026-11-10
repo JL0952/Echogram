@@ -22,6 +22,7 @@
         views: 'M8.75 21V3h2v18h-2zM18 21V8.5h2V21h-2zM4 21l.004-10h2L6 21H4zm9.248 0v-7h2v7h-2z',
         bookmark: 'M4 4.5C4 3.12 5.119 2 6.5 2h11C18.881 2 20 3.12 20 4.5v18.44l-8-5.71-8 5.71V4.5zM6.5 4c-.276 0-.5.22-.5.5v14.56l6-4.29 6 4.29V4.5c0-.28-.224-.5-.5-.5h-11z',
         share: 'M12 2.59l5.7 5.7-1.41 1.42L13 6.41V16h-2V6.41l-3.3 3.3-1.41-1.42L12 2.59zM21 15l-.02 3.51c0 1.38-1.12 2.49-2.5 2.49H5.5C4.11 21 3 19.88 3 18.5V15h2v3.5c0 .28.22.5.5.5h12.98c.28 0 .5-.22.5-.5L19 15h2z',
+        retry: 'M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.43 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z',
         pin: 'M7 4.5C7 3.12 8.12 2 9.5 2h5C15.88 2 17 3.12 17 4.5v5.26L20.12 16H13v5l-1 2-1-2v-5H3.88L7 9.76V4.5z',
         // X's own ⋯ and delete
         more: 'M3 12c0-1.1.9-2 2-2s2 .9 2 2-.9 2-2 2-2-.9-2-2zm9 2c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm7 0c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2z',
@@ -106,13 +107,22 @@
         return post.repost && !post.text ? `<div class="x-post-pinned x-post-reposted">${icon('repost')}<span>${ctx.esc(account.name)} reposted</span></div>` : '';
     }
 
-    /** A post's ⋯: pin it or delete it, the menu scrolling with the post. */
+    /** A post's ⋯: edit, retry, pin, keep or delete it, the menu scrolling with the post; only Stop while it's retried. */
     function postMenu(post, ctx) {
         const id = ctx.esc(post.id);
+        if (post.retrying) {
+            return `<div class="x-more" data-social-menu>
+            <button class="x-more-btn" type="button" data-social-action="post-menu" aria-label="More">${icon('more')}</button>
+            <div class="x-more-list" data-social-action="post-menu-list">
+                <button class="x-more-item" type="button" data-social-action="post-retry-stop" data-post-id="${id}">${icon('close')}<span>Stop</span></button>
+            </div>
+        </div>`;
+        }
         return `<div class="x-more" data-social-menu>
             <button class="x-more-btn" type="button" data-social-action="post-menu" aria-label="More">${icon('more')}</button>
             <div class="x-more-list" data-social-action="post-menu-list">
                 <button class="x-more-item" type="button" data-social-action="post-edit" data-post-id="${id}">${icon('pencil')}<span>Edit</span></button>
+                <button class="x-more-item" type="button" data-social-action="post-retry" data-post-id="${id}">${icon('retry')}<span>Retry</span></button>
                 <button class="x-more-item" type="button" data-social-action="post-pin" data-post-id="${id}" data-pinned="${post.pinned ? 'true' : 'false'}">${icon('pin')}<span>${post.pinned ? 'Unpin from profile' : 'Pin to your profile'}</span></button>
                 <button class="x-more-item" type="button" data-social-action="post-keep" data-post-id="${id}" data-kept="${post.kept ? 'true' : 'false'}">${icon('layers')}<span>${post.kept ? 'Only in this chat' : 'Keep in all chats'}</span></button>
                 <button class="x-more-item x-more-delete" type="button" data-social-action="post-delete" data-post-id="${id}" data-label="Delete" data-confirm="Tap Again to Confirm">${icon('trash')}<span>Delete</span></button>
@@ -122,7 +132,7 @@
 
     /** A post in the list (vertsan's Post): the avatar beside it, the name, handle and time on one line. */
     function postCard(post, account, ctx) {
-        return `<article class="x-post" data-social-action="open-post" data-post-id="${ctx.esc(post.id)}">
+        return `<article class="x-post" data-social-action="open-post" data-post-id="${ctx.esc(post.id)}"${post.retrying ? ' data-retrying' : ''}>
             ${post.pinned ? `<div class="x-post-pinned">${icon('pin')}<span>Pinned</span></div>` : ''}
             ${repostedLine(post, account, ctx)}
             <div class="x-post-row">
@@ -263,7 +273,7 @@
         const a = view.account;
         const post = view.post;
         return `${topBar('Post', '', ctx)}
-        <article class="x-status">
+        <article class="x-status"${post.retrying ? ' data-retrying' : ''}>
             ${repostedLine(post, a, ctx)}
             <div class="x-status-author">
                 ${avatar(a.avatarUrl, a.avatarFallback, 'x-post-avatar', ctx)}
