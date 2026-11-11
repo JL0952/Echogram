@@ -21,6 +21,7 @@
 <script src="../../social/x/theme.js"></script>
 <script src="../../lib/stickers.js"></script>
 <script src="../../lib/chat-view-model.js"></script>
+<script src="../../lib/chat-scroll.js"></script>
 <script src="../../platforms/echotext/platform.js"></script>
 <script src="../../platforms/wechat/platform.js"></script>
 <script src="scenarios.js"></script>
@@ -212,13 +213,15 @@ window.runAnchorTest = async function () {
             .filter(m => m.getBoundingClientRect().bottom < bar.getBoundingClientRect().top).pop();
         const gap = () => Math.round(bar.getBoundingClientRect().top - ref.getBoundingClientRect().bottom);
         const startTop = el.scrollTop, gaps = [gap()];
+        // Measured as it's painted: after each layout that resized the list (and after
+        // the list's own correction, whose observer came first)
         const watch = async () => {
-            let on = true;
-            const tick = () => { gaps.push(gap()); if (on) requestAnimationFrame(tick); };
+            const sizes = new ResizeObserver(() => gaps.push(gap()));
+            sizes.observe(el);
+            sizes.observe(bar);
             r.toggleAttachMenu(jQuery('#et-attach-btn'));
-            requestAnimationFrame(tick);
             await sleep(500);
-            on = false;
+            sizes.disconnect();
         };
         await watch();   // open
         await watch();   // close

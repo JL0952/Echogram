@@ -19,6 +19,7 @@
 <script src="../../lib/features.js"></script>
 <script src="../../lib/stickers.js"></script>
 <script src="../../lib/chat-view-model.js"></script>
+<script src="../../lib/chat-scroll.js"></script>
 <script src="../../platforms/echotext/platform.js"></script>
 <script src="../../platforms/wechat/platform.js"></script>
 <script src="scenarios.js"></script>
@@ -64,6 +65,8 @@ portal.appendChild(document.getElementById('et-panel'));
 jQuery('#et-panel').attr('data-et-scheme', params.get('scheme') || 'light');
 r.bindAttachPanel();
 r.bindMessageActions();
+// As tall as the visible viewport, as on a phone (the keyboard shrinks it)
+r.fitPanelToViewport?.(document.getElementById('et-panel'));
 r.renderMessages(history);
 
 // Sending, as EchoText's handleSend: the message goes in, the input empties and keeps focus
@@ -93,6 +96,16 @@ jQuery('#et-share-type').on('click', function (e) {
     e.stopPropagation();
     r.toggleShareTypeMenu(jQuery(this));
 });
+// The sticker button, as EchoText binds it: the sticker panel, or back to the keyboard
+jQuery('#et-sticker-btn').on('click', function (e) {
+    e.stopPropagation();
+    if (jQuery('#et-attach-panel').attr('data-et-panel') === 'stickers') {
+        r.closeAttachPanel();
+        jQuery('#et-input').trigger('focus');
+    } else {
+        r.toggleBottomPanel('stickers');
+    }
+});
 jQuery('#et-attach-btn').on('click', function (e) {
     e.stopPropagation();
     // ?keepfocus: the input keeps focus (and the keyboard stays up) through a "+" tap, as a webview may
@@ -100,23 +113,33 @@ jQuery('#et-attach-btn').on('click', function (e) {
     r.toggleAttachMenu(jQuery(this));
 });
 
-// Per frame while the "+" panel moves: how far the last message sits above the
-// input bar (constant when they move together), where the bar is, the viewport
+// Per painted frame while the "+" / sticker panel or the keyboard moves: how far the last
+// message above the input bar sits from it (constant when they move together), where the
+// bar is, the viewport. Measured after layout (a ResizeObserver made after the list's own),
+// as it's drawn; a frame callback would come before the list's correction
 const vv = window.visualViewport;
 const bar = document.querySelector('[data-et-role~="input-bar"]');
-const lastMsg = () => [...document.querySelectorAll('#et-messages-inner [data-et-role~="message"]')].pop();
+let ref = null;
+const lastMsg = () => ref;
 const frame = () => ({ gap: Math.round(bar.getBoundingClientRect().top - lastMsg().getBoundingClientRect().bottom),
     bar: Math.round(bar.getBoundingClientRect().top), vvH: Math.round(vv.height), vvTop: Math.round(vv.offsetTop),
     focus: document.activeElement?.id || document.activeElement?.tagName });
+let watching = null;
 const watchPanel = async (what) => {
-    const frames = [frame()];
-    let on = true;
-    const tick = () => { frames.push(frame()); if (on) requestAnimationFrame(tick); };
-    requestAnimationFrame(tick);
+    if (watching) { watching.what += ` + ${what}`; return; }
+    const top = bar.getBoundingClientRect().top;
+    ref = [...document.querySelectorAll('#et-messages-inner [data-et-role~="message"]')].filter(m => m.getBoundingClientRect().bottom <= top).pop();
+    if (!ref) return;
+    watching = { what, frames: [frame()] };
+    const sizes = new ResizeObserver(() => watching.frames.push(frame()));
+    sizes.observe(document.getElementById('et-messages'));
+    sizes.observe(bar);
     await sleep(900);
-    on = false;
+    sizes.disconnect();
+    const { frames } = watching;
+    watching = null;
     const gaps = frames.map(f => f.gap);
-    report({ what, spread: Math.max(...gaps) - Math.min(...gaps), frames });
+    report({ what, spread: Math.max(...gaps) - Math.min(...gaps), gaps: gaps.join(' '), last: frames.at(-1) });
 };
 new MutationObserver(records => {
     for (const rec of records) {
@@ -133,7 +156,10 @@ document.addEventListener('click', e => {
         target: `${t.tagName}.${[...t.classList].join('.')}${t.dataset.etRole ? `[${t.dataset.etRole}]` : ''}`,
         rect: [Math.round(rect.left), Math.round(rect.top), Math.round(rect.right), Math.round(rect.bottom)], vvTop: Math.round(vv.offsetTop), vvH: Math.round(vv.height) });
 }, true);
-vv.addEventListener('resize', () => report({ what: 'viewport', vvH: Math.round(vv.height), vvTop: Math.round(vv.offsetTop), innerH: innerHeight, scrollY }));
+vv.addEventListener('resize', () => {
+    report({ what: 'viewport', vvH: Math.round(vv.height), vvTop: Math.round(vv.offsetTop), innerH: innerHeight, scrollY });
+    watchPanel('keyboard');
+});
 report({ what: 'loaded', ua: navigator.userAgent, innerH: innerHeight, vvH: Math.round(vv.height) });
 </script>
 </body></html>

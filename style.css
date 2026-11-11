@@ -1109,10 +1109,9 @@ html.et-bg-light {
     overflow-y: auto;
     overflow-x: hidden;
     padding: 16px 14px;
-    scroll-behavior: smooth;
     min-height: 0;
     box-sizing: border-box;
-    overflow-anchor: none; /* manual scroll anchoring in updateSwipeInPlace */
+    overflow-anchor: none; /* lib/chat-scroll.js keeps the list in place */
 }
 
 .et-messages::-webkit-scrollbar {

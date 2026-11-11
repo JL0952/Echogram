@@ -33,10 +33,10 @@ const WANT = [
     'BUBBLE_HOLD_MS', 'BUBBLE_HOLD_SLOP', 'bubbleHold', 'bubbleHeld', 'bubbleTarget', 'onBubblePointerDown', 'onBubblePointerMove', 'cancelBubbleHold', 'onBubbleContextMenu', 'swallowHeldClick', 'listTouch', 'noteListTouch', 'onListTouchMove', 'closeListMenusOnScroll', 'openBubbleMenu', 'bubbleFocus', 'stopScroll', 'LIST_OVERLAYS', 'overlayMutation', 'openBubbleFocus', 'closeBubbleFocus', 'bubbleRef', 'findBubble', 'closeMenus', 'closeMenusForKeyboard', 'KEYBOARD_MIN_PX',
     'renderedViews', 'renderedFrame', 'getRenderFrame', 'updateMessageList', 'replaceMessageElement', 'scrollMessagesToEnd',
     'getChatViewOptions', 'getMessageRenderContext', 'getCharacterUsername', 'findMessageElement', 'decorateMessage', 'refreshMessages',
-    'renderedEntry', 'tapbackMarks', 'keepInPlace',
+    'renderedEntry', 'tapbackMarks', 'ChatScroll', 'listScroll',
     'toggleVoiceTranscript', 'toggleExpanded', 'syncRenderedView',
     // the "+" panel (syncPlatformChrome closes it)
-    'closeAttachPanel', 'followAttachPanel', 'attachPanelDuration', 'messagesFromBottom',
+    'closeAttachPanel', 'attachPanelDuration',
     // older index.js versions (before step 2c) built the message HTML themselves
     'resolveTransfers', 'normalizeReactionStore', 'MESSAGE_GROUP_WINDOW_MS', 'buildReactionNoteHtml', 'buildPhotoCardHtml',
     'buildTransferCardHtml', 'buildPartContentHtml', 'partBubbleClass', 'buildLeadingPartBubblesHtml', 'buildImageAttachmentHtml',

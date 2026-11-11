@@ -66,6 +66,7 @@
     loadEchoTextModule('lib/features.js', 'EchoTextFeatures');
     loadEchoTextModule('lib/stickers.js', 'EchoTextStickers');
     loadEchoTextModule('lib/chat-view-model.js', 'EchoTextChatViewModel');
+    loadEchoTextModule('lib/chat-scroll.js', 'EchoTextChatScroll');
     loadEchoTextModule('lib/music-lookup.js', 'EchoTextMusicLookup');
     loadEchoTextModule('lib/story-texts.js', 'EchoTextStoryTexts');
     loadEchoTextModule('lib/social.js', 'EchoTextSocial');
@@ -97,6 +98,7 @@
     const Features = window.EchoTextFeatures;
     const Stickers = window.EchoTextStickers;
     const ChatViewModel = window.EchoTextChatViewModel;
+    const ChatScroll = window.EchoTextChatScroll;
     const ChatSummaries = window.EchoTextChatSummaries;
     const StoryTexts = window.EchoTextStoryTexts;
     const Social = window.EchoTextSocial;
@@ -2981,12 +2983,8 @@
 
     /**
      * Updates the swipe nav row and bubble text for a single message in-place,
-     * without triggering a full renderMessages() call.
-     *
-     * Scroll anchoring strategy: snapshot scrollHeight + scrollTop before any DOM
-     * changes, then after changes offset scrollTop by the delta so the user's view
-     * of the content stays pixel-perfect still.  smooth-scroll is suppressed for
-     * this correction so no animated jump is visible.
+     * without triggering a full renderMessages() call (the list stays where it is:
+     * listScroll()).
      */
     function updateSwipeInPlace(msgIndex, h) {
         if (!h[msgIndex]) return;
@@ -2994,27 +2992,8 @@
             renderMessages(h, true);
             return;
         }
-
-        // ── Scroll anchor: snapshot before DOM changes ────────────────────
-        const messagesEl = document.getElementById('et-messages');
-        const scrollTopBefore    = messagesEl ? messagesEl.scrollTop    : 0;
-        const scrollHeightBefore = messagesEl ? messagesEl.scrollHeight : 0;
-
         // The message, and the user message its reaction lands on, are re-rendered
         refreshMessages(h);
-
-        // ── Scroll anchor: compensate for height delta ────────────────────
-        // Any height change in the message shifts scrollHeight by the same amount.
-        // Adding that delta to scrollTop keeps every pixel of content stationary.
-        if (messagesEl) {
-            const delta = messagesEl.scrollHeight - scrollHeightBefore;
-            if (delta !== 0) {
-                const prevBehavior = messagesEl.style.scrollBehavior;
-                messagesEl.style.scrollBehavior = 'auto'; // suppress smooth-scroll for this correction
-                messagesEl.scrollTop = scrollTopBefore + delta;
-                messagesEl.style.scrollBehavior = prevBehavior;
-            }
-        }
     }
 
     /**
@@ -3866,19 +3845,8 @@
 
         if (typingShown()) {
             if (!inner.find('[data-et-role~="typing"]').length) {
-                const el = jQuery(getActivePlatform().templates.typing(getMessageRenderContext()).trim());
-                inner.append(el);
-                if (settings.autoScroll) {
-                    const messagesEl = document.getElementById('et-messages');
-                    if (messagesEl) {
-                        messagesEl.scrollTop = messagesEl.scrollHeight;
-                        el.find('img').on('load', function() {
-                            if (settings.autoScroll) {
-                                messagesEl.scrollTop = messagesEl.scrollHeight;
-                            }
-                        });
-                    }
-                }
+                inner.append(getActivePlatform().templates.typing(getMessageRenderContext()));
+                scrollMessagesToEnd();
             }
         } else {
             inner.find('[data-et-role~="typing"]').remove();
@@ -3895,19 +3863,8 @@
 
         if (visible) {
             if (!inner.find('[data-et-role~="image-generating"]').length) {
-                const el = jQuery(getActivePlatform().templates.imageGenerating(getMessageRenderContext()).trim());
-                inner.append(el);
-                if (settings.autoScroll) {
-                    const messagesEl = document.getElementById('et-messages');
-                    if (messagesEl) {
-                        messagesEl.scrollTop = messagesEl.scrollHeight;
-                        el.find('img').on('load', function() {
-                            if (settings.autoScroll) {
-                                messagesEl.scrollTop = messagesEl.scrollHeight;
-                            }
-                        });
-                    }
-                }
+                inner.append(getActivePlatform().templates.imageGenerating(getMessageRenderContext()));
+                scrollMessagesToEnd();
             }
         } else {
             inner.find('[data-et-role~="image-generating"]').remove();
@@ -4906,30 +4863,31 @@
 
         bindMessageActions();
 
-        // ── iOS / mobile: keep the panel height in sync with the visual viewport ──
-        // When the on-screen keyboard opens, visualViewport.height shrinks. We update
-        // the panel height & top so the input bar stays visible above the keyboard.
-        if (window.visualViewport && isMobileDevice()) {
-            const panelEl = document.getElementById('et-panel');
-            if (panelEl) {
-                let lastHeight = window.visualViewport.height;
-                const onVVResize = () => {
-                    if (!panelOpen) return;
-                    closeMenusForKeyboard(lastHeight, window.visualViewport.height);
-                    lastHeight = window.visualViewport.height;
-                    panelEl.style.height = window.visualViewport.height + 'px';
-                    panelEl.style.top    = window.visualViewport.offsetTop  + 'px';
-                };
-                window.visualViewport.addEventListener('resize', onVVResize);
-                window.visualViewport.addEventListener('scroll', onVVResize);
-                // Store a cleanup callback on the element so closePanel() can
-                // remove the listeners when the panel is destroyed.
-                panelEl._vvCleanup = () => {
-                    window.visualViewport.removeEventListener('resize', onVVResize);
-                    window.visualViewport.removeEventListener('scroll', onVVResize);
-                };
-            }
-        }
+        if (isMobileDevice()) fitPanelToViewport(document.getElementById('et-panel'));
+    }
+
+    /**
+     * On a phone the panel is as tall as the visible viewport: the on-screen keyboard
+     * shrinks it, and the input bar stays above the keyboard (the message list follows
+     * it: listScroll()). closePanel() calls the element's _vvCleanup.
+     */
+    function fitPanelToViewport(panelEl) {
+        const viewport = window.visualViewport;
+        if (!viewport || !panelEl) return;
+        let lastHeight = viewport.height;
+        const onResize = () => {
+            if (!panelOpen) return;
+            closeMenusForKeyboard(lastHeight, viewport.height);
+            lastHeight = viewport.height;
+            panelEl.style.height = viewport.height + 'px';
+            panelEl.style.top = viewport.offsetTop + 'px';
+        };
+        viewport.addEventListener('resize', onResize);
+        viewport.addEventListener('scroll', onResize);
+        panelEl._vvCleanup = () => {
+            viewport.removeEventListener('resize', onResize);
+            viewport.removeEventListener('scroll', onResize);
+        };
     }
 
     // ── Character avatar for EchoText ─────────────────────────────────────────
@@ -6002,8 +5960,6 @@
         closeMenus();
         const html = kind === 'stickers' ? stickerPanelHtml() : attachPanelHtml();
         if (!html) return;
-        // Where the list stands before the panel changes
-        const fromBottom = messagesFromBottom();
         if (open.length) {
             // From its height now to the new content's
             const from = open.outerHeight();
@@ -6012,7 +5968,6 @@
             open.css('height', from + 'px');
             void open[0].offsetHeight;
             open.css('height', to + 'px');
-            followAttachPanel(open, fromBottom);
             syncStickerButton();
             return;
         }
@@ -6024,7 +5979,6 @@
         panel.css('height', '0px');
         void panel[0].offsetHeight;
         panel.css('height', fullHeight + 'px');
-        followAttachPanel(panel, fromBottom);
         syncStickerButton();
     }
 
@@ -6103,51 +6057,14 @@
         // The list moves down (and a sticker set's menu loses its tab): open menus close
         closeMenus();
         // Shrinks away the same way, then goes; a new "+" meanwhile opens a fresh one
-        const fromBottom = messagesFromBottom();
         panel.removeAttr('id').css('height', '0px');
-        followAttachPanel(panel, fromBottom);
         setTimeout(() => panel.remove(), attachPanelDuration(panel) + 30);
         syncStickerButton();
-    }
-
-    /** How far the message list is scrolled up from its end, in px (null without a list). */
-    function messagesFromBottom() {
-        const messagesEl = document.getElementById('et-messages');
-        return messagesEl ? messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight : null;
     }
 
     /** How long the platform's CSS takes to raise or lower the panel, in ms. */
     function attachPanelDuration(panel) {
         return (parseFloat(getComputedStyle(panel[0]).transitionDuration) || 0) * 1000;
-    }
-
-    /**
-     * While the panel's height changes, the message list keeps the distance
-     * from its end it had before (`fromBottom`, measured before the panel moved),
-     * so its last lines rise and fall with the input bar — animated or not: a
-     * panel without a transition snaps, and is still followed.
-     * Smooth scrolling stays off for the whole animation, or each per-frame
-     * correction would become a smooth scroll restarted every frame.
-     */
-    function followAttachPanel(panel, fromBottom) {
-        const messagesEl = document.getElementById('et-messages');
-        if (!messagesEl || fromBottom === null) return;
-        const run = (messagesEl._etFollowRun || 0) + 1;
-        messagesEl._etFollowRun = run;
-        const until = performance.now() + attachPanelDuration(panel) + 80;
-        messagesEl.style.scrollBehavior = 'auto';
-        const follow = () => {
-            messagesEl.scrollTop = messagesEl.scrollHeight - messagesEl.clientHeight - fromBottom;
-        };
-        const step = (now) => {
-            // A newer open / close took over
-            if (messagesEl._etFollowRun !== run) return;
-            follow();
-            if (now < until && panel[0].isConnected) requestAnimationFrame(step);
-            else messagesEl.style.scrollBehavior = '';
-        };
-        follow();
-        requestAnimationFrame(step);
     }
 
     /** Accept / Decline menu for a pending transfer from the character, anchored to its card. */
@@ -7541,24 +7458,19 @@
         if (bubbles.length < 2) return;
         bubbles.slice(1).hide();
 
-        const messagesEl = document.getElementById('et-messages');
-        const scrollToEnd = () => {
-            if (settings.autoScroll && messagesEl) messagesEl.scrollTop = messagesEl.scrollHeight;
-        };
-
         let next = 1;
         const revealNext = () => {
             if (!msgEl[0].isConnected) return;
             const bubble = bubbles.eq(next);
             const typing = jQuery(getActivePlatform().templates.bubbleTyping());
             bubbles.eq(next - 1).after(typing);
-            scrollToEnd();
+            scrollMessagesToEnd();
             const length = bubble.find('[data-et-role~="text"], [data-et-role~="caption"]').text().trim().length;
             setTimeout(() => {
                 typing.remove();
                 if (!msgEl[0].isConnected) return;
                 bubble.show().attr('data-et-arrive', '');
-                scrollToEnd();
+                scrollMessagesToEnd();
                 next++;
                 if (next < bubbles.length) setTimeout(revealNext, 220);
             }, Math.min(1800, 450 + length * 35));
@@ -7851,7 +7763,7 @@
         const list = document.getElementById('et-messages');
         if (open && content && list) {
             const hidden = content.getBoundingClientRect().bottom - list.getBoundingClientRect().bottom;
-            if (hidden > 0) list.scrollTop += hidden + 8;
+            if (hidden > 0) listScroll()?.by(hidden + 8, { smooth: true });
         }
     }
 
@@ -8369,11 +8281,25 @@
             const context = SillyTavern.getContext();
             const ok = await context.callGenericPopup(`Delete ${parts.length} message${parts.length === 1 ? '' : 's'}?`, context.POPUP_TYPE.CONFIRM);
             if (!ok || !selecting) return;
+            const gone = deletedMessages(parts);
             stopSelecting();
             deleteParts(history, parts);
             saveChatHistory(history);
-            renderMessages(history, true);
+            // Drawn without them, what stays sliding from where it was
+            const scroll = listScroll();
+            if (scroll) scroll.move(gone, () => renderMessages(history, true));
+            else renderMessages(history, true);
         }
+    }
+
+    /** The messages deleting `parts` takes away whole: all of their bubbles are picked. */
+    function deletedMessages(parts) {
+        const picked = new Map();
+        for (const { index } of parts) picked.set(index, (picked.get(index) || 0) + 1);
+        return [...picked].map(([index, count]) => {
+            const msgEl = findMessageElement(index)[0];
+            return msgEl && count >= msgEl.querySelectorAll('[data-et-role~="bubble"]').length ? msgEl : null;
+        }).filter(Boolean);
     }
 
     /**
@@ -8777,24 +8703,8 @@
         });
         oldEl.replaceWith(msgEl);
         decorateMessage(msgEl, m);
-        if (anchorTop !== null) keepInPlace(msgEl.find('[data-et-role~="bubble"]')[arriving[0]], anchorTop);
+        if (anchorTop !== null) listScroll()?.keep(msgEl.find('[data-et-role~="bubble"]')[arriving[0]], anchorTop);
         return msgEl;
-    }
-
-    /** For a moment, scrolls the list so `el` stays at `top` (on screen) while things above it grow. */
-    function keepInPlace(el, top, ms = 360) {
-        const list = document.getElementById('et-messages');
-        if (!el || !list) return;
-        const behavior = list.style.scrollBehavior;
-        list.style.scrollBehavior = 'auto';
-        const end = performance.now() + ms;
-        const step = () => {
-            const drift = el.getBoundingClientRect().top - top;
-            if (drift) list.scrollTop += drift;
-            if (performance.now() < end) requestAnimationFrame(step);
-            else list.style.scrollBehavior = behavior;
-        };
-        step();
     }
 
     // What the rendered list was drawn with besides each message's view; when it
@@ -8843,8 +8753,6 @@
                 else inner.prepend(msgEl);
                 decorateMessage(msgEl, m);
                 rebuilt.add(m.index);
-                // Re-scroll when a new message's images load
-                msgEl.find('img').on('load', scrollMessagesToEnd);
             }
             renderedViews.set(m.index, renderedEntry(m, signature));
             prevEl = msgEl;
@@ -8866,9 +8774,21 @@
         return true;
     }
 
+    /**
+     * The message list's scroll keeper (lib/chat-scroll.js): it alone moves the list,
+     * keeping it where the reader had it through bars, the keyboard and content changing.
+     * Null without a list.
+     */
+    function listScroll() {
+        const list = document.getElementById('et-messages');
+        const inner = document.getElementById('et-messages-inner');
+        if (!list || !inner) return null;
+        return ChatScroll.attach(list, inner, { followGrowth: () => !!settings.autoScroll });
+    }
+
+    /** Something new at the end (with Auto-scroll on): the list glides there. */
     function scrollMessagesToEnd() {
-        const messagesEl = document.getElementById('et-messages');
-        if (settings.autoScroll && messagesEl) messagesEl.scrollTop = messagesEl.scrollHeight;
+        if (settings.autoScroll) listScroll()?.toEnd({ smooth: true });
     }
 
     // Track which delete button is pending 2nd click
@@ -8879,6 +8799,7 @@
 
         const messagesEl = document.getElementById('et-messages');
         const savedScrollTop = (preserveScroll && messagesEl) ? messagesEl.scrollTop : null;
+        const scroll = listScroll();
 
         syncPlatformChrome();
         drawStatusBars();
@@ -8904,8 +8825,7 @@
         // Same chat drawn the same way (a message sent or received, an edit):
         // update in place, so the list keeps its scroll position
         if (frame === renderedFrame && updateMessageList(inner, view, ctx)) {
-            if (preserveScroll && messagesEl && savedScrollTop !== null) messagesEl.scrollTop = savedScrollTop;
-            else scrollMessagesToEnd();
+            if (!preserveScroll) scrollMessagesToEnd();
             return;
         }
 
@@ -8928,22 +8848,9 @@
             bindBubbleTouchSwipe(inner, view.lastCharIndex);
         }
 
-        if (preserveScroll && messagesEl && savedScrollTop !== null) {
-            // Restore the scroll position the user was at before the edit re-render
-            messagesEl.scrollTop = savedScrollTop;
-        } else if (settings.autoScroll) {
-            if (messagesEl) {
-                // A new list jumps straight to its end; smooth scrolling would
-                // glide there from the top
-                messagesEl.style.scrollBehavior = 'auto';
-                messagesEl.scrollTop = messagesEl.scrollHeight;
-                messagesEl.style.scrollBehavior = '';
-
-                // Re-scroll when images (specifically generated images) finish loading
-                // so they don't break the auto-scroll flow by pushing text up.
-                inner.find('img').on('load', scrollMessagesToEnd);
-            }
-        }
+        // Drawn anew: back where it was, or straight to the end (a glide would come from the top)
+        if (savedScrollTop !== null) scroll?.to(savedScrollTop);
+        else if (settings.autoScroll) scroll?.toEnd();
     }
 
     // ============================================================
@@ -9239,10 +9146,7 @@
                 if (!list || !toolbar[0].isConnected) return;
                 const visibleBottom = Math.min(list.getBoundingClientRect().bottom, viewport.offsetTop + viewport.height);
                 const overflow = toolbar[0].getBoundingClientRect().bottom + 8 - visibleBottom;
-                const behavior = list.style.scrollBehavior;
-                list.style.scrollBehavior = 'auto';
-                list.scrollTop += Math.max(0, overflow);
-                list.style.scrollBehavior = behavior;
+                if (overflow > 0) listScroll()?.by(overflow);
                 const current = sel.rangeCount ? sel.getRangeAt(0) : null;
                 if (current && textEl[0].contains(current.startContainer)) {
                     sel.removeAllRanges();

@@ -22,6 +22,7 @@
 <script src="../../social/x/theme.js"></script>
 <script src="../../lib/stickers.js"></script>
 <script src="../../lib/chat-view-model.js"></script>
+<script src="../../lib/chat-scroll.js"></script>
 <script src="../../lib/music-lookup.js"></script>
 <script src="../../platforms/echotext/platform.js"></script>
 <script src="../../platforms/wechat/platform.js"></script>
@@ -1155,7 +1156,8 @@
         document.documentElement.style.transform = 'translateZ(0)';
         for (let i = 0; i < 8; i++) chat().push({ is_user: true, mes: `line ${i}`, send_date: Date.now() + i });
         r.renderMessages(chat());
-        await sleep(300);
+        // (once the new bubbles have risen in: the fill follows them when their animation ends)
+        await sleep(500);
         const list = document.getElementById('et-messages');
         const mine = [...panel.querySelectorAll('.ig-row-me .ig-bubble')].slice(-2);
         const fillY = el => el.style.getPropertyValue('--et-fill-y');
@@ -2723,7 +2725,8 @@
             const gapBefore = gap();
             r.handleDotsAction('select', 39, false, jQuery('<b>'), 0);
             panel.querySelector('.et-select-bar [data-select="delete"]').click();
-            await sleep(100);
+            // What's deleted folds away first, then the list is drawn without it
+            await sleep(450);
             res[`${id}Long`] = { entered, noReflow, noSpill: spills.length === 0, slideOver, left, deletedNoGap: chat().length === 39 && Math.abs(gap() - gapBefore) < 2 };
             res[`${id}Long`].ok = Object.values(res[`${id}Long`]).every(Boolean);
         }
@@ -2733,6 +2736,131 @@
         s.defaultPlatform = platformBefore;
         seed();
         res.ok = ['echotext', 'wechat', 'instagram'].every(id => res[id].ok && res[`${id}Long`].ok);
+        return res;
+    };
+
+    // The list keeping its place (lib/chat-scroll.js), measured as each frame is painted:
+    // deleting the last messages at the end, what's above slides down in steps and the list
+    // ends at the end; the panel's height animating (the keyboard) and the sticker panel
+    // coming up then closing on a tap on the chat, the message above the input bar moving
+    // with the bar, at the end and scrolled up
+    window.runFollowTest = async function () {
+        const res = {};
+        const s = env.settings;
+        const platformBefore = s.defaultPlatform;
+        const realST = window.SillyTavern;
+        window.SillyTavern = { ...realST, getContext: () => ({ ...(realST?.getContext?.() || {}), POPUP_TYPE: { CONFIRM: 1 }, callGenericPopup: async () => 1 }) };
+        const panel = document.getElementById('et-panel');
+        for (const id of ['echotext', 'wechat', 'instagram']) {
+            s.defaultPlatform = id;
+            const long = Array.from({ length: 40 }, (_, i) => ({ is_user: i % 2 === 0, mes: i % 3 ? `line ${i} with some longer words that wrap across the width of a bubble` : `short ${i}`, send_date: Date.now() - (40 - i) * 60000 }));
+            s.chatHistory['mira.png'] = long;
+            r.renderMessages(long);
+            await sleep(400);
+            const list = document.getElementById('et-messages');
+            const inner = document.getElementById('et-messages-inner');
+            const bar = panel.querySelector('[data-et-role~="input-bar"]');
+            const msg = i => panel.querySelector(`[data-et-role~="message"][data-index="${i}"]`);
+            const lastGap = () => Math.round(bar.getBoundingClientRect().top - [...panel.querySelectorAll('[data-et-role~="message"]')].pop().getBoundingClientRect().bottom);
+            // probe() after every layout that resized something (the list's own correction first);
+            // `everyFrame` on every frame too, for what moves without resizing (a frame's callback
+            // comes before layout, so only where nothing resizes does it see what's painted)
+            const record = async (act, probe, ms, everyFrame = false) => {
+                const frames = [probe()];
+                const sizes = new ResizeObserver(() => frames.push(probe()));
+                sizes.observe(list);
+                sizes.observe(inner);
+                sizes.observe(bar);
+                let on = everyFrame;
+                const tick = () => { if (!on) return; frames.push(probe()); requestAnimationFrame(tick); };
+                requestAnimationFrame(tick);
+                await act();
+                await sleep(ms);
+                on = false;
+                sizes.disconnect();
+                frames.push(probe());
+                return frames;
+            };
+            const spread = f => Math.max(...f) - Math.min(...f);
+            const out = {};
+
+            list.scrollTop = list.scrollHeight;
+            await sleep(200);
+            const gapBefore = lastGap();
+            const removed = Math.round(msg(39).getBoundingClientRect().bottom - msg(37).getBoundingClientRect().bottom);
+            const kept = msg(37);
+            const f1 = await record(async () => {
+                r.handleDotsAction('select', 38, false, jQuery('<b>'), 0);
+                panel.querySelector('.et-select-mark[data-key^="39:"]').click();
+                panel.querySelector('.et-select-bar [data-select="delete"]').click();
+            }, () => Math.round((kept.isConnected ? kept : msg(37)).getBoundingClientRect().top), 700, true);
+            const steps = f1.slice(1).map((v, i) => Math.abs(v - f1[i]));
+            const moved = f1.at(-1) - f1[0];
+            // Down by about what went (less what the redraw adds under it: the last reply's swipe row), in steps
+            out.deleteAtEnd = { removed, moved, maxStep: Math.max(...steps), gapBefore, gapAfter: lastGap(), left: s.chatHistory['mira.png'].length };
+            out.deleteAtEnd.ok = out.deleteAtEnd.left === 38 && moved > removed / 2 && moved <= removed + 1
+                && out.deleteAtEnd.maxStep <= moved / 3 && Math.abs(out.deleteAtEnd.gapAfter - gapBefore) <= 1;
+            if (!out.deleteAtEnd.ok) out.deleteAtEnd.frames = f1.join(' ');
+
+            // Scrolled up, a message in view deleted: what's above stays, what's below comes up in steps
+            list.scrollTop = list.scrollHeight - list.clientHeight - 400;
+            await sleep(200);
+            const box = list.getBoundingClientRect();
+            const inView = [...panel.querySelectorAll('[data-et-role~="message"]')].filter(m => m.getBoundingClientRect().top > box.top + 60 && m.getBoundingClientRect().bottom < box.bottom - 60);
+            const target = Number(inView[1].dataset.index);
+            const above = msg(target - 1).getBoundingClientRect().top;
+            const below = () => Math.round(msg(target).getBoundingClientRect().top);   // the one after, renumbered
+            const height = Math.round(msg(target + 1).getBoundingClientRect().top - msg(target).getBoundingClientRect().top);
+            const count = s.chatHistory['mira.png'].length;
+            const f2 = await record(async () => {
+                r.handleDotsAction('select', target, false, jQuery('<b>'), 0);
+                panel.querySelector('.et-select-bar [data-select="delete"]').click();
+            }, () => (s.chatHistory['mira.png'].length < count ? below() : null), 700, true);
+            const f2s = f2.filter(v => v !== null);
+            const steps2 = f2s.slice(1).map((v, i) => Math.abs(v - f2s[i]));
+            // It starts where it was (right under the one deleted) and comes up by its height
+            out.deleteInView = { height, aboveStays: Math.abs(msg(target - 1).getBoundingClientRect().top - above) < 1, moved: f2s.at(-1) - f2s[0], maxStep: Math.max(...steps2) };
+            out.deleteInView.ok = out.deleteInView.aboveStays && Math.abs(out.deleteInView.moved + height) <= 2 && out.deleteInView.maxStep <= height / 2;
+            if (!out.deleteInView.ok) out.deleteInView.frames = f2.join(' ');
+
+            const H = panel.offsetHeight;
+            const resize = (from, to) => new Promise((done) => {
+                const t0 = performance.now();
+                const step = (now) => {
+                    const k = Math.min(1, (now - t0) / 250);
+                    panel.style.setProperty('height', `${from + (to - from) * k}px`, 'important');
+                    if (k < 1) requestAnimationFrame(step); else done();
+                };
+                requestAnimationFrame(step);
+            });
+            for (const up of [0, 300]) {
+                list.scrollTop = list.scrollHeight - list.clientHeight - up;
+                await sleep(200);
+                const ref = [...panel.querySelectorAll('[data-et-role~="message"]')].filter(m => m.getBoundingClientRect().bottom < bar.getBoundingClientRect().top).pop();
+                const gap = () => Math.round(bar.getBoundingClientRect().top - ref.getBoundingClientRect().bottom);
+                const f = await record(async () => { await resize(H, H - 300); await sleep(100); await resize(H - 300, H); }, gap, 150);
+                panel.style.removeProperty('height');
+                out[`keyboard${up}`] = { spread: spread(f), frames: f.length, ok: spread(f) <= 1 && f.length > 10 };
+            }
+
+            for (const up of [0, 300]) {
+                list.scrollTop = list.scrollHeight - list.clientHeight - up;
+                await sleep(200);
+                const ref = [...panel.querySelectorAll('[data-et-role~="message"]')].filter(m => m.getBoundingClientRect().bottom < bar.getBoundingClientRect().top).pop();
+                const gap = () => Math.round(bar.getBoundingClientRect().top - ref.getBoundingClientRect().bottom);
+                const f = await record(async () => {
+                    r.toggleBottomPanel('stickers');
+                    await sleep(450);
+                    r.closeAttachPanel();   // what a tap on the chat calls
+                }, gap, 500);
+                out[`stickers${up}`] = { spread: spread(f), frames: f.length, ok: spread(f) <= 1 && f.length > 10 };
+            }
+            out.ok = Object.values(out).every(v => v.ok);
+            res[id] = out;
+        }
+        window.SillyTavern = realST;
+        s.defaultPlatform = platformBefore;
+        res.ok = ['echotext', 'wechat', 'instagram'].every(id => res[id].ok);
         return res;
     };
 
@@ -3960,7 +4088,8 @@
         const stickerTest = await window.runStickerTest();
         const holdTest = await window.runHoldTest();
         const selectTest = await window.runSelectTest();
-        fetch('/__log', { method: 'POST', body: JSON.stringify({ runChatMemoryTest: chatMemory, runControlsTest: controls, runTogetherTest: together, runStoryPauseTest: storyPause, runTargetTest: target, runTypingTest: typingTest, runStickerTest: stickerTest, runHoldTest: holdTest, runSelectTest: selectTest, runReplyLengthTest: replyLength, runLifeReportTest: lifeReport, runUnseenTest: unseen, runCatchUpTest: catchUp, runPlanTest: plan, runLifeMemoryTest: lifeMemory, runRenameTest: rename, runEmotionTest: result, runAutoTest: auto, runReplyTest: reply, runTapbackTest: tapback, runMemoryTest: memory, runSummaryTest: summary, runInstagramTest: instagram, runScheduleTest: schedule, runLifeTest: life }) }).catch(() => {});
+        const followTest = await window.runFollowTest();
+        fetch('/__log', { method: 'POST', body: JSON.stringify({ runChatMemoryTest: chatMemory, runControlsTest: controls, runTogetherTest: together, runStoryPauseTest: storyPause, runTargetTest: target, runTypingTest: typingTest, runStickerTest: stickerTest, runHoldTest: holdTest, runSelectTest: selectTest, runFollowTest: followTest, runReplyLengthTest: replyLength, runLifeReportTest: lifeReport, runUnseenTest: unseen, runCatchUpTest: catchUp, runPlanTest: plan, runLifeMemoryTest: lifeMemory, runRenameTest: rename, runEmotionTest: result, runAutoTest: auto, runReplyTest: reply, runTapbackTest: tapback, runMemoryTest: memory, runSummaryTest: summary, runInstagramTest: instagram, runScheduleTest: schedule, runLifeTest: life }) }).catch(() => {});
     } else if (params.has('memory')) {
         // Two memories, one pinned, the other in the last prompt; Add Memory open on a bubble
         env.settings.characterMemories = { 'mira.png': [
