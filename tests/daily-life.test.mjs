@@ -806,7 +806,7 @@ test('what happened says when: its own time, or the reply\'s, and the day goes b
     assert.deepEqual(Life.currentLife(state, at(31, 20), history).log.map(e => e.text), ['手写的', '12:00 午饭', '14:00–17:30 With Qi', '18:00 晚饭']);
     // What a chat already has stays as it was
     assert.deepEqual(Life.currentLife({ startAt: 0, start: { errands: [], log: [], today: null } }, at(31, 20), [report(at(31, 16).getTime(), [{ op: 'happened', date: '2026-10-31', text: '旧的' }])]).log.map(e => e.text), ['旧的']);
-    assert.match(Life.lifeRules({ charName: 'Mira', userName: 'Qi' }), /- happened <what> \(HH:MM\): something out of the ordinary that happened to Mira .*; at most one per reply; leave the time out if it just happened\./);
+    assert.match(Life.lifeRules({ charName: 'Mira', userName: 'Qi' }), /- happened WHAT \(HH:MM\): something out of the ordinary that happened to Mira .*; at most one per reply; leave the time out if it just happened\./);
 });
 
 test('what counts as something that happened, and a reply keeps one', () => {
@@ -815,12 +815,12 @@ test('what counts as something that happened, and a reply keeps one', () => {
     assert.match(rules, /a change in Mira's circumstances or relationships, an unexpected development, or something Mira would still bring up days later/);
     assert.match(rules, /What <schedule> already has Mira doing, time passing and Qi not replying are not events; a change to Mira's plans goes under today or an errand/);
     // Errands: beyond the schedule, never a reply; updated only when something changed
-    assert.match(rules, /- new <errand> \(due <YYYY-MM-DD HH:MM>\): something Mira has to get done or is waiting on by a time, beyond the usual schedule in <schedule> — a task, an appointment, an outcome; never a reply from Qi\n/);
-    assert.match(rules, /- update <errand>: <how it stands now>, only when that has changed\n/);
+    assert.match(rules, /- new ERRAND \(due YYYY-MM-DD HH:MM\): something Mira has to get done or is waiting on by a time, beyond the usual schedule in <schedule> — a task, an appointment, an outcome; never a reply from Qi\n/);
+    assert.match(rules, /- update ERRAND: HOW IT STANDS NOW, only when that has changed\n/);
     // Ending: on its own at the due time; done only before it
-    assert.match(rules, /- done <errand>: only when it's over before its due time; at its due time an errand ends on its own and goes into what happened as completed\n/);
+    assert.match(rules, /- done ERRAND: only when it's over before its due time; at its due time an errand ends on its own and goes into what happened as completed\n/);
     // Today's change: only a real change from the schedule, never the schedule again
-    assert.match(rules, /- today <change>: only when Mira's plans for today really change from what <schedule> has \(something cancelled, moved or added\); never restate the schedule\n/);
+    assert.match(rules, /- today CHANGE: only when Mira's plans for today really change from what <schedule> has \(something cancelled, moved or added\); never restate the schedule\n/);
     // Past one, the rest left out, the first kept; the other changes all kept
     const two = Life.parseLifeTag('嗯\n<life>happened 被领导骂了; happened 倒了杯咖啡; update 周六搬家: 打包完了</life>', SAT, { maxHappened: 1 }).life;
     assert.deepEqual(two.map(c => [c.op, c.text || c.name]), [['happened', '被领导骂了'], ['update', '周六搬家']]);
@@ -830,7 +830,7 @@ test('what counts as something that happened, and a reply keeps one', () => {
     assert.doesNotMatch(none, /<schedule>/);
     assert.match(none, /beyond what Mira does every day — /);
     assert.match(none, /What Mira does every day, time passing and Qi not replying are not events/);
-    assert.match(none, /- today <change>: only when Mira's plans for today really change from what Mira usually does .*; never restate Mira's usual day\n/);
+    assert.match(none, /- today CHANGE: only when Mira's plans for today really change from what Mira usually does .*; never restate Mira's usual day\n/);
 });
 
 test('today\'s change can go when what it was for is over, reports of it too', () => {
@@ -874,7 +874,9 @@ test('format words and days a model leaves in: out of the errand\'s name, and th
 
 test('every reply ends with a <life> line, none when nothing changed; a report written back reads the same', () => {
     const rules = Life.lifeRules({ charName: 'Mira', userName: 'Qi' });
-    assert.match(rules, /^LIFE: Keep track of what is going on in Mira's life\. Every reply ends with a <life> line, after the <mood> line if there is one: <life>…<\/life> with the changes separated by semicolons, or <life>none<\/life> when nothing changed, as in most replies:/);
+    assert.match(rules, /^LIFE: Keep track of what is going on in Mira's life\. Every reply ends with a <life> line, after the <mood> line if there is one: <life>…<\/life> with the changes separated by semicolons, or <life>none<\/life> when nothing changed, as in most replies\. A change is one of these, the words in capitals filled in:/);
+    // No placeholder in angle brackets, which models take for tags
+    assert.doesNotMatch(rules.replace(/<\/?(life|mood|schedule|daily_life)>/g, ''), /<[a-z]/);
     assert.doesNotMatch(rules, /leave the line out/);
     assert.deepEqual(Life.parseLifeTag('嗯\n<life>none</life>', SAT), { text: '嗯', life: null });
     // As the latest replies are sent: the report they ended with
@@ -884,4 +886,14 @@ test('every reply ends with a <life> line, none when nothing changed; a report w
     assert.equal(line, 'new 买咖啡 (due 2026-11-02 18:00); update 周六搬家: 打包完了; done 体检; happened 吃了火锅 (2026-10-31 14:30); today 今晚加班');
     assert.deepEqual(Life.parseLifeTag(`x\n<life>${line}</life>`, SAT).life, report);
     assert.equal(Life.serializeLife(null), '');
+});
+
+test('placeholders a model took for tags: the tags go, the due inside is read', () => {
+    const [change] = Life.parseLifeTag('x\n<life>new <errand>study session with Jocelyn in study room 3 (due 2026-11-13 14:00)</errand></life>', SAT).life;
+    assert.deepEqual(change, { op: 'new', text: 'study session with Jocelyn in study room 3', due: '2026-11-13 14:00' });
+    assert.deepEqual(Life.parseLifeTag('x\n<life>update <errand>搬家</errand>: <how it stands now>打包完了</how it stands now></life>', SAT).life,
+        [{ op: 'update', name: '搬家', progress: '打包完了' }]);
+    // Kept so before (the due fell back to a week out): read again, the name clean and the due the one in it
+    const [kept] = Life.normalizeLife({ start: { errands: [{ text: 'study session with Jocelyn in study room 3 (due 2026-11-13 14:00)</errand>', due: '2026-11-18 21:00' }] } }).start.errands;
+    assert.deepEqual([kept.text, kept.due], ['study session with Jocelyn in study room 3', '2026-11-13 14:00']);
 });

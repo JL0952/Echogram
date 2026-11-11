@@ -35,8 +35,8 @@ test('what the model is told', () => {
     assert.match(text, /Only the last 3 days are told in detail: 3 more days went by before them\./);
     assert.match(text, /- 周六搬家 \(打包了一半\); due 2026-10-31 21:00/);
     // Errands end on their own at their due time; done only before it
-    assert.match(text, /happened <what> \(YYYY-MM-DD HH:MM\); update <errand>: <how it stands now>; done <errand>\. An errand ends on its own at its due time \(the ones that ended meanwhile are in What happened lately as completed\): done only for one that was over before it\./);
-    assert.doesNotMatch(text, /new <errand>/);
+    assert.match(text, /happened WHAT \(YYYY-MM-DD HH:MM\); update ERRAND: HOW IT STANDS NOW; done ERRAND \(the words in capitals filled in\)\. An errand ends on its own at its due time \(the ones that ended meanwhile are in What happened lately as completed\): done only for one that was over before it\./);
+    assert.doesNotMatch(text, /new ERRAND/);
     assert.match(text, /Sum up the days before in one happened entry/);
     // The same bar as a reply's: out of the ordinary; the schedule, time passing and no reply aren't events
     assert.match(text, /A handful of entries, the ones that matter: what happened is something out of the ordinary that happened to Mira — .*\. What <schedule> already has Mira doing, time passing and Qi not replying are not events\./);
@@ -46,7 +46,7 @@ test('what the model is told', () => {
     assert.doesNotMatch(text, /at="/);
     // No guidance given: none said
     assert.doesNotMatch(C.buildInstruction({ userName: 'Qi', from: NOW - DAY, now: NOW, texts: [texts[1]] }), /one after another/);
-    assert.match(C.buildInstruction({ from: NOW - DAY, now: NOW, settle: true, madeUp: true }), /; new <errand> \(due YYYY-MM-DD HH:MM\) for something that comes up/);
+    assert.match(C.buildInstruction({ from: NOW - DAY, now: NOW, settle: true, madeUp: true }), /; new ERRAND \(due YYYY-MM-DD HH:MM\) for something that comes up/);
     // Only texts (no Daily Life)
     const only = C.buildInstruction({ charName: 'Mira', userName: 'Qi', from: NOW - DAY, now: NOW, texts: [{ n: 1, at: at(31, 12), note: 'x' }] });
     assert.doesNotMatch(only, /<life>|schedule/);
