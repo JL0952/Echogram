@@ -6708,35 +6708,25 @@
     const LIFE_KEPT_MAX = 300;
 
     /**
-     * Keeps what a chat's life has let go of as Life memories (12e): an errand a
-     * reply marked done, once you've texted after it (a swipe can take it back till then;
-     * `settledBefore` moves that), and what happened once it's older than the week the life
-     * keeps, a memory a week, added to as more of that week goes. Each only once
+     * Keeps what a chat's life has let go of as Life memories (12e): what happened (errands
+     * that ended among it) once it's older than the week the life keeps, a memory a week,
+     * added to as more of that week goes. Each only once
      * (marked with the chat's memories), even when you delete the memory. A catch-up's
      * `changes` are kept as it settles them. Without `key`, the open chat's while Daily
      * Life applies to it; with one (its life being written), whatever is open.
      */
-    function keepLifeMemories({ key = null, settledBefore = null, changes = null } = {}) {
+    function keepLifeMemories({ key = null, changes = null } = {}) {
         if (settings.dailyLifeEnabled !== true || !memorySystem) return;
         if (!key) {
             if (!dailyLifeActive()) return;
             key = getCharacterKey();
         }
-        const history = getEmotionHistory(key);
-        const lastUser = [...history].reverse().find(m => m?.is_user);
-        const before = settledBefore ?? (lastUser ? Number(lastUser.send_date) || Date.parse(lastUser.send_date) || 0 : 0);
-        const { done, expired } = DailyLife.lettingGo(settings.lifeState?.[key], history, new Date(), { settledBefore: before, changes });
-        if (!done.length && !expired.length) return;
+        const { expired } = DailyLife.lettingGo(settings.lifeState?.[key], getEmotionHistory(key), new Date(), { changes });
+        if (!expired.length) return;
         const store = memorySystem.getChatStore(key);
         const { kept } = store;
         const name = getCharacterByKey(key)?.name || 'Character';
         let changed = false;
-        for (const errand of done) {
-            if (kept[`errand:${errand.id}`]) continue;
-            kept[`errand:${errand.id}`] = 1;
-            changed = true;
-            addLifeMemory(key, DailyLife.errandMemory(errand, name));
-        }
         const weeks = new Map();
         for (const entry of expired) {
             if (kept[`entry:${entry.id}`]) continue;
@@ -6772,7 +6762,7 @@
      * is kept as memories first.
      */
     function writeLife(key, { changes = null, edit = null } = {}) {
-        keepLifeMemories({ key, settledBefore: Infinity, changes });
+        keepLifeMemories({ key, changes });
         settings.lifeState[key] = DailyLife.rewriteLife(settings.lifeState[key], getEmotionHistory(key), new Date(), { changes, edit });
         saveSettings();
     }

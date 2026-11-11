@@ -108,9 +108,9 @@ test('just got free, but you two texted around then: not news, and the insights 
 });
 
 test('an errand due by tomorrow, and today\'s news', () => {
-    const life = { errands: [{ text: '交论文', progress: '还差结论', due: '2026-10-27' }, { text: '搬家', due: '2026-11-07' }], log: [{ date: '2026-10-26', text: '早上摔了一跤' }], today: null };
+    const life = { errands: [{ text: '交论文', progress: '还差结论', due: '2026-10-27 09:00' }, { text: '搬家', due: '2026-11-07 21:00' }], log: [{ date: '2026-10-26', text: '早上摔了一跤' }], today: null };
     const c = candidates({ day: day({ life }) });
-    assert.match(c.find(x => x.type === 'errand').prompt, /^On Mira's mind: 交论文 \(还差结论\), due tomorrow\. Tell Qi about it, the way Mira would\.$/);
+    assert.match(c.find(x => x.type === 'errand').prompt, /^On Mira's mind: 交论文 \(还差结论\), due tomorrow 09:00\. Tell Qi about it, the way Mira would\.$/);
     assert.match(c.find(x => x.type === 'life_event').prompt, /^Something from Mira's day: 早上摔了一跤\./);
     // Nothing due soon, nothing today: neither
     const quiet = types(candidates({ day: day({ life: { errands: [{ text: '搬家', due: '2026-11-07' }], log: [], today: null } }) }));

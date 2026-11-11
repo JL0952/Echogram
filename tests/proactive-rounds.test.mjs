@@ -102,26 +102,27 @@ test('texted around when a stretch ended: from half an hour before it on', () =>
 });
 
 test('topics from the character\'s own day', () => {
-    const say = (d, today) => (d === today ? 'today' : d === '2026-11-01' ? 'tomorrow' : d);
+    const say = (due, today) => `${due.slice(0, 10) === today ? 'today' : due.slice(0, 10) === '2026-11-01' ? 'tomorrow' : due.slice(0, 10)} ${due.slice(11)}`;
     const day = {
         justFree: true, prevDoing: '上班', block: { doing: '回家路上', place: '地铁' }, today: '2026-10-31',
         life: {
-            errands: [{ text: '交论文', progress: '', due: '2026-11-05' }, { text: '周日搬家', progress: '打包了一半', due: '2026-11-01' }],
+            errands: [{ text: '交论文', progress: '', due: '2026-11-05 21:00' }, { text: '周日搬家', progress: '打包了一半', due: '2026-11-01 23:00' }],
             log: [{ date: '2026-10-30', text: '昨天的事' }, { date: '2026-10-31', text: '中午和小雨和好了' }], today: null,
         },
     };
-    assert.deepEqual(R.lifeTopics({ day, sayDay: say }), [
+    assert.deepEqual(R.lifeTopics({ day, sayDue: say }), [
         { type: 'block_change', weight: 70, detail: '上班 is over; now: 回家路上' },
-        { type: 'errand', weight: 65, detail: '周日搬家 (打包了一半), due tomorrow' },
+        // Due by the end of tomorrow, whatever the time
+        { type: 'errand', weight: 65, detail: '周日搬家 (打包了一半), due tomorrow 23:00' },
         { type: 'life_event', weight: 55, detail: '中午和小雨和好了' },
     ]);
     // Not just free, nothing due by tomorrow, today's change of plans first
-    const quiet = { ...day, justFree: false, life: { errands: [{ text: 'x', due: '2026-11-05' }], log: [], today: { date: '2026-10-31', text: '今晚和你吃饭' } } };
-    assert.deepEqual(R.lifeTopics({ day: quiet, sayDay: say }), [{ type: 'life_event', weight: 55, detail: "today's change of plans: 今晚和你吃饭" }]);
+    const quiet = { ...day, justFree: false, life: { errands: [{ text: 'x', due: '2026-11-02 08:00' }], log: [], today: { date: '2026-10-31', text: '今晚和你吃饭' } } };
+    assert.deepEqual(R.lifeTopics({ day: quiet, sayDue: say }), [{ type: 'life_event', weight: 55, detail: "today's change of plans: 今晚和你吃饭" }]);
     assert.deepEqual(R.lifeTopics({ day: null }), []);
-    // Overdue still counts
-    const late = { ...quiet, life: { errands: [{ text: '交房租', due: '2026-10-29' }], log: [], today: null } };
-    assert.equal(R.lifeTopics({ day: late, sayDay: say })[0].detail, '交房租, was due 2026-10-29');
+    // Later today
+    const soon = { ...quiet, life: { errands: [{ text: '交房租', due: '2026-10-31 22:00' }], log: [], today: null } };
+    assert.equal(R.lifeTopics({ day: soon, sayDue: say })[0].detail, '交房租, due today 22:00');
 });
 
 test('what the model is told for a topic', () => {

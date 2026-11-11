@@ -292,8 +292,7 @@ test('where the character is in their life, for the prompt', () => {
         'Mira is busy and can only glance at the phone now and then: replies are short or late, and Mira may say so.',
         'Today, unlike usual (this wins over the schedule): 今晚和你吃饭，不去健身.',
         "On Mira's mind lately:",
-        '- 周六搬家 (打包了一半; due Saturday; 嫌麻烦)',
-        '- 期中考试 (was due Oct 20)',
+        '- 周六搬家 (打包了一半; due Saturday 21:00; 嫌麻烦)',
         'What happened lately, oldest first:',
         '- last Monday: 加班到十点',
         '- yesterday: 中午和小雨和好了',
@@ -323,7 +322,7 @@ test('the <life> line: standard', () => {
     const { text, life } = Life.parseLifeTag('刚到家\n累死\n<life>new 下周三考试 (due 下周三); update 周六搬家: 打包完了; done 和小雨冷战; happened 中午和小雨和好了; today 今晚和你吃饭，不去健身</life>', SAT);
     assert.equal(text, '刚到家\n累死');
     assert.deepEqual(life, [
-        { op: 'new', text: '下周三考试', due: '2026-11-04', feeling: '' },
+        { op: 'new', text: '下周三考试', due: '2026-11-04 21:00', feeling: '' },
         { op: 'update', name: '周六搬家', progress: '打包完了' },
         { op: 'done', name: '和小雨冷战' },
         { op: 'happened', text: '中午和小雨和好了', date: '2026-10-31', time: '15:00' },
@@ -335,21 +334,31 @@ test('the <life> line: looser', () => {
     const loose = Life.parseLifeTag('ok <life>\n- 新增：体检（截止 11月9日，有点怕）\n- 更新 搬家 → 找好车了\n- 完成：论文\n- 发生了：被老板夸了（昨天）', SAT);
     assert.equal(loose.text, 'ok');
     assert.deepEqual(loose.life, [
-        { op: 'new', text: '体检', due: '2026-11-09', feeling: '有点怕' },
+        { op: 'new', text: '体检', due: '2026-11-09 21:00', feeling: '有点怕' },
         { op: 'update', name: '搬家', progress: '找好车了' },
         { op: 'done', name: '论文' },
         { op: 'happened', text: '被老板夸了', date: '2026-10-30' },
     ]);
     // Another tag name; "due" outside brackets; no day: a week out; nonsense dropped
     assert.deepEqual(Life.parseLifeTag('hi\n<Life_Update>new buy a gift by friday; new call mom; nonsense here; update nothing</Life_Update>', SAT).life, [
-        { op: 'new', text: 'buy a gift', due: '2026-11-06', feeling: '' },
-        { op: 'new', text: 'call mom', due: '2026-11-07', feeling: '' },
+        { op: 'new', text: 'buy a gift', due: '2026-11-06 21:00', feeling: '' },
+        { op: 'new', text: 'call mom', due: '2026-11-07 21:00', feeling: '' },
     ]);
     // A semicolon inside the brackets stays with its errand
     assert.deepEqual(Life.parseLifeTag('x\n<life>new 周六搬家 (due 2026-11-03; 嫌麻烦); happened 和好了</life>', SAT).life, [
-        { op: 'new', text: '周六搬家', due: '2026-11-03', feeling: '嫌麻烦' },
+        { op: 'new', text: '周六搬家', due: '2026-11-03 21:00', feeling: '嫌麻烦' },
         { op: 'happened', text: '和好了', date: '2026-10-31', time: '15:00' },
     ]);
+    // With a time: the day's, a time alone the next time it comes (15:00 now)
+    const due = text => Life.parseLifeTag(`x\n<life>new 买咖啡 (due ${text})</life>`, SAT).life[0].due;
+    assert.equal(due('2026-11-02 18:00'), '2026-11-02 18:00');
+    assert.equal(due('tomorrow 6:30pm'), '2026-11-01 18:30');
+    assert.equal(due('Friday at 9am'), '2026-11-06 09:00');
+    assert.equal(due('明天下午3点半'), '2026-11-01 15:30');
+    assert.equal(due('周一 18点'), '2026-11-02 18:00');
+    assert.equal(due('18:00'), '2026-10-31 18:00');
+    assert.equal(due('14:00'), '2026-11-01 14:00');
+    assert.equal(due('25:00'), '2026-11-07 21:00');
     assert.deepEqual(Life.parseLifeTag('fine\n<life>today none</life>', SAT), { text: 'fine', life: [{ op: 'today', date: '2026-10-31', text: '' }] });
     // Only junk inside: the line still goes, nothing reported
     assert.deepEqual(Life.parseLifeTag('a\n<life>whatever</life>', SAT), { text: 'a', life: null });
@@ -358,20 +367,20 @@ test('the <life> line: looser', () => {
 
 test('reports replayed onto the life', () => {
     const t = (day, h) => new Date(2026, 9, day, h).getTime();
-    const state = { startAt: t(30, 9), start: { errands: [{ id: 'e1', text: '周六搬家', due: '2026-10-31', progress: '打包了一半', from: 'you' }], log: [], today: null } };
+    const state = { startAt: t(30, 9), start: { errands: [{ id: 'e1', text: '周六搬家', due: '2026-10-31 18:00', progress: '打包了一半', from: 'you' }], log: [], today: null } };
     const reply = (time, life) => ({ is_user: false, mes: 'x', send_date: time, life });
     const history = [
         reply(t(29, 20), [{ op: 'done', name: '周六搬家' }]),   // before the start: no longer counts
         { is_user: true, mes: 'hi', send_date: t(30, 10) },
-        reply(t(30, 11), [{ op: 'update', name: '搬家', progress: '打包完了' }, { op: 'new', text: '下周三考试', due: '2026-11-04', feeling: '' }]),
+        reply(t(30, 11), [{ op: 'update', name: '搬家', progress: '打包完了' }, { op: 'new', text: '下周三考试', due: '2026-11-04 09:00', feeling: '' }]),
         reply(t(31, 12), [{ op: 'happened', text: '和小雨和好了', date: '2026-10-31' }, { op: 'today', date: '2026-10-31', text: '和你吃饭' },
             { op: 'new', text: '考试', due: '2026-11-05', feeling: '紧张' }]),
     ];
     const life = Life.currentLife(state, SAT, history);
     assert.deepEqual(life.errands.map(e => [e.text, e.progress, e.due, e.feeling, e.from]), [
-        ['周六搬家', '打包完了', '2026-10-31', '', 'you'],
-        // "考试" named the same errand: its day and feeling change, no second one
-        ['下周三考试', '', '2026-11-05', '紧张', 'model'],
+        ['周六搬家', '打包完了', '2026-10-31 18:00', '', 'you'],
+        // "考试" named the same errand: its due and feeling change, no second one; a day alone is due at 21:00
+        ['下周三考试', '', '2026-11-05 21:00', '紧张', 'model'],
     ]);
     assert.deepEqual(life.log.map(e => e.text), ['和小雨和好了']);
     assert.equal(life.today.text, '和你吃饭');
@@ -381,14 +390,40 @@ test('reports replayed onto the life', () => {
     assert.deepEqual(Life.lastLifeChange(state, history), [life.log[0].id, 'today', life.errands[1].id]);
     // A reply deleted (or another swipe without the report): its changes go
     assert.deepEqual(Life.currentLife(state, SAT, history.slice(0, 3)).errands.map(e => e.feeling), ['', '']);
-    // done; no room past three
+
+    // Its due time come: it ends on its own, into what happened as completed, with how it stood
+    const evening = new Date(2026, 9, 31, 18, 30);
+    const ended = Life.currentLife(state, evening, history);
+    assert.deepEqual(ended.errands.map(e => e.text), ['下周三考试']);
+    assert.deepEqual(ended.log.map(e => [e.date, e.text]), [['2026-10-31', '和小雨和好了'], ['2026-10-31', '18:00 completed: 周六搬家 (打包完了)']]);
+    // A minute before: still on his mind
+    assert.equal(Life.currentLife(state, new Date(2026, 9, 31, 17, 59), history).errands.length, 2);
+    // Ended before a later report: it no longer takes updates, and the room is free
+    const late = [...history, reply(t(31, 20), [{ op: 'update', name: '搬家', progress: '累死' }, { op: 'new', text: 'a', due: '2026-11-01' }, { op: 'new', text: 'b', due: '2026-11-01' }])];
+    const after = Life.currentLife(state, new Date(2026, 9, 31, 21), late);
+    assert.deepEqual(after.errands.map(e => e.text), ['下周三考试', 'a', 'b']);
+    assert.match(after.log.at(-1).text, /打包完了\)$/);
+
+    // done: over before its due time, completed then; no room past three
     const more = [...history, reply(t(31, 13), [{ op: 'done', name: '搬家' }, { op: 'new', text: 'a', due: '2026-11-01' },
         { op: 'new', text: 'b', due: '2026-11-01' }, { op: 'new', text: 'c', due: '2026-11-01' }])];
-    assert.deepEqual(Life.currentLife(state, SAT, more).errands.map(e => e.text), ['下周三考试', 'a', 'b']);
+    const done = Life.currentLife(state, SAT, more);
+    assert.deepEqual(done.errands.map(e => e.text), ['下周三考试', 'a', 'b']);
+    assert.equal(done.log.at(-1).text, '13:00 completed: 周六搬家 (打包完了)');
+    assert.equal(Life.lastLifeChange(state, more)[0], done.log.at(-1).id);
     // An edit by hand after them: the start, with nothing replayed on top
     assert.equal(Life.currentLife({ ...state, startAt: t(31, 14) }, SAT, more).errands.length, 1);
     // Nothing edited by hand yet: every report counts
     assert.deepEqual(Life.currentLife(null, SAT, history).errands.map(e => e.text), ['下周三考试']);
+});
+
+test('an errand with only a day (kept before dues had a time) is due at 21:00 that day', () => {
+    assert.equal(Life.normalizeLife({ start: { errands: [{ text: 'x', due: '2026-11-01' }] } }).start.errands[0].due, '2026-11-01 21:00');
+    assert.equal(Life.normalizeLife({ start: { errands: [{ text: 'x', due: '2026-11-01T08:15' }] } }).start.errands[0].due, '2026-11-01 08:15');
+    assert.equal(Life.normalizeLife({ start: { errands: [{ text: 'x', due: '2026-11-01 25:00' }] } }).start.errands.length, 0);
+    const state = { startAt: 0, start: { errands: [{ id: 'old', text: '体检', due: '2026-10-31' }], log: [], today: null } };
+    assert.equal(Life.currentLife(state, new Date(2026, 9, 31, 20, 59)).errands.length, 1);
+    assert.equal(Life.currentLife(state, new Date(2026, 9, 31, 21)).log[0].text, '21:00 completed: 体检');
 });
 
 test('finding the errand a report names', () => {
@@ -592,39 +627,27 @@ test('a change of plan by hand in the prompt', () => {
         Life.describeNow({ schedule: s, date: at(27, 2), charName: 'Mira' }));
 });
 
-test('what the life lets go of: errands done before you texted after them, what happened past the week', () => {
+test('what the life lets go of: what happened past the week, errands that ended among it', () => {
     const t = (d, h) => at(d, h).getTime();
     const state = { startAt: 0, start: {
-        errands: [{ id: 'e1', text: '周六搬家', progress: '打包了一半', due: '2026-10-31' }, { id: 'e2', text: '体检', due: '2026-11-02' }],
+        errands: [{ id: 'e1', text: '交报告', due: '2026-10-21 18:00' }, { id: 'e2', text: '体检', due: '2026-11-02 09:00' }],
         log: [{ id: 'l1', date: '2026-10-20', text: '加班到十点' }, { id: 'l2', date: '2026-10-25', text: '和小雨和好了' }, { id: 'l3', date: '2026-10-30', text: '买了新鞋' }],
         today: null,
     } };
-    const history = [
-        { is_user: true, mes: '搬完了吗', send_date: t(31, 18) },
-        { is_user: false, mes: '搬完了！', send_date: t(31, 19), life: [{ op: 'update', name: '搬家', progress: '搬完了' }, { op: 'done', name: '周六搬家' }] },
-        { is_user: false, mes: '体检取消了', send_date: t(31, 21), life: [{ op: 'done', name: '体检' }] },
-    ];
-    // Nov 1: you texted at 20:00, so only the move is settled; Oct 20 and 25 are past the week
-    const user = t(31, 20);
-    const gone = Life.lettingGo(state, history, at(32, 10), { settledBefore: user });
-    assert.deepEqual(gone.done.map(e => [e.id, e.progress, e.date]), [['e1', '搬完了', '2026-10-31']]);
-    assert.deepEqual(gone.expired.map(e => e.id), ['l1', 'l2']);
-    // Everything, as an edit by hand or a catch-up settles it; a catch-up's own report too
-    const all = Life.lettingGo(state, history, at(32, 10), { changes: [{ op: 'happened', date: '2026-10-21', text: '感冒了' }] });
-    assert.deepEqual(all.done.map(e => e.id), ['e1', 'e2']);
-    assert.deepEqual(all.expired.map(e => e.text), ['加班到十点', '感冒了', '和小雨和好了']);
-    assert.deepEqual(Life.lettingGo(null, [], at(32, 10)), { done: [], expired: [] });
-    // A report before the life was edited by hand no longer counts
-    assert.deepEqual(Life.lettingGo({ ...state, startAt: t(31, 22) }, history, at(32, 10)).done, []);
+    const history = [{ is_user: false, mes: '体检取消了', send_date: t(24, 21), life: [{ op: 'done', name: '体检' }] }];
+    // Nov 1: Oct 20, 21, 24 and 25 are past the week; the report ended on its due time, the check-up when he said so
+    const gone = Life.lettingGo(state, history, at(32, 10));
+    assert.deepEqual(gone.expired.map(e => e.text), ['加班到十点', '18:00 completed: 交报告', '21:00 completed: 体检', '和小雨和好了']);
+    // A catch-up's own report too
+    const all = Life.lettingGo(state, history, at(32, 10), { changes: [{ op: 'happened', date: '2026-10-22', text: '感冒了' }] });
+    assert.ok(all.expired.some(e => e.text === '感冒了'));
+    assert.deepEqual(Life.lettingGo(null, [], at(32, 10)), { expired: [] });
 });
 
 test('what the life lets go of, as memories', () => {
     assert.equal(Life.weekOf('2026-11-01'), '2026-10-26');
     assert.equal(Life.weekOf('2026-10-26'), '2026-10-26');
     assert.equal(Life.weekOf('2026-10-25'), '2026-10-19');
-    assert.deepEqual(Life.errandMemory({ text: '周六搬家', progress: '搬完了', date: '2026-10-31' }, 'Mira'),
-        { label: '周六搬家', content: 'Mira\'s errand "周六搬家" came to an end on 2026-10-31: 搬完了.' });
-    assert.equal(Life.errandMemory({ text: '体检', progress: '', date: '2026-10-31' }, 'Mira').content, 'Mira\'s errand "体检" came to an end on 2026-10-31.');
     assert.deepEqual(Life.weekMemory('2026-10-19', [{ date: '2026-10-25', text: '和小雨和好了' }, { date: '2026-10-20', text: '加班到十点' }], 'Mira'),
         { label: 'Week of 2026-10-19', content: 'What happened to Mira the week of 2026-10-19: 加班到十点 (10-20); 和小雨和好了 (10-25).' });
 });
@@ -743,12 +766,12 @@ test('time together keeps its span in Recent through every way the life is writt
 
 test('the day for the roleplay prompt: what the schedule says, no phone, the story first', () => {
     const date = at(26, 11);
-    const life = { errands: [{ id: 'e', text: '搬家', progress: '', due: '2026-10-27', feeling: '' }], log: [{ id: 'l', date: '2026-10-26', text: '吵了一架' }], today: { date: '2026-10-26', text: '请了假' } };
+    const life = { errands: [{ id: 'e', text: '搬家', progress: '', due: '2026-10-27 21:00', feeling: '' }], log: [{ id: 'l', date: '2026-10-26', text: '吵了一架' }], today: { date: '2026-10-26', text: '请了假' } };
     const text = Life.describeToday({ schedule: WEEK_BUSY, life, date, charName: 'Mira', userName: 'Qi' });
     assert.match(text, /^<character_today>\nBackground on Mira's day, from outside the story\. The story comes first/);
     assert.match(text, /Mira's schedule says \(09:00–18:00\): 上班, at 公司\./);
     assert.match(text, /Today, unlike usual: 请了假\./);
-    assert.match(text, /- 搬家 \(due tomorrow\)/);
+    assert.match(text, /- 搬家 \(due tomorrow 21:00\)/);
     assert.match(text, /- today: 吵了一架/);
     assert.doesNotMatch(text, /phone|glance|asleep/);
     // With you: not the block
@@ -792,8 +815,10 @@ test('what counts as something that happened, and a reply keeps one', () => {
     assert.match(rules, /a change in Mira's circumstances or relationships, an unexpected development, or something Mira would still bring up days later/);
     assert.match(rules, /What <schedule> already has Mira doing, time passing and Qi not replying are not events; a change to Mira's plans goes under today or an errand/);
     // Errands: beyond the schedule, never a reply; updated only when something changed
-    assert.match(rules, /- new <errand> \(due <YYYY-MM-DD>\): something Mira has to get done or is waiting on by a day, beyond the usual schedule in <schedule> — a task, an appointment, an outcome; never a reply from Qi\n/);
+    assert.match(rules, /- new <errand> \(due <YYYY-MM-DD HH:MM>\): something Mira has to get done or is waiting on by a time, beyond the usual schedule in <schedule> — a task, an appointment, an outcome; never a reply from Qi\n/);
     assert.match(rules, /- update <errand>: <how it stands now>, only when that has changed\n/);
+    // Ending: on its own at the due time; done only before it
+    assert.match(rules, /- done <errand>: only when it's over before its due time; at its due time an errand ends on its own and goes into what happened as completed\n/);
     // Today's change: only a real change from the schedule, never the schedule again
     assert.match(rules, /- today <change>: only when Mira's plans for today really change from what <schedule> has \(something cancelled, moved or added\); never restate the schedule\n/);
     // Past one, the rest left out, the first kept; the other changes all kept
@@ -818,4 +843,31 @@ test('today\'s change can go when what it was for is over, reports of it too', (
     assert.equal(Life.currentLife(cleared, date, history).today, null);
     // One written after stands
     assert.equal(Life.currentLife(cleared, date, [...history, report(at(31, 19).getTime(), '后来的')]).today.text, '后来的');
+});
+
+test('format words and days a model leaves in: out of the errand\'s name, and the day of what happened', () => {
+    const one = text => Life.parseLifeTag(`x\n<life>${text}</life>`, SAT).life[0];
+    // "new errand (due …): text", with or without the colon
+    assert.deepEqual(one('new errand (due 2026-11-05): 明早把水电账单整理出来'), { op: 'new', text: '明早把水电账单整理出来', due: '2026-11-05 21:00', feeling: '' });
+    assert.deepEqual(one('new errand (due 2026-11-11 08:00) 周三前检查水管 (有点烦)'), { op: 'new', text: '周三前检查水管', due: '2026-11-11 08:00', feeling: '有点烦' });
+    assert.equal(one('new errand: 买咖啡 (due tomorrow)').text, '买咖啡');
+    assert.equal(one('new errand run (due tomorrow)').text, 'errand run');
+    // Kept so before: cleaned when read
+    assert.equal(Life.normalizeLife({ start: { errands: [{ text: 'errand (due 2026-11-05): 明早把水电账单整理出来', due: '2026-11-11' }] } }).start.errands[0].text, '明早把水电账单整理出来');
+    // What happened with its day in front: the entry's day, the time kept
+    assert.deepEqual(one('happened 2026-11-06 14:10 经过地下室门口'), { op: 'happened', text: '经过地下室门口', date: '2026-11-06', time: '14:10' });
+    assert.deepEqual(one('happened 11月6日 下雨了'), { op: 'happened', text: '下雨了', date: '2026-11-06' });
+    assert.deepEqual(one('happened 22:40: 发现血迹'), { op: 'happened', text: '发现血迹', date: '2026-10-31', time: '22:40' });
+    assert.equal(one('happened 3-2 输了比赛').text, '3-2 输了比赛');
+    // A day said from the reply's, before a time; the words alone stay the text's
+    assert.deepEqual(one('happened 昨晚 20:40 巡视北侧外墙'), { op: 'happened', text: '巡视北侧外墙', date: '2026-10-30', time: '20:40' });
+    assert.deepEqual(one('happened 前天 9:00 下雨'), { op: 'happened', text: '下雨', date: '2026-10-29', time: '09:00' });
+    assert.equal(one('happened 昨晚做了噩梦').text, '昨晚做了噩梦');
+    // Kept so before: the day out of the text, the colon after the time gone
+    const log = Life.normalizeLife({ start: { log: [
+        { date: '2026-11-08', text: '2026-11-06 14:10 经过地下室门口' },
+        { date: '2026-11-10', text: '2026-11-10 22:40: 发现血迹' },
+        { date: '2026-11-11', text: '昨晚 20:40 巡视北侧外墙' },
+    ] } }).start.log;
+    assert.deepEqual(log.map(e => [e.date, e.text]), [['2026-11-06', '14:10 经过地下室门口'], ['2026-11-10', '20:40 巡视北侧外墙'], ['2026-11-10', '22:40 发现血迹']]);
 });

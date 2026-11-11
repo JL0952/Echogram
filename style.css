@@ -5036,10 +5036,6 @@ span.et-sticker-set-name {
     color: var(--et-theme-color);
 }
 
-.et-life-due.et-life-late {
-    color: #f87171;
-}
-
 /* What the latest reply's <life> line touched, lit for a few seconds */
 .et-life-touched {
     animation: et-life-touched 3.2s ease-out;
