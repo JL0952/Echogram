@@ -305,3 +305,18 @@ test('Retry: a scripted post to its outline as the post is now, any other freest
     assert.deepEqual([stored.at, stored.text, 'photo' in stored, stored.replies[0].at > stored.at, stored.replies[0].at <= now], [post.at, 'plain', false, true, true]);
     assert.equal(S.replacePost(settings, 'k', 'gone', loose, now), null);
 });
+
+test('Posts about texts picked in the chat: the texts in the request, oldest first, freestyle otherwise', () => {
+    const now = 10 * 3600000;
+    const chat = [
+        { name: 'Me', text: 'are you coming', at: now - 2 * 3600000 },
+        { name: 'Mira', text: '  in a bit  ', at: now - 3600000 },
+        { name: 'Mira', text: '   ', at: now - 1000 },
+    ];
+    const { prompt, systemPrompt } = request({}, { chat, now });
+    assert.ok(prompt.startsWith('Texts between Mira and Me, oldest first:\n[2h ago] Me: are you coming\n[1h ago] Mira: in a bit\n\nWrite 1 new post about these texts, posted after them'));
+    assert.equal(systemPrompt, request({}, { now }).systemPrompt);
+    // None, or an outline: as before
+    assert.ok(request({}, { chat: [], now }).prompt.startsWith('Write 1 new post. Choose everything yourself'));
+    assert.ok(request({}, { chat, outlines: [{ time: '', topic: 't' }], now }).prompt.startsWith('Write 1 new post to this outline'));
+});

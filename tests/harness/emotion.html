@@ -1026,9 +1026,10 @@
         await sleep(400);
         // (where the bubble settles: a hidden pane may not run its animation)
         const lifted = row.querySelector('[data-et-lift]') || row;
-        lifted.style.animation = 'none';
+        const moving = [lifted, document.querySelector('.et-react-overlay')];
+        moving.forEach(el => { el.style.animation = 'none'; });
         const bar = document.querySelector('.et-react-overlay').getBoundingClientRect(), top = lifted.getBoundingClientRect().top;
-        lifted.style.removeProperty('animation');
+        moving.forEach(el => el.style.removeProperty('animation'));
         res.reactRow = !!bar.height && bar.bottom <= top + 1 && top - bar.bottom < 30;
 
         // A tapback on the first bubble shows as emoji on its lower edge, popping in
@@ -2623,7 +2624,7 @@
             await sleep(50);
             const inputBar = panel.querySelector('[data-et-role~="input-bar"]');
             out.entered = selectingNow() && panel.querySelectorAll('.et-select-mark').length === 5 && on() === '1:1' && count() === '1 selected'
-                && inputBar.inert && !!panel.querySelector('.et-select-bar [data-select="delete"]') && !!panel.querySelector('.et-select-bar [data-select="copy"]');
+                && inputBar.inert && !!panel.querySelector('.et-select-bar [data-select="delete"]') && !!panel.querySelector('.et-select-bar [data-select="copy"]') && !!panel.querySelector('.et-select-bar [data-select="post"]');
             // Over the header and the input bar; the circles beside their bubbles
             const bar = panel.querySelector('.et-select-bar').getBoundingClientRect(), ib = inputBar.getBoundingClientRect();
             out.barCovers = Math.abs(bar.top - ib.top) < 1 && Math.abs(bar.height - ib.height) < 1;
@@ -2666,11 +2667,46 @@
             out.ok = Object.values(out).every(Boolean);
             res[id] = out;
         }
+        // A long chat: the message picked stays put as the texts wrap anew, and the one in the
+        // middle when it ends; deleting at the bottom leaves no gap
+        for (const id of ['echotext', 'wechat', 'instagram']) {
+            s.defaultPlatform = id;
+            const long = Array.from({ length: 40 }, (_, i) => ({ is_user: i % 2 === 0, mes: i % 3 ? `line ${i} with some longer words that wrap across the width of a bubble` : `short ${i}`, send_date: Date.now() - (40 - i) * 60000 }));
+            s.chatHistory['mira.png'] = long;
+            r.renderMessages(long);
+            await sleep(300);
+            const list = document.getElementById('et-messages');
+            list.style.scrollBehavior = 'auto';
+            list.scrollTop = list.scrollHeight - list.clientHeight - 300;
+            list.style.scrollBehavior = '';
+            await sleep(100);
+            const msgTop = i => panel.querySelector(`[data-et-role~="message"][data-index="${i}"]`).getBoundingClientRect().top;
+            const before = msgTop(30);
+            r.handleDotsAction('select', 30, false, jQuery('<b>'), 0);
+            await sleep(50);
+            const entered = Math.abs(msgTop(30) - before) < 2;
+            const middle = [...panel.querySelectorAll('[data-et-role~="message"]')].find(el => { const b = el.getBoundingClientRect(), l = list.getBoundingClientRect(); return b.top <= l.top + l.height / 2 && b.bottom >= l.top + l.height / 2; });
+            const middleTop = middle?.getBoundingClientRect().top;
+            panel.querySelector('.et-select-cancel').click();
+            await sleep(50);
+            const left = !middle || Math.abs(middle.getBoundingClientRect().top - middleTop) < 2;
+            list.style.scrollBehavior = 'auto';
+            list.scrollTop = list.scrollHeight;
+            list.style.scrollBehavior = '';
+            await sleep(100);
+            const gap = () => list.getBoundingClientRect().bottom - [...panel.querySelectorAll('[data-et-role~="message"]')].pop().getBoundingClientRect().bottom;
+            const gapBefore = gap();
+            r.handleDotsAction('select', 39, false, jQuery('<b>'), 0);
+            panel.querySelector('.et-select-bar [data-select="delete"]').click();
+            await sleep(100);
+            res[`${id}Long`] = { entered, left, deletedNoGap: chat().length === 39 && Math.abs(gap() - gapBefore) < 2 };
+            res[`${id}Long`].ok = Object.values(res[`${id}Long`]).every(Boolean);
+        }
         window.SillyTavern = realST;
         if (navigator.clipboard && realWrite) navigator.clipboard.writeText = realWrite;
         s.defaultPlatform = platformBefore;
         seed();
-        res.ok = ['echotext', 'wechat', 'instagram'].every(id => res[id].ok);
+        res.ok = ['echotext', 'wechat', 'instagram'].every(id => res[id].ok && res[`${id}Long`].ok);
         return res;
     };
 
@@ -2717,10 +2753,11 @@
             out.opened = !!menu() && [...menu().querySelectorAll('.et-dots-item')].some(i => i.dataset.action === 'photo_add')
                 && !menu().querySelector('[data-action="edit"]');
             out.tapbacks = !menu().querySelector('[data-action="react"]') && focus === !!row();
-            // (where the bubble settles: a hidden pane may not run its animation)
-            if (focus) photo.style.animation = 'none';
-            const m = menu().getBoundingClientRect(), b = photo.getBoundingClientRect();
-            photo.style.removeProperty('animation');
+            // (where the bubble settles, its row and menu with it: a hidden pane may not run their animations)
+            const moving = focus ? [photo, menu(), row()] : [];
+            moving.forEach(el => { el.style.animation = 'none'; });
+            const m = menu().getBoundingClientRect(), b = photo.getBoundingClientRect(), barBox = row()?.getBoundingClientRect();
+            moving.forEach(el => el.style.removeProperty('animation'));
             // Beside the bubble; with no room above or below it (a tall photo), inside the visible list
             const shown = document.getElementById('et-messages').getBoundingClientRect();
             const noRoom = b.top - shown.top < m.height + 6 && shown.bottom - b.bottom < m.height + 6;
@@ -2731,11 +2768,18 @@
             releaseOn.click();
             out.clickSwallowed = photoEl.getAttribute('aria-expanded') !== 'true' && !!menu() && focus === !!row();
             if (focus) {
-                const bar = row().getBoundingClientRect();
+                const bar = barBox;
                 out.reactRow = bar.bottom <= b.top + 1 && b.top - bar.bottom < 30;
+                // They come from where the bubble was and go back with it, on its timing
+                const css = el => getComputedStyle(el);
+                out.together = [menu(), row()].every(el => css(el).animationName === 'et-pop-in' && css(el).animationDuration === css(photo).animationDuration
+                    && css(el).getPropertyValue('--et-focus-shift') === photo.style.getPropertyValue('--et-focus-shift'));
                 out.lifted = photo.dataset.etLift === 'up' && !!panel.querySelector('.et-focus-backdrop-open')
                     && menu().parentElement.id === 'et-panel' && row().parentElement.id === 'et-panel';
                 out.listLocked = lockedWheel();
+                // Put back (a tap on the blur): its tapback row goes too
+                r.closeBubbleFocus();
+                out.rowCloses = !row();
                 clear();
                 await sleep(300);
                 out.putBack = !panel.querySelector('.et-focus-backdrop') && !photo.dataset.etLift && !lockedWheel();
@@ -2783,9 +2827,10 @@
             r.renderMessages(chat(), true);
             const redrawn = bubbles(1)[0];
             await sleep(450);
-            redrawn.style.animation = 'none';
+            const settling = [redrawn, menu()].filter(Boolean);
+            settling.forEach(el => { el.style.animation = 'none'; });
             const rb = redrawn.getBoundingClientRect(), rm = menu()?.getBoundingClientRect();
-            redrawn.style.removeProperty('animation');
+            settling.forEach(el => el.style.removeProperty('animation'));
             out.redrawnHold = redrawn !== text && !!rm && (Math.abs(rm.top - rb.bottom) < 40 || Math.abs(rm.bottom - rb.top) < 40);
             press(redrawn, 'pointerup');
             redrawn.click();

@@ -5060,7 +5060,7 @@
      * resolves with how many. Throws when the model sends back none, or when `signal`
      * stops it (nothing is kept then).
      */
-    async function generateSocialPosts({ count, outlines = null, signal = new AbortController().signal } = {}) {
+    async function generateSocialPosts({ count, outlines = null, chat = null, signal = new AbortController().signal } = {}) {
         const char = getCurrentCharacter();
         const key = getCharacterKey();
         if (!char || !key) throw new Error('no character is open');
@@ -5076,6 +5076,7 @@
             posts,
             count,
             outlines,
+            chat,
             now: Date.now(),
         });
         const systemPrompt = withRefusalFrame(request.systemPrompt);
@@ -5089,7 +5090,7 @@
         const answer = stripThinkingTags(String(raw ?? ''));
         const added = request.outlines
             ? Social.parseOutlinedPosts(answer, { outlines: request.outlines, now })
-            : Social.parsePosts(answer, { now, after: posts[0]?.at || 0, count: request.count });
+            : Social.parsePosts(answer, { now, after: Math.max(posts[0]?.at || 0, ...(chat || []).map(line => line.at || 0)), count: request.count });
         if (!added.length) throw new Error('the model sent back no posts');
         Social.addChatPosts(settings, key, added, `p${now}`);
         saveSettings();
@@ -8120,13 +8121,15 @@
             left: `${edge(menuW)}px`,
             top: `${Math.max(pad, Math.min(height - pad - menuH, bottom + shift + gap))}px`,
             'transform-origin': `top ${side}`,
-        });
+            '--et-focus-shift': `${shift}px`,
+        }).addClass('et-focus-pop');
         if (row) {
             row.css({
                 left: `${edge(rowW)}px`,
                 top: `${Math.max(pad, top + shift - gap - rowH)}px`,
                 'transform-origin': `bottom ${side}`,
-            });
+                '--et-focus-shift': `${shift}px`,
+            }).addClass('et-focus-pop');
         }
         // A data attribute, not a class: the list's watchers don't take it for a change to the chat
         bubble.style.setProperty('--et-focus-shift', `${shift}px`);
@@ -8140,6 +8143,8 @@
         if (!bubbleFocus) return;
         const { bubble, list, backdrops } = bubbleFocus;
         bubbleFocus = null;
+        // Its tapback row goes with it (the blur keeps its clicks from the document's own closing)
+        closeAllReactOverlays();
         jQuery(document).off('click.et-focus');
         list.removeEventListener('wheel', stopScroll);
         list.removeEventListener('touchmove', stopScroll);
@@ -8152,7 +8157,7 @@
             delete bubble.dataset.etLift;
             bubble.style.removeProperty('--et-focus-shift');
             bubble.style.removeProperty('--et-focus-origin');
-        }, 240);
+        }, 280);
     }
 
     // ── Selecting messages (Select in a bubble's menu; WeChat's way, on every look) ──
@@ -8184,12 +8189,11 @@
         const list = document.getElementById('et-messages');
         const inner = document.getElementById('et-messages-inner');
         if (!panel || !list || !inner) return;
-        // Room for the circles: the bubble picked stays where it was on screen
-        const anchor = findMessageElement(msgIndex)[0];
-        const anchorTop = anchor?.getBoundingClientRect().top;
+        // Room for the circles: texts wrap anew, the message picked stays where it was on screen
         const padding = inner.style.paddingLeft;
-        inner.style.paddingLeft = `${(parseFloat(getComputedStyle(inner).paddingLeft) || 0) + SELECT_GUTTER}px`;
-        if (anchor) list.scrollTop += anchor.getBoundingClientRect().top - anchorTop;
+        keepOnScreen(findMessageElement(msgIndex)[0], () => {
+            inner.style.paddingLeft = `${(parseFloat(getComputedStyle(inner).paddingLeft) || 0) + SELECT_GUTTER}px`;
+        });
 
         const memory = !!(memorySystem && settings.memoryEnabled);
         const head = jQuery(`<div class="et-select-head">
@@ -8200,6 +8204,7 @@
                 <button type="button" data-select="delete" title="Delete"><i class="fa-regular fa-trash-can"></i></button>
                 ${memory ? '<button type="button" data-select="memory" title="Add Memory"><i class="fa-solid fa-brain"></i></button>' : ''}
                 <button type="button" data-select="copy" title="Copy"><i class="fa-regular fa-copy"></i></button>
+                <button type="button" data-select="post" title="Post on X"><i class="fa-brands fa-x-twitter"></i></button>
             </div>`);
         const marks = jQuery('<div class="et-select-marks"></div>');
         jQuery(panel).append(head, bar);
@@ -8247,8 +8252,42 @@
         marks.remove();
         for (const el of [header, inputBar]) if (el) el.inert = false;
         const inner = document.getElementById('et-messages-inner');
-        if (inner) inner.style.paddingLeft = padding;
+        // The message in the middle of the list stays where it is as the texts wrap back
+        if (inner) keepOnScreen(middleMessage(), () => { inner.style.paddingLeft = padding; });
         document.getElementById('et-panel')?.classList.remove('et-selecting');
+    }
+
+    /**
+     * Changes the list's layout with `change()`, scrolling it (at once, not smoothly) so
+     * `anchor` stays where it is on screen; at the bottom, it stays at the bottom.
+     */
+    function keepOnScreen(anchor, change) {
+        const list = document.getElementById('et-messages');
+        if (!list) { change(); return; }
+        const atEnd = list.scrollHeight - list.scrollTop - list.clientHeight < 4;
+        const top = anchor?.isConnected ? anchor.getBoundingClientRect().top : null;
+        change();
+        const behavior = list.style.scrollBehavior;
+        list.style.scrollBehavior = 'auto';
+        if (atEnd && !anchor) list.scrollTop = list.scrollHeight;
+        else if (top !== null) list.scrollTop += anchor.getBoundingClientRect().top - top;
+        list.style.scrollBehavior = behavior;
+    }
+
+    /** The message across the middle of the visible list, or null. */
+    function middleMessage() {
+        const list = document.getElementById('et-messages');
+        if (!list) return null;
+        const box = list.getBoundingClientRect();
+        const middle = box.top + box.height / 2;
+        let best = null;
+        let distance = Infinity;
+        for (const el of list.querySelectorAll('[data-et-role~="message"][data-index]')) {
+            const r = el.getBoundingClientRect();
+            const d = r.bottom < middle ? middle - r.bottom : r.top > middle ? r.top - middle : 0;
+            if (d < distance) { distance = d; best = el; }
+        }
+        return best;
     }
 
     /** The picked bubbles, in chat order: [{ index, part }]. Ones no longer in the chat are dropped. */
@@ -8331,6 +8370,19 @@
         if (action === 'memory') {
             stopSelecting();
             showManualMemorySaveModal(text);
+            return;
+        }
+        if (action === 'post') {
+            // A post about them on the character's X, as the page's Generate writes one
+            const userName = getUserName();
+            const chat = parts.map(({ index, part }) => {
+                const msg = history[index];
+                const at = typeof msg.send_date === 'number' ? msg.send_date : Date.parse(msg.send_date);
+                return { name: msg.is_user ? userName : (msg.name || getCharacterName()), text: bubbleText(msg, part), at: Number.isFinite(at) ? at : Date.now() };
+            }).filter(line => line.text);
+            stopSelecting();
+            openSocial();
+            socialView.postAbout(chat);
             return;
         }
         if (action === 'delete') {
@@ -8922,7 +8974,7 @@
         jQuery('.et-react-overlay').each(function () {
             const overlay = jQuery(this);
             overlay.addClass('et-react-overlay-closing');
-            setTimeout(() => overlay.remove(), 200);
+            setTimeout(() => overlay.remove(), 230);
         });
     }
 
@@ -8983,7 +9035,7 @@
         jQuery('.et-dots-menu').each(function () {
             const menu = jQuery(this);
             menu.addClass('et-dots-menu-closing');
-            setTimeout(() => menu.remove(), 180);
+            setTimeout(() => menu.remove(), 230);
         });
     }
 

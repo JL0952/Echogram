@@ -253,10 +253,12 @@
                     ${avatar(a.avatarUrl, a.avatarFallback, 'x-post-avatar', ctx)}
                     ${c.generating
                         ? '<div class="x-compose-what">Generating...</div>'
+                        : c.fromChat
+                        ? `<div class="x-compose-what">From ${c.fromChat} ${c.fromChat === 1 ? 'message' : 'messages'}</div>`
                         : `<div class="x-modes">${[['freestyle', 'Freestyle'], ['scripted', 'Scripted']].map(([id, label]) =>
                             `<button class="x-mode${c.mode === id ? ' x-mode-on' : ''}" type="button" data-social-action="compose-mode" data-mode="${id}">${label}</button>`).join('')}</div>`}
                 </div>
-                ${c.mode === 'scripted' ? `<div class="x-compose-body" data-social-scroll>${c.outlines.map((outline, i) => outlineCard(outline, i, c, ctx)).join('')}</div>` : ''}
+                ${c.mode === 'scripted' && !c.fromChat ? `<div class="x-compose-body" data-social-scroll>${c.outlines.map((outline, i) => outlineCard(outline, i, c, ctx)).join('')}</div>` : ''}
                 ${c.error ? `<p class="x-edit-error">${ctx.esc(c.error)}</p>` : ''}
                 <div class="x-compose-bottom">
                     <div class="x-counts">${counts}</div>
