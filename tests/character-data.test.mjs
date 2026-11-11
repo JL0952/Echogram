@@ -129,23 +129,31 @@ test('the names cards had, for naming their data once they\'re gone', () => {
     assert.equal(D.orphanedKeys(s, [])[0].name, 'unnamed');
 });
 
-test('a setup exports what the user set up, not what happened in chats, and imports onto another key', async () => {
+test('a setup exports what the user set up (the X account with its kept posts), not what happened in chats, and imports onto another key', async () => {
     const s = settings();
     s.characterProfiles = { 'mira.png': { bigFive: { E: 'high' } } };
     s.avatarByCharacter = { 'mira.png': '/user/images/Mira/a.jpeg' };
-    s.socialAccounts = { 'mira.png': { name: 'M', banner: '/user/images/Mira/b.jpeg', posts: [{ id: 'p1' }], pinnedId: 'p1' } };
+    const kept = { id: 'p1', text: 'pinned', photo: { path: 'user/images/Mira/p.jpeg', width: 4, height: 3 }, repost: { name: 'R', text: 'r', photo: { path: 'user/images/Mira/r.jpeg', width: 1, height: 1 } } };
+    s.socialAccounts = { 'mira.png': { name: 'M', banner: '/user/images/Mira/b.jpeg', posts: [kept, { id: 'p3', text: 'kept' }], pinnedId: 'p1' } };
     s.socialPosts = { 'mira.png': [{ id: 'p2' }] };
     const file = D.exportSetup(s, 'mira.png', 'Mira');
+    assert.equal(file.version, 2);
     assert.deepEqual(Object.keys(file.setup).sort(),
         ['avatarByCharacter', 'characterProfiles', 'characterSchedules', 'platformByCharacter', 'proactiveTemperament', 'socialAccounts']);
-    assert.deepEqual(file.setup.socialAccounts, { name: 'M', banner: '/user/images/Mira/b.jpeg' });
+    // The kept posts and the pinned one go; the chat's own posts don't
+    assert.deepEqual(file.setup.socialAccounts.posts.map(p => p.id), ['p1', 'p3']);
+    assert.equal(file.setup.socialAccounts.pinnedId, 'p1');
+    assert.ok(!JSON.stringify(file).includes('"p2"'));
     assert.equal(file.memories.length, 1);
-    assert.deepEqual(D.setupImages(file.setup), ['/user/images/Mira/a.jpeg', '/user/images/Mira/b.jpeg']);
+    assert.deepEqual(D.setupImages(file.setup), ['/user/images/Mira/a.jpeg', '/user/images/Mira/b.jpeg', 'user/images/Mira/p.jpeg', 'user/images/Mira/r.jpeg']);
 
-    // Images become data URLs in the file; one that can't be read is left out
-    const out = await D.mapSetupImages(file.setup, async v => (v.endsWith('a.jpeg') ? 'data:image/jpeg;base64,AA' : ''));
-    assert.equal(out.avatarByCharacter, 'data:image/jpeg;base64,AA');
+    // Images become data URLs in the file; one that can't be read is left out (a post's photo
+    // goes whole); the setup it came from is untouched
+    const out = await D.mapSetupImages(file.setup, async v => (/[apr]\.jpeg$/.test(v) && !v.endsWith('r.jpeg') ? `data:image/jpeg;base64,${v.slice(-6, -5)}` : ''));
+    assert.equal(out.avatarByCharacter, 'data:image/jpeg;base64,a');
     assert.ok(!('banner' in out.socialAccounts));
+    assert.equal(out.socialAccounts.posts[0].photo.path, 'data:image/jpeg;base64,p');
+    assert.ok(!('photo' in out.socialAccounts.posts[0].repost) && out.socialAccounts.posts[0].repost.text === 'r');
     assert.equal(file.setup.socialAccounts.banner, '/user/images/Mira/b.jpeg');
 
     const read = D.readSetup(JSON.stringify({ ...file, setup: { ...out, lifeState: { x: 1 } } }));
@@ -153,20 +161,30 @@ test('a setup exports what the user set up, not what happened in chats, and impo
     assert.throws(() => D.readSetup('{"a":1}'), /not an Echogram setup file/);
     assert.throws(() => D.readSetup('nope'), /not an Echogram setup file/);
 
-    // Onto qi: their setup replaced (verbosity they had, the file hasn't: cleared), posts kept, memories joined
+    // Onto qi: their setup replaced (verbosity they had, the file hasn't: cleared), the X account
+    // and its kept posts the file's, memories joined; the images no longer used given back
     s.verbosityByCharacter = { 'qi.png': 'long' };
     s.avatarByCharacter['qi.png'] = '/user/images/Qi/old.jpeg';
-    s.socialAccounts['qi.png'] = { name: 'Q', posts: [{ id: 'q1' }] };
+    s.socialAccounts['qi.png'] = { name: 'Q', posts: [{ id: 'q1', photo: { path: 'user/images/Qi/q.jpeg' } }] };
     s.characterMemories['qi.png'] = [{ id: 'm1', content: 'a' }, { id: 'm9', content: 'z' }];
-    const unused = D.importSetup(s, 'qi.png', { ...read, setup: { ...read.setup, avatarByCharacter: '/user/images/Qi/new.jpeg' } });
-    assert.deepEqual(unused, ['/user/images/Qi/old.jpeg']);
+    const onto = { ...read, setup: { ...read.setup, avatarByCharacter: '/user/images/Qi/new.jpeg' } };
+    const unused = D.importSetup(s, 'qi.png', onto);
+    assert.deepEqual(unused, ['/user/images/Qi/old.jpeg', 'user/images/Qi/q.jpeg']);
     assert.equal(s.proactiveTemperament['qi.png'], 'clingy');
     assert.equal(s.platformByCharacter['qi.png'], 'wechat');
     assert.ok(!('qi.png' in s.verbosityByCharacter));
-    assert.deepEqual(s.socialAccounts['qi.png'], { name: 'M', posts: [{ id: 'q1' }] });
+    assert.deepEqual(s.socialAccounts['qi.png'].posts.map(p => p.id), ['p1', 'p3']);
+    assert.equal(s.socialAccounts['qi.png'].pinnedId, 'p1');
+    assert.equal(s.socialAccounts['qi.png'].name, 'M');
     assert.deepEqual(s.characterMemories['qi.png'].map(m => m.id), ['m1', 'm9']);
     assert.ok(!('qi.png' in (s.lifeState || {})));
     // Mira's own stays as it was
     assert.equal(s.socialAccounts['mira.png'].pinnedId, 'p1');
     assert.equal(s.avatarByCharacter['mira.png'], '/user/images/Mira/a.jpeg');
+
+    // A file from before kept posts went in (version 1): theirs stay
+    s.socialAccounts['qi.png'] = { name: 'Q', posts: [{ id: 'q1' }], pinnedId: 'q1' };
+    const old = D.readSetup(JSON.stringify({ format: 'echogram-character-setup', version: 1, name: 'Mira', setup: { socialAccounts: { name: 'Old', posts: [{ id: 'x' }] } } }));
+    D.importSetup(s, 'qi.png', old);
+    assert.deepEqual(s.socialAccounts['qi.png'], { name: 'Old', posts: [{ id: 'q1' }], pinnedId: 'q1' });
 });

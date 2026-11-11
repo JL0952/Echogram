@@ -6419,7 +6419,8 @@
             });
             const unused = CharacterData.importSetup(settings, key, file);
             saveSettings();
-            unused.forEach(deleteUserImage);
+            // (a kept post's image may still be in the chat's posts or an archive: only an unused file goes)
+            unused.forEach(forgetSocialPhoto);
             onPlatformChoiceChanged();
             applySelectedCharacterToPanel();
             toastr.success(`Imported ${name}'s setup`, 'Echogram');

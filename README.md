@@ -18,7 +18,7 @@ A messaging companion for SillyTavern, where characters remember your story, tex
 - Natural, multi-message replies with customizable texting styles and message lengths.
 - Send photos, voice messages, stickers, songs, locations, files, links, and money transfers.
 - React to messages, quote replies, and customize photos with your own images.
-- Select several messages to delete, copy, or save as a memory.
+- Hold a message for reactions and actions; select several to delete, copy, save as a memory, or turn into a post.
 - Import your own sticker packs from ZIP files.
 - Group chats, message swipes, saved conversations, custom themes, avatars, and fonts.
 - Export a character's setup to a file and import it on another device.
@@ -28,6 +28,7 @@ A messaging companion for SillyTavern, where characters remember your story, tex
 - **They text first.** Characters can initiate conversations, send spontaneous photos or voice messages, and follow up without waiting for you.
 - **They have schedules.** Give them weekly routines, errands, and daily activities. They might be busy, asleep, or simply unable to reply right away.
 - **Time passes.** Characters keep track of what's happened recently, even when you haven't spoken in a while.
+- **They post where you can't see.** Each character can keep an anonymous X account: posts written freely, from your outline, or about messages you pick, with replies, reposts and pinned posts you can edit.
 - **Their feelings evolve.** Rapport, Romance, Desire, mood, personality, morality, and texting habits can be configured manually or allowed to develop through interactions.
 
 ### 🔗 Connected to your roleplay
