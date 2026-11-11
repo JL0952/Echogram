@@ -57,6 +57,10 @@ test('Posting style comes right after the system prompt, as written, and only wh
 test('how people talk on the platform comes just before how to write, and nothing is there for a platform without it', () => {
     const plain = request({}).systemPrompt;
     assert.ok(plain.includes('\n\nHow to write:\n') && !plain.includes('{{culture}}'));
+    // Written from inside the character, leaving things out; no length set for everyone
+    assert.ok(plain.includes("{{char}} is the one typing".replace('{{char}}', 'Mira')) || plain.includes('is the one typing, in the moment, for their own reasons'));
+    assert.ok(plain.includes("Not a narrator showing someone what") && plain.includes("a post can point at something without saying what"));
+    assert.ok(!/\bShort\b|one line/.test(plain));
     const told = request({}, { culture: 'Everyone is sharp.' }).systemPrompt;
     assert.equal(told, plain.replace('\n\nHow to write:', '\n\nEveryone is sharp.\n\nHow to write:'));
 });
@@ -314,7 +318,7 @@ test('Posts about texts picked in the chat: the texts in the request, oldest fir
         { name: 'Mira', text: '   ', at: now - 1000 },
     ];
     const { prompt, systemPrompt } = request({}, { chat, now });
-    assert.ok(prompt.startsWith('Texts between Mira and Me, oldest first:\n[2h ago] Me: are you coming\n[1h ago] Mira: in a bit\n\nWrite 1 new post about these texts, posted after them'));
+    assert.ok(prompt.startsWith('Texts between Mira and Me, oldest first:\n[2h ago] Me: are you coming\n[1h ago] Mira: in a bit\n\nWrite 1 new post Mira makes after these texts, for their own reasons, knowing everything in them. Don\'t recount them for a reader'));
     assert.equal(systemPrompt, request({}, { now }).systemPrompt);
     // None, or an outline: as before
     assert.ok(request({}, { chat: [], now }).prompt.startsWith('Write 1 new post. Choose everything yourself'));
@@ -330,7 +334,7 @@ test('Retry on a post about texts picked in the chat: about the same texts again
     const post = { id: 'c1', at: now - 600000, text: 'ugh', image: '', replies: [], about };
     const settings = { socialPosts: { k: [post] } };
     const again = S.buildRetryRequest({ ...base, post, posts: S.getPosts(settings, 'k') });
-    assert.ok(again.prompt.startsWith('Texts between Mira and Me, oldest first:\n[2h ago] Me: are you coming\n[1h ago] Mira: in a bit\n\nWrite 1 new post about these texts'));
+    assert.ok(again.prompt.startsWith('Texts between Mira and Me, oldest first:\n[2h ago] Me: are you coming\n[1h ago] Mira: in a bit\n\nWrite 1 new post Mira makes after these texts'));
     // Written again: still about them, for the next Retry
     const [fresh] = S.parsePosts('<post ago="1m"><text>ok fine</text></post>', { now, count: 1 });
     S.replacePost(settings, 'k', 'c1', fresh, now);
