@@ -168,16 +168,20 @@ test('what holds her text back moves it to when that is over: asleep, busy, with
         assert.equal(asked.length, 0, label);
         assert.equal(state().seq.next, until, label);
     }
-    // The cold shoulder: to its end, from your last text
+    // The cold shoulder: while anger stays 50 or more, checked again every 10 minutes when it doesn't fade
     clock = T0;
     const { asked, state, talk, run, env } = setup();
     talk();
     env.feelings = { anger: 90 };
     clock = state().seq.next;
+    const due = clock;
     await run();
     assert.equal(asked.length, 0);
-    assert.equal(state().seq.next, state().ghost.until);
-    assert.ok(state().ghost.until - T0 >= 7 * HOUR);
+    assert.equal(state().seq.next, due + 10 * MIN);
+    env.feelings = { anger: 40 };
+    clock = state().seq.next;
+    await run();
+    assert.equal(asked.length, 1);
 }));
 
 test('the day\'s requests, all characters together: 20 by default, at least 1; used up, the next text waits for tomorrow', fixedRandom(async () => {

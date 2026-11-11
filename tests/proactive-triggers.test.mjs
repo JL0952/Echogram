@@ -110,7 +110,7 @@ test('emotions off: the same as every feeling at 0', () => {
     assert.deepEqual([...triggers(null)].sort(), [...triggers({})].sort());
 });
 
-test('the cold shoulder: high anger or disgust holds her next text back for hours', () => {
+test('the cold shoulder: high anger or disgust holds her next text back, however long ago your last text was', () => {
     const now = Date.now();
     const next = (values, userHours, settings = { proactiveMessagingEnabled: true }) => window.EchoTextProactiveMessaging.createProactiveMessaging({
         getSettings: () => settings, saveSettings: () => {}, getUserName: () => 'Me', getActiveFeatures: () => [],
@@ -119,13 +119,12 @@ test('the cold shoulder: high anger or disgust holds her next text back for hour
         getChatHistory: () => [{ is_user: true, mes: 'ok', send_date: now - userHours * HOUR }, { is_user: false, mes: 'fine', send_date: now - userHours * HOUR + 60000 }],
         getEmotionState: () => ({ ...Model.zeroValues(), ...values }), getProactivePace: () => 1,
     }).getProactiveInsightsSnapshot().next;
-    // 85 and up: 7–10 hours from your last text
-    assert.match(next({ anger: 85 }, 5), /^Ghosting /);
-    assert.match(next({ disgust: 85 }, 5), /^Ghosting /);
-    assert.doesNotMatch(next({ anger: 85 }, 15), /^Ghosting /);
-    // 50–69: 1–2 hours, long over; below 50: none
-    assert.doesNotMatch(next({ anger: 55 }, 5), /^Ghosting /);
-    assert.doesNotMatch(next({ anger: 45 }, 5), /^Ghosting /);
+    // 50 or more, anger or disgust: ghosting, from 5 hours or 15 since your last text; below: none
+    for (const hours of [5, 15]) {
+        assert.match(next({ anger: 50 }, hours), /^Ghosting /);
+        assert.match(next({ disgust: 85 }, hours), /^Ghosting /);
+    }
+    assert.doesNotMatch(next({ anger: 49, disgust: 49, sadness: 90 }, 5), /^Ghosting /);
 });
 
 test('the insights panel: the six kinds with what each needs, the cold shoulder and the stretched wait', () => {
@@ -150,74 +149,69 @@ test('the insights panel: the six kinds with what each needs, the cold shoulder 
     // Warm enough, but no shared moment or inside joke to bring up
     assert.equal(row(warm, 'you').reason, 'No Shared Moment or Inside Joke memory to bring up');
     assert.equal(row(warm, 'callback').reason, 'Your last text 1h ago');
-    assert.match(insights({ anger: 90 }).next, /^Ghosting .* Anger\)$/);
+    assert.match(insights({ anger: 90 }).next, /^Ghosting · Anger 90 · until /);
     // Her reply an hour ago, unanswered: her next text (Normal: 20–60 minutes after it)
     assert.match(calm.next, /^Next text (in .*|due)$/);
     // With the temperament by the name
     assert.equal(calm.character, 'Mira · Normal');
 });
 
-test('the cold shoulder counts down to one end, drawn once: checks, the insights and a reload never draw it again', () => {
+test('the cold shoulder lasts while anger or disgust is 50 or more: it ends when they fade below, not on a clock of its own', () => {
     const MIN = 60000;
-    const realNow = Date.now, realRandom = Math.random;
-    let clock = new Date(2026, 9, 12, 17, 0).getTime();
-    const rolls = [0.9, 0.1, 0.5, 0.3, 0.7];
-    let rolled = 0;
+    const realNow = Date.now;
+    const T0 = new Date(2026, 9, 12, 17, 0).getTime();
+    let clock = T0;
     Date.now = () => clock;
-    Math.random = () => rolls[rolled++ % rolls.length];
     try {
         const settings = { proactiveMessagingEnabled: true };
-        let values = { anger: 90 };
-        const history = [{ is_user: true, mes: 'whatever', send_date: clock - 3 * MIN }, { is_user: false, mes: 'fine', send_date: clock }];
-        const engine = () => window.EchoTextProactiveMessaging.createProactiveMessaging({
+        // Auto mode: the values from `base` at `from`, faded by their half-lives; Manual: they stay
+        let base = { anger: 90 }, from = T0, fades = true;
+        const valuesAt = at => Object.fromEntries(Object.entries({ ...Model.zeroValues(), ...base })
+            .map(([id, v]) => [id, fades ? Model.DIMENSIONS.find(d => d.id === id)?.halfLifeHours ? v * 0.5 ** ((at - from) / HOUR / Model.DIMENSIONS.find(d => d.id === id).halfLifeHours) : v : v]));
+        const history = [{ is_user: true, mes: 'whatever', send_date: T0 - 3 * MIN }, { is_user: false, mes: 'fine', send_date: T0 }];
+        const p = window.EchoTextProactiveMessaging.createProactiveMessaging({
             getSettings: () => settings, saveSettings: () => {}, getUserName: () => 'Me', getActiveFeatures: () => [],
             expandTimeDateMacros: t => t, replaceMacros: t => t,
             getCurrentCharacter: () => ({ name: 'Mira', avatar: 'mira.png' }), getCharacterKey: () => 'mira.png',
-            getChatHistory: () => history, getEmotionState: () => ({ ...Model.zeroValues(), ...values }), getProactivePace: () => 1,
+            getChatHistory: () => history, getEmotionState: (k, at = clock) => valuesAt(at), getProactivePace: () => 1,
             findLastUserMessageIndex: h => h.map(m => m.is_user).lastIndexOf(true),
         });
-        const p = engine();
         const ghost = () => p.getProactiveInsightsSnapshot().ghostWindow;
-        const kept = () => settings.proactiveState['mira.png'].ghost;
-        const since = history[0].send_date;
 
-        // Anger 85 and up: 7–10 hours from your last message, drawn once
+        // Anger 90, half-life 8h: below 50 after 8 × log2(90/50) ≈ 6.8h
         const first = ghost();
-        assert.ok(first.until - since >= 7 * 60 * MIN && first.until - since <= 10 * 60 * MIN);
-        assert.deepEqual(kept(), { since, level: 3, until: first.until });
-        // Minutes later, every check counts down to the same end
-        for (const minutes of [1, 4, 5]) {
-            clock += minutes * MIN;
-            const now = ghost();
-            assert.equal(now.until, first.until);
-            assert.equal(Math.round(now.remainingHours * 60), Math.round((first.until - clock) / MIN));
-        }
-        // The insights say so, counting down to the same end
-        assert.match(p.getProactiveInsightsSnapshot().next, /^Ghosting /);
-        assert.equal(kept().until, first.until);
-        // A reload: the same end
-        assert.equal(engine().getProactiveInsightsSnapshot().ghostWindow.until, first.until);
-        // Anger down to 75: drawn again once, for 3–6 hours, from the same message
-        values = { anger: 75 };
-        const lower = ghost();
-        assert.ok(lower.until - since >= 3 * 60 * MIN && lower.until - since <= 6 * 60 * MIN);
-        clock += 10 * MIN;
-        assert.equal(ghost().until, lower.until);
-        // A new message of yours: from there
+        assert.equal(first.feeling, 'Anger');
+        assert.equal(first.value, 90);
+        const end = T0 + 8 * Math.log2(90 / 50) * HOUR;
+        assert.ok(first.until > end && first.until - end <= 2 * MIN);
+        assert.match(p.getProactiveInsightsSnapshot().next, /^Ghosting · Anger 90 · until \d\d:\d\d$/);
+        // Hours later: the same end, the value faded
+        clock = T0 + 3 * HOUR;
+        assert.ok(Math.abs(ghost().until - first.until) <= MIN);
+        assert.ok(ghost().value < 90);
+        // A message of yours changes nothing; a reply that angers him more pushes it later
         history.push({ is_user: true, mes: 'sorry', send_date: clock });
-        const fresh = ghost();
-        assert.equal(kept().since, clock);
-        assert.ok(fresh.until - clock >= 3 * 60 * MIN);
-        // Past its end: over, not drawn again
-        clock = fresh.until;
+        assert.ok(Math.abs(ghost().until - first.until) <= MIN);
+        base = { anger: 80 }; from = clock;
+        assert.ok(ghost().until > first.until);
+        // Faded below 50: over
+        clock = ghost().until;
         assert.equal(ghost(), null);
-        assert.equal(kept().until, fresh.until);
-        // Below 50: none
-        clock -= 60 * MIN;
-        values = { anger: 40 };
+        // Sadness doesn't count; disgust does, at its own half-life (12h)
+        base = { sadness: 90 }; from = clock;
         assert.equal(ghost(), null);
+        base = { disgust: 60, anger: 55 }; from = clock;
+        assert.equal(ghost().feeling, 'Disgust');
+        assert.ok(ghost().until - clock >= 12 * Math.log2(60 / 50) * HOUR);
+        // Manual mode or a lock: no end of its own, until it's lowered
+        fades = false; base = { anger: 60 };
+        assert.equal(ghost().until, null);
+        assert.equal(p.getProactiveInsightsSnapshot().next, 'Ghosting · Anger 60 · until below 50');
+        base = { anger: 49 };
+        assert.equal(ghost(), null);
+        // Nothing kept on the state: an old drawn end is dropped
+        assert.equal(settings.proactiveState['mira.png'].ghost, undefined);
     } finally {
         Date.now = realNow;
-        Math.random = realRandom;
     }
 });
