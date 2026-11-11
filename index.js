@@ -1425,11 +1425,40 @@
         return settings.source === 'profile';
     }
 
+    // The latest replies sent with the <mood> and <life> lines they ended with, so the model sees every reply end so
+    const REPORT_TURNS = 6;
+
+    /** Which report lines replies end with for `char`: { mood, life } (Auto mode; Daily Life). */
+    function reportKinds(char) {
+        return { mood: !!(char && buildMoodRules(char)), life: !!(char && buildLifeRules(char)) };
+    }
+
+    /** A reply's report lines as it ended with them ('none' for what it didn't change), '' without any to show. */
+    function reportLines(msg, kinds) {
+        const lines = [];
+        if (kinds.mood) {
+            const mood = msg.mood && typeof msg.mood === 'object' ? Object.entries(msg.mood).map(([id, v]) => `${id} ${Math.round(v)}`).join(', ') : '';
+            lines.push(`<mood>${mood || 'none'}</mood>`);
+        }
+        if (kinds.life) lines.push(`<life>${DailyLife.serializeLife(msg.life) || 'none'}</life>`);
+        return lines.join('\n');
+    }
+
+    /** The closing line for a reply's request: end with the report lines, 'none' when unchanged. '' without any. */
+    function reportReminder(char) {
+        const kinds = reportKinds(char);
+        const tags = [kinds.mood && 'mood', kinds.life && 'life'].filter(Boolean);
+        if (!tags.length) return '';
+        return `End the reply with its ${tags.map(t => `<${t}>`).join(' and then its ')} line${tags.length > 1 ? 's' : ''}: what changed, or ${tags.map(t => `<${t}>none</${t}>`).join(' / ')}.`;
+    }
+
     /**
      * A chat's messages as turns for the model, each with when it was sent: a message, and
-     * your tapbacks on it right after.
+     * your tapbacks on it right after. With `kinds` (reportKinds), the latest replies keep
+     * the report lines they ended with.
      */
-    function buildChatTurns(sent) {
+    function buildChatTurns(sent, kinds = null) {
+        const reported = new Set(kinds && (kinds.mood || kinds.life) ? sent.filter(m => m && !m.is_user).slice(-REPORT_TURNS) : []);
         return sent.flatMap(msg => {
             // Strip thinking/reasoning tags from history messages before sending to context.
             // This prevents internal model reasoning blocks from inflating token budgets.
@@ -1438,8 +1467,9 @@
             const time = Number(msg.send_date) || Date.parse(msg.send_date);
             const contextText = resolveHistoryMessageText(msg);
             const reactionText = buildUserReactionText(msg);
+            const report = contextText !== null && reported.has(msg) ? reportLines(msg, kinds) : '';
             return [
-                ...(contextText !== null ? [{ role: msg.is_user ? 'user' : 'assistant', content: contextText, time }] : []),
+                ...(contextText !== null ? [{ role: msg.is_user ? 'user' : 'assistant', content: report ? `${contextText}\n${report}` : contextText, time }] : []),
                 ...(reactionText ? [{ role: 'user', content: reactionText, time }] : []),
             ];
         });
@@ -1447,7 +1477,7 @@
 
     /** The chat's turns as sent; split, with the story between them, and what to remind the model of then. */
     function buildChatMessages(sent, char, apart) {
-        const turns = buildChatTurns(sent);
+        const turns = buildChatTurns(sent, reportKinds(char));
         const story = apart && char ? getSTStoryMessages(char) : [];
         if (!story.length) return { messages: turns.map(({ role, content }) => ({ role, content })), reminder: '' };
         const name = char.name || 'Character';
@@ -2605,8 +2635,10 @@
 
     async function buildApiMessagesFromHistory(history, extraSystemMessages = [], targetCharOverride = null, options = {}) {
         const { stable, live, maxTexts } = await buildPromptParts(targetCharOverride, history, options);
-        const systemPrompt = stable + live;
         const apart = splitsLiveContext();
+        // Last of all: end with the report lines
+        const reports = reportReminder(targetCharOverride || getCurrentCharacter());
+        const systemPrompt = stable + live + (reports && !apart ? `\n\n${reports}` : '');
         const apiMessages = [{ role: 'system', content: apart ? stable : systemPrompt }];
 
         if (!apart) {
@@ -2619,7 +2651,7 @@
         const sent = historyToSend(history);
         const { messages, reminder } = buildChatMessages(sent, targetCharOverride || getCurrentCharacter(), apart);
         apiMessages.push(...messages);
-        if (apart) placeLiveContext(apiMessages, [live, reminder, ...extraSystemMessages]);
+        if (apart) placeLiveContext(apiMessages, [live, reminder, ...extraSystemMessages, reports]);
 
         // --- Layer 3: Pre-fill assistant turn (anti-refusal, chat-completion backends only) ---
         // Planting the assistant prefix forces the model to continue in-character rather than
@@ -2666,8 +2698,10 @@
 
         // ── Solo / individual group-member mode ───────────────────────────────
         const { stable, live, maxTexts } = await buildPromptParts(char, history, options);
-        const systemPrompt = stable + live;
         const apart = splitsLiveContext();
+        // Last of all: end with the report lines
+        const reports = reportReminder(char);
+        const systemPrompt = stable + live + (reports && !apart ? `\n\n${reports}` : '');
         const apiMessages = [{ role: 'system', content: apart ? stable : systemPrompt }];
 
         if (!apart) {
@@ -2679,7 +2713,7 @@
         const sent = historyToSend(history);
         const { messages, reminder } = buildChatMessages(sent, char, apart);
         apiMessages.push(...messages);
-        if (apart) placeLiveContext(apiMessages, [live, reminder, ...extraSystemMessages]);
+        if (apart) placeLiveContext(apiMessages, [live, reminder, ...extraSystemMessages, reports]);
 
         const charName = (char && char.name) || getCharacterName();
         const userName = getUserName();

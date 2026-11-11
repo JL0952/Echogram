@@ -9,6 +9,7 @@
 //          [--morality=low|mid|high]         set Morality (shown with NSFW on)
 //          [--mode=off|manual|auto] [--nsfw=on|off] [--platform=echotext|wechat|instagram] [--verbosity=short|medium|long]
 //          [--tail]                          print only what comes after the story and memories
+//          [--request]                       the whole request for a reply to the chat as it is: every message, by role
 const fs = require('fs');
 const path = require('path');
 const REPO = path.resolve(__dirname, '../..');
@@ -92,12 +93,12 @@ if (opt('big5') || opt('morality')) {
 
 // ── index.js's prompt builder ───────────────────────────────────────────────
 
-const NAMES = ['buildSystemPrompt', 'MAX_TEXTS', 'splitsLiveContext', 'getSTStoryMessages', 'buildPromptParts', 'buildLifeDate', 'getVerbosityPrompt', 'getCharacterVerbosity', 'getEchoTextFirstMessage', 'getSTStoryContext', 'findSTOpeningIndex',
+const NAMES = ['buildSystemPrompt', 'buildApiMessagesFromHistory', 'buildChatMessages', 'buildChatTurns', 'placeLiveContext', 'historyToSend', 'reportKinds', 'reportLines', 'reportReminder', 'REPORT_TURNS', 'MAX_TEXTS', 'splitsLiveContext', 'getSTStoryMessages', 'buildPromptParts', 'buildLifeDate', 'getVerbosityPrompt', 'getCharacterVerbosity', 'getEchoTextFirstMessage', 'getSTStoryContext', 'findSTOpeningIndex',
     'isCharInCurrentSTChat', 'cleanSTMessageText', 'ST_STORY_MAX_MESSAGES', 'ST_STORY_MAX_CHARS', 'replaceMacros', 'buildMessageFormatPrompt',
     'RichMessages', 'Features', 'Platforms', 'activePlatformMemo', 'getActivePlatform', 'getActiveFeatures', 'platformHas', 'Stickers', 'stickerPresets', 'stickerLibrary', 'getStickerLibrary', 'stickerSetsFor', 'getCharacterStickerNames', 'getModelFeatures', 'getReactionIds',
     'getActiveWorldInfoEntries', 'buildMemoryContext', 'summariesOn', 'ChatSummaries', 'resolveHistoryMessageText', 'getContextMessageText', 'buildTextingStyleContext', 'buildBehaviorContext', 'buildMoodRules', 'inGroupSession',
     'DailyLife', 'dailyLifeActive', 'activeSchedule', 'activeLife', 'buildDailyLifeContext', 'buildScheduleContext', 'phoneOverride', 'buildLifeRules', 'getEmotionHistory',
-    'stripThinkingTags', 'getStripTagsRegex', 'STRIP_TAGS_DEFAULTS', 'SPECIAL_PATTERNS', '_stripTagsRegex', '_stripTagsListHash'];
+    'buildCharacterReference', 'keepMessageCount', 'buildUserReactionText', 'getMessageDisplayParts', 'ChatViewModel', 'stripThinkingTags', 'getStripTagsRegex', 'STRIP_TAGS_DEFAULTS', 'SPECIAL_PATTERNS', '_stripTagsRegex', '_stripTagsListHash'];
 const STUBS = `
     const FA_REACTIONS = window.EchoTextFeatures.REACTIONS; const settings = env.settings; const BASE_URL = ''; const SillyTavern = env.SillyTavern; const emotionSystem = env.emotionSystem; const memorySystem = env.memorySystem;
     const getCurrentCharacter = () => env.char; const getCharacterKey = () => env.char.avatar;
@@ -110,7 +111,7 @@ const parts = body.filter(node => {
     const names = node.type === 'FunctionDeclaration' ? [node.id.name] : node.type === 'VariableDeclaration' ? node.declarations.map(d => d.id.name) : [];
     return names.some(n => NAMES.includes(n));
 }).map(node => code.slice(node.start, node.end));
-const api = new Function('env', `${STUBS}\n${parts.join('\n')}\nreturn { buildSystemPrompt };`);
+const api = new Function('env', `${STUBS}\n${parts.join('\n')}\nreturn { buildSystemPrompt, ...(typeof buildApiMessagesFromHistory === 'function' ? { buildApiMessagesFromHistory } : {}) };`);
 
 const common = { getSettings: () => settings, saveSettings: () => {}, getCharacterKey: () => avatar, getCharacterName: () => char.name };
 const env = {
@@ -120,7 +121,15 @@ const env = {
     emotionSystem: window.EchoTextEmotionSystem.createEmotionSystem({ ...common, isPanelOpen: () => false, getChatHistory: key => settings.chatHistory?.[key] || [] }),
     memorySystem: window.EchoTextMemorySystem.createMemorySystem(common),
 };
-const prompt = await api(env).buildSystemPrompt();
+const built = api(env);
+const prompt = await built.buildSystemPrompt();
+if (args.includes('--request')) {
+    const { apiMessages } = await built.buildApiMessagesFromHistory(settings.chatHistory?.[avatar] || []);
+    const total = apiMessages.reduce((n, m) => n + m.content.length, 0);
+    console.error(`${char.name} · ${apiMessages.length} messages · ${total} chars · source ${settings.source}`);
+    console.log(apiMessages.map((m, i) => `===== ${i} · ${m.role} · ${m.content.length} chars =====\n${m.content}`).join('\n\n'));
+    return;
+}
 
 const values = env.emotionSystem.getEmotionState();
 console.error(`${char.name} (${avatar}) · user ${userName} · chat ${chatFile || 'none'} · emotions ${settings.emotionMode}`

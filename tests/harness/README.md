@@ -40,5 +40,5 @@ node --test tests/*.test.mjs                 # view model, features, story texts
 node tests/harness/undeclared.cjs [ref]      # names index.js uses but never declares, vs ref
 node tests/harness/context-compare.cjs [ref] # what the model is sent, vs ref; then on WeChat
 node tests/harness/prompt-compare.cjs [ref] [--print=<case>]  # the system prompt for mock cards and settings, vs ref; then the working tree's request order (what changes after the chat, the same up to there next time; the story between the texts by time, and nothing before it changing as it moves on; what goes into the roleplay's prompt, the time and the character's day last)
-node tests/harness/prompt-print.cjs <character> [--values=romance=80,…] [--big5=A=low,…] [--tail]  # the system prompt for one of your real characters, with your settings (read only)
+node tests/harness/prompt-print.cjs <character> [--values=romance=80,…] [--big5=A=low,…] [--tail] [--request]  # the system prompt for one of your real characters, with your settings (read only); --request: the whole request for a reply, every message
 ```

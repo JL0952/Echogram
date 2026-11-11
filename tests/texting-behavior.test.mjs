@@ -235,7 +235,7 @@ test('Romance shows guarded or direct by Extraversion, then Agreeableness', () =
 test('Auto mode: the <mood> rule lists the feelings, marks fixed ones and gives the steps', () => {
     const values = { rapport: -20, romance: 100, joy: 35, anticipation: 0, eagerness: 0, shock: 0, sadness: 0, anxiety: 0, anger: 0, disgust: 0 };
     const rules = Behavior.moodRules({ values, fixed: ['romance'], steps: { relation: 10, mood: 25 }, charName: 'Mira', userName: 'Qi' });
-    assert.equal(rules, `MOOD: How Mira feels shifts with what happens (news, a tease, a quarrel, a long silence), as much as it fairly would. Weigh Qi's latest messages against the values below; when they move any of them, end the reply with one more line: use the format <mood>feeling_1 value, feeling_2 value</mood>, with multiple entries separated by commas, indicating the new values of just the feelings that changed. If nothing changed, leave it out. A reserved Mira may hide it in the texts, but the values still move.
+    assert.equal(rules, `MOOD: How Mira feels shifts with what happens (news, a tease, a quarrel, a long silence), as much as it fairly would. Weigh Qi's latest messages against the values below. Every reply ends with a <mood> line: <mood>feeling_1 value, feeling_2 value</mood> with the new values of just the feelings that changed, separated by commas, or <mood>none</mood> when none did, as in most replies. A reserved Mira may hide it in the texts, but the values still move.
 How Mira feels now, 0 (not at all) to 100 (overwhelming): rapport -20 (how they get along, from -100 hostile to 100 deep trust), romance 100 (romantic attraction, fixed), joy 35, anticipation 0, eagerness 0, shock 0, sadness 0, anxiety 0, anger 0, disgust 0.
 Fixed feelings never change. A feeling moves at most 25 per reply, rapport and romance at most 10.`);
     // The chat's first report can set what's still at 0 straight away
@@ -249,8 +249,11 @@ test('Auto mode: a line in the rule\'s format, with the feelings it lists, reads
     const values = { rapport: 0, romance: 0, desire: 0, joy: 0, anticipation: 0, eagerness: 0, shock: 0, sadness: 0, anxiety: 0, anger: 0, disgust: 0 };
     const rules = Behavior.moodRules({ values, steps: { relation: 10, mood: 25 } });
     // <mood>feeling_1 value, feeling_2 value</mood>, filled in with the names listed
-    const format = rules.match(/<mood>(.*?)<\/mood>/)[1];
+    const format = rules.match(/<mood>([^<]*?)<\/mood>/)[1];
     assert.equal(format, 'feeling_1 value, feeling_2 value');
+    // Nothing changed: <mood>none</mood>, which reads as no report and goes from the text
+    assert.match(rules, /or <mood>none<\/mood> when none did/);
+    assert.deepEqual(window.EchoTextEmotionModel.parseMoodTag('hi\n<mood>none</mood>'), { text: 'hi', mood: null });
     const listed = rules.split('\n')[1].match(/\b([a-z]+) 0\b/g).map(m => m.split(' ')[0]);
     assert.deepEqual(listed, Object.keys(values));
     const line = `<mood>${listed.map((id, i) => `${id} ${(i + 1) * 5}`).join(', ')}</mood>`;

@@ -871,3 +871,16 @@ test('format words and days a model leaves in: out of the errand\'s name, and th
     ] } }).start.log;
     assert.deepEqual(log.map(e => [e.date, e.text]), [['2026-11-06', '14:10 经过地下室门口'], ['2026-11-10', '20:40 巡视北侧外墙'], ['2026-11-10', '22:40 发现血迹']]);
 });
+
+test('every reply ends with a <life> line, none when nothing changed; a report written back reads the same', () => {
+    const rules = Life.lifeRules({ charName: 'Mira', userName: 'Qi' });
+    assert.match(rules, /^LIFE: Keep track of what is going on in Mira's life\. Every reply ends with a <life> line, after the <mood> line if there is one: <life>…<\/life> with the changes separated by semicolons, or <life>none<\/life> when nothing changed, as in most replies:/);
+    assert.doesNotMatch(rules, /leave the line out/);
+    assert.deepEqual(Life.parseLifeTag('嗯\n<life>none</life>', SAT), { text: '嗯', life: null });
+    // As the latest replies are sent: the report they ended with
+    const report = Life.parseLifeTag('x\n<life>new 买咖啡 (due 2026-11-02 18:00; 有点急); update 周六搬家: 打包完了; done 体检; happened 吃了火锅 (14:30); today 今晚加班</life>', SAT).life;
+    const line = Life.serializeLife(report);
+    assert.equal(line, 'new 买咖啡 (due 2026-11-02 18:00; 有点急); update 周六搬家: 打包完了; done 体检; happened 吃了火锅 (2026-10-31 14:30); today 今晚加班');
+    assert.deepEqual(Life.parseLifeTag(`x\n<life>${line}</life>`, SAT).life, report);
+    assert.equal(Life.serializeLife(null), '');
+});

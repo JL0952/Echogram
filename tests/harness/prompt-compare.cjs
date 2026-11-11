@@ -23,7 +23,7 @@ for (const f of ['lib/config.js', 'lib/rich-messages.js', 'lib/features.js', 'li
 new Function(fs.readFileSync(`${__dirname}/scenarios.js`, 'utf8'))();
 
 // Real index.js code: the prompt builder and the helpers it uses
-const NAMES = ['addEchogramToStory', 'buildCharacterToday', 'buildSystemPrompt', 'buildPromptParts', 'buildCharacterReference', 'MAX_TEXTS', 'buildLifeDate', 'buildApiMessagesFromHistory', 'buildApiMessagesFromHistoryForChar', 'placeLiveContext', 'splitsLiveContext', 'buildChatTurns', 'buildChatMessages', 'getSTStoryMessages', 'stMessageTime', 'StoryTexts', 'ST_STORY_CHUNK_MESSAGES', 'ST_STORY_CHUNK_CHARS', 'getVerbosityPrompt', 'getCharacterVerbosity', 'getEchoTextFirstMessage', 'getSTStoryContext', 'findSTOpeningIndex',
+const NAMES = ['addEchogramToStory', 'reportKinds', 'reportLines', 'reportReminder', 'REPORT_TURNS', 'buildCharacterToday', 'buildSystemPrompt', 'buildPromptParts', 'buildCharacterReference', 'MAX_TEXTS', 'buildLifeDate', 'buildApiMessagesFromHistory', 'buildApiMessagesFromHistoryForChar', 'placeLiveContext', 'splitsLiveContext', 'buildChatTurns', 'buildChatMessages', 'getSTStoryMessages', 'stMessageTime', 'StoryTexts', 'ST_STORY_CHUNK_MESSAGES', 'ST_STORY_CHUNK_CHARS', 'getVerbosityPrompt', 'getCharacterVerbosity', 'getEchoTextFirstMessage', 'getSTStoryContext', 'findSTOpeningIndex',
     'isCharInCurrentSTChat', 'cleanSTMessageText', 'ST_STORY_MAX_MESSAGES', 'ST_STORY_MAX_CHARS', 'replaceMacros', 'buildMessageFormatPrompt',
     'RichMessages', 'Features', 'Platforms', 'activePlatformMemo', 'getActivePlatform', 'getActiveFeatures', 'platformHas', 'Stickers', 'stickerPresets', 'stickerLibrary', 'getStickerLibrary', 'stickerSetsFor', 'getCharacterStickerNames', 'getModelFeatures', 'getReactionIds', 'isTetheredMode',
     'DailyLife', 'dailyLifeActive', 'activeSchedule', 'activeLife', 'buildDailyLifeContext', 'buildScheduleContext', 'phoneOverride', 'buildLifeRules', 'getEmotionHistory'];
@@ -235,7 +235,7 @@ if (api) {
     env.settings.chatHistory = {};
     env.settings.lifeState = { 'mira.png': { startAt: 0, start: { errands: [{ text: 'Find the leak', due: dayKey(new Date(Date.now() + 86400000)) }], log: [], today: null } } };
     added = inStory();
-    assert.ok(added.at(-1).mes.startsWith('<current_time>') && added.at(-1).mes.includes('- Find the leak (due tomorrow)'));
+    assert.ok(added.at(-1).mes.startsWith('<current_time>') && added.at(-1).mes.includes('- Find the leak (due tomorrow 21:00)'));
     // Continue keeps the last message last
     assert.equal(inStory('continue').at(-1).mes, 'latest');
     // Nothing to say and no texts: nothing added
