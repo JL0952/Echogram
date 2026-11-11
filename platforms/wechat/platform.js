@@ -257,7 +257,7 @@
             ? `<div class="wx-swipe"><button data-et-action="swipe-prev" data-index="${m.index}" title="上一版"${m.swipe.index === 0 ? ' disabled' : ''}>‹</button><span>${m.swipe.index + 1} / ${m.swipe.count}</span><button data-et-action="swipe-next" data-index="${m.index}" title="${m.swipe.isLast ? '重新生成' : '下一版'}">›</button></div>`
             : '';
 
-        const divider = m.showTimeDivider ? `<div class="wx-time">${dividerTime(time)}</div>` : '';
+        const divider = m.showTimeDivider ? `<div class="wx-time" data-et-role="divider">${dividerTime(time)}</div>` : '';
         return `<div class="wx-message" data-et-role="message" data-index="${m.index}" data-is-user="${m.isUser ? 1 : 0}">${divider}${rows}${swipe}</div>`;
     }
 

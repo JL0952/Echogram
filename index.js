@@ -8162,10 +8162,11 @@
 
     // ── Selecting messages (Select in a bubble's menu; WeChat's way, on every look) ──
     // A circle by every bubble, the header saying how many are picked with Cancel, and the
-    // input bar standing in for Delete, Add Memory and Copy. A tap on a bubble picks it
+    // input bar standing in for Delete, Add Memory, Copy and Post on X. Nothing in the list is
+    // laid out anew: the character's messages slide over for the circles (style.css), so no
+    // text wraps differently and the list doesn't move. A tap on a bubble picks it
     // (nothing else in the list reacts meanwhile); acting, Cancel or Escape ends it.
     // Keys are "message index:bubble", the bubble as a part of the message (the main one the last).
-    const SELECT_GUTTER = 34;
     let selecting = null;
 
     /** Where a bubble on screen is in the chat: { index, part }, or null. */
@@ -8189,11 +8190,6 @@
         const list = document.getElementById('et-messages');
         const inner = document.getElementById('et-messages-inner');
         if (!panel || !list || !inner) return;
-        // Room for the circles: texts wrap anew, the message picked stays where it was on screen
-        const padding = inner.style.paddingLeft;
-        keepOnScreen(findMessageElement(msgIndex)[0], () => {
-            inner.style.paddingLeft = `${(parseFloat(getComputedStyle(inner).paddingLeft) || 0) + SELECT_GUTTER}px`;
-        });
 
         const memory = !!(memorySystem && settings.memoryEnabled);
         const head = jQuery(`<div class="et-select-head">
@@ -8234,14 +8230,14 @@
         panel.classList.add('et-selecting');
         selecting = {
             keys: new Set([`${msgIndex}:${part}`]),
-            head, bar, marks, header, inputBar, padding, mutations, sizes, onKey,
+            head, bar, marks, header, inputBar, mutations, sizes, onKey,
         };
         drawSelection();
     }
 
     function stopSelecting() {
         if (!selecting) return;
-        const { head, bar, marks, header, inputBar, padding, mutations, sizes, onKey } = selecting;
+        const { head, bar, marks, header, inputBar, mutations, sizes, onKey } = selecting;
         selecting = null;
         mutations.disconnect();
         sizes.disconnect();
@@ -8251,43 +8247,7 @@
         bar.remove();
         marks.remove();
         for (const el of [header, inputBar]) if (el) el.inert = false;
-        const inner = document.getElementById('et-messages-inner');
-        // The message in the middle of the list stays where it is as the texts wrap back
-        if (inner) keepOnScreen(middleMessage(), () => { inner.style.paddingLeft = padding; });
         document.getElementById('et-panel')?.classList.remove('et-selecting');
-    }
-
-    /**
-     * Changes the list's layout with `change()`, scrolling it (at once, not smoothly) so
-     * `anchor` stays where it is on screen; at the bottom, it stays at the bottom.
-     */
-    function keepOnScreen(anchor, change) {
-        const list = document.getElementById('et-messages');
-        if (!list) { change(); return; }
-        const atEnd = list.scrollHeight - list.scrollTop - list.clientHeight < 4;
-        const top = anchor?.isConnected ? anchor.getBoundingClientRect().top : null;
-        change();
-        const behavior = list.style.scrollBehavior;
-        list.style.scrollBehavior = 'auto';
-        if (atEnd && !anchor) list.scrollTop = list.scrollHeight;
-        else if (top !== null) list.scrollTop += anchor.getBoundingClientRect().top - top;
-        list.style.scrollBehavior = behavior;
-    }
-
-    /** The message across the middle of the visible list, or null. */
-    function middleMessage() {
-        const list = document.getElementById('et-messages');
-        if (!list) return null;
-        const box = list.getBoundingClientRect();
-        const middle = box.top + box.height / 2;
-        let best = null;
-        let distance = Infinity;
-        for (const el of list.querySelectorAll('[data-et-role~="message"][data-index]')) {
-            const r = el.getBoundingClientRect();
-            const d = r.bottom < middle ? middle - r.bottom : r.top > middle ? r.top - middle : 0;
-            if (d < distance) { distance = d; best = el; }
-        }
-        return best;
     }
 
     /** The picked bubbles, in chat order: [{ index, part }]. Ones no longer in the chat are dropped. */
@@ -8323,19 +8283,39 @@
         };
         cover(selecting.head, selecting.header);
         cover(selecting.bar, selecting.inputBar);
-        // A circle at the middle of each bubble shown, in the list's own coordinates
-        const listBox = list.getBoundingClientRect();
-        const marks = [];
+        // A circle at the middle of each bubble, where it's laid out in the list (not where an
+        // animation has it this moment: a bubble settling from the lift, the slide). The circles
+        // are kept by key, so only new ones come in
+        const layer = selecting.marks[0];
+        const have = new Map([...layer.children].map(el => [el.dataset.key, el]));
+        const shown = new Set();
         for (const bubble of inner.querySelectorAll('[data-et-role~="message"][data-index] [data-et-role~="bubble"]')) {
-            const r = bubble.getBoundingClientRect();
-            if (!r.height) continue;
+            if (!bubble.offsetHeight) continue;
             const ref = bubblePart(bubble);
             if (!ref) continue;
             const key = `${ref.index}:${ref.part}`;
-            const top = r.top - listBox.top - list.clientTop + list.scrollTop + r.height / 2;
-            marks.push(`<button type="button" class="et-select-mark${selecting.keys.has(key) ? ' et-select-mark-on' : ''}" data-key="${key}" style="top:${top}px" title="Select"><i class="fa-solid fa-check"></i></button>`);
+            let mark = have.get(key);
+            if (!mark) {
+                mark = document.createElement('button');
+                mark.type = 'button';
+                mark.className = 'et-select-mark';
+                mark.dataset.key = key;
+                mark.title = 'Select';
+                mark.innerHTML = '<i class="fa-solid fa-check"></i>';
+                layer.appendChild(mark);
+            }
+            mark.style.top = `${offsetWithin(bubble, list) + bubble.offsetHeight / 2}px`;
+            mark.classList.toggle('et-select-mark-on', selecting.keys.has(key));
+            shown.add(key);
         }
-        selecting.marks.html(marks.join(''));
+        for (const [key, mark] of have) if (!shown.has(key)) mark.remove();
+    }
+
+    /** How far below the top of `ancestor`'s content `el` is laid out (transforms aside). */
+    function offsetWithin(el, ancestor) {
+        let top = 0;
+        for (let node = el; node && node !== ancestor; node = node.offsetParent) top += node.offsetTop;
+        return top;
     }
 
     /** A tap in the list while selecting: on a bubble or its circle it picks it or lets it go; nothing else happens. */

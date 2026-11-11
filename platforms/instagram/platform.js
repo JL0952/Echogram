@@ -251,7 +251,7 @@
         const seen = m.isUser && m.receipt
             ? `<div class="ig-seen" title="${ctx.sanitize(m.receipt.note || '')}">${m.receipt.state === 'read' || m.receipt.state === 'ghosted' ? 'Seen' : 'Sent'}</div>`
             : '';
-        const divider = m.showTimeDivider ? `<div class="ig-time">${dividerTime(time)}</div>` : '';
+        const divider = m.showTimeDivider ? `<div class="ig-time" data-et-role="divider">${dividerTime(time)}</div>` : '';
         return `<div class="ig-message ig-message-${side}" data-et-role="message" data-index="${m.index}" data-is-user="${m.isUser ? 1 : 0}"${ctx.groupChat ? ' data-group' : ''}${divider ? ' data-divider' : ''}>${divider}${sender}${rows}${swipe}${seen}</div>`;
     }
 

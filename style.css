@@ -3230,6 +3230,18 @@ html.et-bg-light {
     --et-select-color: #07c160;
 }
 
+/* The character's messages slide over for the circles, and back: `translate`, apart from
+   `transform` (a lifted bubble's own animation), so nothing wraps anew, the list doesn't move
+   and a bubble settling from the lift slides at the same time. A time divider in the message
+   stays centred; yours stay put */
+#et-panel [data-et-role~="message"][data-is-user="0"] > :not([data-et-role~="divider"]) {
+    transition: translate 0.26s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+#et-panel.et-selecting [data-et-role~="message"][data-is-user="0"] > :not([data-et-role~="divider"]) {
+    translate: 34px 0;
+}
+
 .et-select-marks {
     position: absolute;
     top: 0;
@@ -3259,10 +3271,26 @@ html.et-bg-light {
     transition: background 0.15s, border-color 0.15s, color 0.15s;
 }
 
+/* A new circle comes in as the messages slide over (and a lifted bubble settles) */
+.et-select-mark {
+    animation: et-mark-in 0.26s cubic-bezier(0.16, 1, 0.3, 1) 0.12s both;
+}
+
+@keyframes et-mark-in {
+    from { opacity: 0; transform: translateY(-50%) scale(0.6); }
+}
+
 .et-select-mark.et-select-mark-on {
     background: var(--et-select-color);
     border-color: var(--et-select-color);
     color: #fff;
+}
+
+/* Under the selection's own bars (glass on some looks), the header's and input bar's own
+   contents don't show through; their backgrounds stay */
+#et-panel.et-selecting [data-et-role~="header"] > *,
+#et-panel.et-selecting [data-et-role~="input-bar"] > * {
+    visibility: hidden;
 }
 
 .et-select-head,

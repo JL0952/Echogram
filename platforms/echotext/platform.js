@@ -289,7 +289,7 @@
         if (m.isUser) {
             const safeUserName = ctx.sanitize(m.senderName);
             return `
-            <div class="et-message et-message-user${m.groupedWithNext ? ' et-message-grouped' : ''}" data-et-role="message" data-index="${index}">
+            <div class="et-message et-message-user${m.groupedWithNext ? ' et-message-grouped' : ''}" data-et-role="message" data-index="${index}" data-is-user="1">
                 ${leadingBubbles(m, 'et-bubble-user', ctx)}
                 ${replyQuote(mainPart, ctx)}
                 <div class="et-bubble et-bubble-user et-bubble-main${mainCardClass}" data-et-role="bubble main">
@@ -317,7 +317,7 @@
                         </div>` : '';
 
         return `
-            <div class="et-message et-message-char" data-et-role="message" data-index="${index}">
+            <div class="et-message et-message-char" data-et-role="message" data-index="${index}" data-is-user="0">
                 <div class="et-message-body">
                     ${leadingBubbles(m, 'et-bubble-char', ctx)}
                     ${replyQuote(mainPart, ctx)}

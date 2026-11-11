@@ -2587,6 +2587,11 @@
 
     window.runSelectTest = async function () {
         const res = {};
+        // (measured where things settle: a hidden pane leaves animations on their first frame,
+        // and the circles go where the bubbles are laid out)
+        const still = document.createElement('style');
+        still.textContent = '#et-panel, #et-panel * { transition: none !important; animation: none !important; }';
+        document.head.appendChild(still);
         const s = env.settings;
         const platformBefore = s.defaultPlatform;
         const seed = () => {
@@ -2628,8 +2633,10 @@
             // Over the header and the input bar; the circles beside their bubbles
             const bar = panel.querySelector('.et-select-bar').getBoundingClientRect(), ib = inputBar.getBoundingClientRect();
             out.barCovers = Math.abs(bar.top - ib.top) < 1 && Math.abs(bar.height - ib.height) < 1;
+            // (beside what shows: on some looks a bubble's element is its whole row)
             const mark = panel.querySelector('.et-select-mark[data-key="2:0"]').getBoundingClientRect(), b2 = bubbleAt(2, 0).getBoundingClientRect();
-            out.markBeside = Math.abs((mark.top + mark.bottom) / 2 - (b2.top + b2.bottom) / 2) < 2 && mark.right <= b2.left;
+            const words = bubbleAt(2, 0).querySelector('[data-et-role~="text"]').getBoundingClientRect();
+            out.markBeside = Math.abs((mark.top + mark.bottom) / 2 - (b2.top + b2.bottom) / 2) < 2 && mark.right <= words.left;
             // A tap on a bubble or its circle picks it or lets it go; a hold opens nothing
             bubbleAt(1, 0).click();
             bubbleAt(2, 0).click();
@@ -2667,8 +2674,10 @@
             out.ok = Object.values(out).every(Boolean);
             res[id] = out;
         }
-        // A long chat: the message picked stays put as the texts wrap anew, and the one in the
-        // middle when it ends; deleting at the bottom leaves no gap
+        // A long chat: nothing is laid out anew (the character's messages slide over, the list
+        // keeps its height and place, no text spills out of its bubble, the circles clear what
+        // slid); the message picked stays put, and the one in the middle when it ends; deleting
+        // at the bottom leaves no gap
         for (const id of ['echotext', 'wechat', 'instagram']) {
             s.defaultPlatform = id;
             const long = Array.from({ length: 40 }, (_, i) => ({ is_user: i % 2 === 0, mes: i % 3 ? `line ${i} with some longer words that wrap across the width of a bubble` : `short ${i}`, send_date: Date.now() - (40 - i) * 60000 }));
@@ -2682,9 +2691,25 @@
             await sleep(100);
             const msgTop = i => panel.querySelector(`[data-et-role~="message"][data-index="${i}"]`).getBoundingClientRect().top;
             const before = msgTop(30);
+            const layout = () => [Math.round(list.scrollTop), list.scrollHeight];
+            const layoutBefore = layout();
             r.handleDotsAction('select', 30, false, jQuery('<b>'), 0);
             await sleep(50);
             const entered = Math.abs(msgTop(30) - before) < 2;
+            const noReflow = layout().join() === layoutBefore.join();
+            const listBox = list.getBoundingClientRect();
+            const spills = [...list.querySelectorAll('[data-et-role~="bubble"] [data-et-role~="text"]')].filter(t => {
+                const tr = t.getBoundingClientRect(), br = t.closest('[data-et-role~="bubble"]').getBoundingClientRect();
+                return tr.height && (tr.right > br.right + 0.5 || tr.right > listBox.right + 0.5);
+            });
+            const slid = el => getComputedStyle(el).translate;
+            const charKids = [...list.querySelectorAll('[data-et-role~="message"][data-is-user="0"] > :not([data-et-role~="divider"])')];
+            const userKids = [...list.querySelectorAll('[data-et-role~="message"][data-is-user="1"] > *')];
+            const markRight = Math.max(...[...panel.querySelectorAll('.et-select-mark')].map(m => m.getBoundingClientRect().right));
+            const charLeft = Math.min(...[...list.querySelectorAll('[data-et-role~="message"][data-is-user="0"] [data-et-role~="bubble"], [data-et-role~="message"][data-is-user="0"] img')]
+                .filter(el => el.getBoundingClientRect().height).map(el => el.getBoundingClientRect().left));
+            const slideOver = charKids.length > 0 && charKids.every(el => slid(el) === '34px') && userKids.every(el => ['none', '0px'].includes(slid(el)))
+                && [...list.querySelectorAll('[data-et-role~="divider"]')].every(el => ['none', '0px'].includes(slid(el))) && charLeft >= markRight;
             const middle = [...panel.querySelectorAll('[data-et-role~="message"]')].find(el => { const b = el.getBoundingClientRect(), l = list.getBoundingClientRect(); return b.top <= l.top + l.height / 2 && b.bottom >= l.top + l.height / 2; });
             const middleTop = middle?.getBoundingClientRect().top;
             panel.querySelector('.et-select-cancel').click();
@@ -2699,9 +2724,10 @@
             r.handleDotsAction('select', 39, false, jQuery('<b>'), 0);
             panel.querySelector('.et-select-bar [data-select="delete"]').click();
             await sleep(100);
-            res[`${id}Long`] = { entered, left, deletedNoGap: chat().length === 39 && Math.abs(gap() - gapBefore) < 2 };
+            res[`${id}Long`] = { entered, noReflow, noSpill: spills.length === 0, slideOver, left, deletedNoGap: chat().length === 39 && Math.abs(gap() - gapBefore) < 2 };
             res[`${id}Long`].ok = Object.values(res[`${id}Long`]).every(Boolean);
         }
+        still.remove();
         window.SillyTavern = realST;
         if (navigator.clipboard && realWrite) navigator.clipboard.writeText = realWrite;
         s.defaultPlatform = platformBefore;
