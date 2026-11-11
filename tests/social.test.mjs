@@ -320,3 +320,23 @@ test('Posts about texts picked in the chat: the texts in the request, oldest fir
     assert.ok(request({}, { chat: [], now }).prompt.startsWith('Write 1 new post. Choose everything yourself'));
     assert.ok(request({}, { chat, outlines: [{ time: '', topic: 't' }], now }).prompt.startsWith('Write 1 new post to this outline'));
 });
+
+test('Retry on a post about texts picked in the chat: about the same texts again, and it keeps them', () => {
+    const now = 10 * 3600000;
+    const base = { charName: 'Mira', userName: 'Me', platform: 'X', card: 'c', account: S.getAccount({}, 'k', { name: 'Mira' }), now };
+    const about = S.aboutTexts([{ name: 'Me', text: 'are you coming', at: now - 2 * 3600000 }, { name: 'Mira', text: '  in a bit ', at: now - 3600000 }, { name: 'x', text: ' ' }]);
+    assert.deepEqual(about, [{ name: 'Me', text: 'are you coming', at: now - 2 * 3600000 }, { name: 'Mira', text: 'in a bit', at: now - 3600000 }]);
+    assert.equal(S.aboutTexts([]), null);
+    const post = { id: 'c1', at: now - 600000, text: 'ugh', image: '', replies: [], about };
+    const settings = { socialPosts: { k: [post] } };
+    const again = S.buildRetryRequest({ ...base, post, posts: S.getPosts(settings, 'k') });
+    assert.ok(again.prompt.startsWith('Texts between Mira and Me, oldest first:\n[2h ago] Me: are you coming\n[1h ago] Mira: in a bit\n\nWrite 1 new post about these texts'));
+    // Written again: still about them, for the next Retry
+    const [fresh] = S.parsePosts('<post ago="1m"><text>ok fine</text></post>', { now, count: 1 });
+    S.replacePost(settings, 'k', 'c1', fresh, now);
+    assert.deepEqual(settings.socialPosts.k[0].about, about);
+    assert.equal(settings.socialPosts.k[0].text, 'ok fine');
+    // Kept on the account, it goes with the post
+    S.setPostKept(settings, 'k', 'c1', true);
+    assert.deepEqual(settings.socialAccounts.k.posts[0].about, about);
+});

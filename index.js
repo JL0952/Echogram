@@ -5084,7 +5084,9 @@
             ? Social.parseOutlinedPosts(answer, { outlines: request.outlines, now })
             : Social.parsePosts(answer, { now, after: Math.max(posts[0]?.at || 0, ...(chat || []).map(line => line.at || 0)), count: request.count });
         if (!added.length) throw new Error('the model sent back no posts');
-        Social.addChatPosts(settings, key, added, `p${now}`);
+        // Posts about texts picked in the chat keep them, for Retry to write about them again
+        const about = Social.aboutTexts(chat);
+        Social.addChatPosts(settings, key, about ? added.map(post => ({ ...post, about })) : added, `p${now}`);
         saveSettings();
         return added.length;
     }
