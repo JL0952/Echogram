@@ -8071,6 +8071,8 @@
     // (nothing else in the list reacts meanwhile); acting, Cancel or Escape ends it.
     // Keys are "message index:bubble", the bubble as a part of the message (the main one the last).
     let selecting = null;
+    // How long the selection's bars ignore clicks once they're up
+    const SELECT_SETTLE_MS = 400;
 
     /** Where a bubble on screen is in the chat: { index, part }, or null. */
     function bubblePart(bubble) {
@@ -8110,6 +8112,8 @@
         jQuery(list).append(marks);
         head.add(bar).on('click', '[data-select]', function (e) {
             e.stopPropagation();
+            // The bar comes up where the menu was: a second click on Select lands on it, not on its buttons
+            if (performance.now() - selecting?.since < SELECT_SETTLE_MS) return;
             onSelectAction(this.dataset.select);
         });
         const header = panel.querySelector('[data-et-role~="header"]');
@@ -8133,7 +8137,7 @@
         panel.classList.add('et-selecting');
         selecting = {
             keys: new Set([`${msgIndex}:${part}`]),
-            head, bar, marks, header, inputBar, mutations, sizes, onKey,
+            head, bar, marks, header, inputBar, mutations, sizes, onKey, since: performance.now(),
         };
         drawSelection();
     }
@@ -8172,31 +8176,38 @@
         const list = document.getElementById('et-messages');
         const inner = document.getElementById('et-messages-inner');
         if (!panel || !list || !inner) { stopSelecting(); return; }
+        // Everything measured first, then everything written: a write between two reads lays the
+        // page out again for the second (with ~40 bubbles that was over 100 ms a draw)
+        const box = panel.getBoundingClientRect();
+        const ox = box.left + panel.clientLeft;
+        const oy = box.top + panel.clientTop;
+        const headAt = selecting.header?.getBoundingClientRect();
+        const barAt = selecting.inputBar?.getBoundingClientRect();
+        // A circle at the middle of each bubble, where it's laid out in the list (not where an
+        // animation has it this moment: a bubble settling from the lift, the slide)
+        const spots = [];
+        for (const bubble of inner.querySelectorAll('[data-et-role~="message"][data-index] [data-et-role~="bubble"]')) {
+            const height = bubble.offsetHeight;
+            if (!height) continue;
+            const ref = bubblePart(bubble);
+            if (ref) spots.push({ key: `${ref.index}:${ref.part}`, top: `${offsetWithin(bubble, list) + height / 2}px` });
+        }
+
         const count = selectedParts().length;
         selecting.head.find('.et-select-count').text(count ? `${count} selected` : 'Select messages');
         selecting.bar.find('button').prop('disabled', !count);
         // Over the header and the input bar
-        const box = panel.getBoundingClientRect();
-        const ox = box.left + panel.clientLeft;
-        const oy = box.top + panel.clientTop;
-        const cover = (el, target) => {
-            const r = target?.getBoundingClientRect();
+        const cover = (el, r) => {
             if (!r || !r.height) { el.hide(); return; }
             el.show().css({ left: `${r.left - ox}px`, top: `${r.top - oy}px`, width: `${r.width}px`, height: `${r.height}px` });
         };
-        cover(selecting.head, selecting.header);
-        cover(selecting.bar, selecting.inputBar);
-        // A circle at the middle of each bubble, where it's laid out in the list (not where an
-        // animation has it this moment: a bubble settling from the lift, the slide). The circles
-        // are kept by key, so only new ones come in
+        cover(selecting.head, headAt);
+        cover(selecting.bar, barAt);
+        // The circles are kept by key, so only new ones come in
         const layer = selecting.marks[0];
         const have = new Map([...layer.children].map(el => [el.dataset.key, el]));
         const shown = new Set();
-        for (const bubble of inner.querySelectorAll('[data-et-role~="message"][data-index] [data-et-role~="bubble"]')) {
-            if (!bubble.offsetHeight) continue;
-            const ref = bubblePart(bubble);
-            if (!ref) continue;
-            const key = `${ref.index}:${ref.part}`;
+        for (const { key, top } of spots) {
             let mark = have.get(key);
             if (!mark) {
                 mark = document.createElement('button');
@@ -8207,7 +8218,7 @@
                 mark.innerHTML = '<i class="fa-solid fa-check"></i>';
                 layer.appendChild(mark);
             }
-            mark.style.top = `${offsetWithin(bubble, list) + bubble.offsetHeight / 2}px`;
+            if (mark.style.top !== top) mark.style.top = top;
             mark.classList.toggle('et-select-mark-on', selecting.keys.has(key));
             shown.add(key);
         }
