@@ -18,6 +18,7 @@ A messaging companion for SillyTavern, where characters remember your story, tex
 - Natural, multi-message replies with customizable texting styles and message lengths.
 - Send photos, voice messages, stickers, songs, locations, files, links, and money transfers.
 - React to messages, quote replies, and customize photos with your own images.
+- Select several messages to delete, copy, or save as a memory.
 - Import your own sticker packs from ZIP files.
 - Group chats, message swipes, saved conversations, custom themes, avatars, and fonts.
 - Export a character's setup to a file and import it on another device.

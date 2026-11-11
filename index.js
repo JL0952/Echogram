@@ -845,6 +845,7 @@
         if (!panelOpen) return;
         closeSocial();
         closeMenus();
+        stopSelecting();
 
         // ── Combine mode: show all members in header ──────────────────
         if (groupManager && groupManager.isGroupSession() && groupManager.isCombineMode()) {
@@ -4633,6 +4634,7 @@
 
     function closePanel() {
         if (!panelOpen) return;
+        stopSelecting();
 
         // Remove visualViewport resize/scroll listeners that were attached in
         // bindPanelEvents() to keep the panel above the iOS on-screen keyboard.
@@ -7950,7 +7952,7 @@
     function onBubblePointerDown(e) {
         bubbleHeld = null;
         cancelBubbleHold();
-        if (e.pointerType === 'mouse' && e.button !== 0) return;
+        if (selecting || (e.pointerType === 'mouse' && e.button !== 0)) return;
         const bubble = bubbleTarget(e.target);
         if (!bubble) return;
         const ref = bubbleRef(bubble);
@@ -7994,6 +7996,7 @@
         const bubble = bubbleTarget(e.target);
         if (!bubble) return;
         e.preventDefault();
+        if (selecting) return;
         cancelBubbleHold();
         if (bubbleHeld === bubble) return;
         openBubbleMenu(bubble);
@@ -8025,9 +8028,22 @@
     // A held bubble lifts in place over the chat, which blurs behind it; its tapback row
     // (a character's, where the platform has tapbacks) pops in above and its menu below.
     // The list doesn't scroll meanwhile; a tap anywhere else puts the bubble back.
+    // The blur is three pieces: one in the list itself under the bubble (Safari keeps a
+    // scrolling list's content below anything outside it, whatever its z-index) and two over
+    // the panel above and below it (the header, the input bar). The bubble stays in the middle one.
     let bubbleFocus = null;
 
     const stopScroll = (e) => { if (e.cancelable) e.preventDefault(); };
+
+    // What sits over the list without being part of it: the list's watchers (shared fill, text fit) ignore it
+    const LIST_OVERLAYS = '.et-focus-backdrop, .et-select-marks, .et-dots-menu, .et-react-overlay';
+
+    /** Whether a change in the list was only to something sitting over it. */
+    function overlayMutation(record) {
+        if (record.target.closest?.(LIST_OVERLAYS)) return true;
+        const nodes = [...record.addedNodes, ...record.removedNodes];
+        return record.type === 'childList' && nodes.length > 0 && nodes.every(n => n.nodeType === 1 && n.matches(LIST_OVERLAYS));
+    }
 
     function openBubbleFocus(bubble, msgIndex, isUser, part) {
         closeBubbleFocus();
@@ -8036,45 +8052,68 @@
         const panel = document.getElementById('et-panel');
         const list = document.getElementById('et-messages');
         const row = !isUser && platformHas('react') ? toggleReactOverlay(jQuery(bubble), msgIndex, part, true) : null;
-        const backdrop = document.createElement('div');
-        backdrop.className = 'et-focus-backdrop';
-        panel.appendChild(backdrop);
-        for (const el of [backdrop, list]) {
-            el.addEventListener('wheel', stopScroll, { passive: false });
-            el.addEventListener('touchmove', stopScroll, { passive: false });
-        }
-        bubbleFocus = { bubble, list, backdrop };
-        // A tap that starts and ends on the blur closes it (not the hold's own release,
-        // which the moving bubble can leave over it); so does a click outside the panel
-        let downOnBackdrop = false;
-        backdrop.addEventListener('pointerdown', () => { downOnBackdrop = true; });
-        backdrop.addEventListener('click', () => { if (downOnBackdrop) closeAllDotMenus(); });
-        setTimeout(() => {
-            if (bubbleFocus?.backdrop !== backdrop) return;
-            jQuery(document).on('click.et-focus', (e) => { if (!e.target.closest?.('#et-panel')) closeAllDotMenus(); });
-        }, 0);
 
-        // In the panel's coordinates. The bubble moves up (or down) as far as it must for
-        // the row above it and the menu under it, staying within the list's view
+        // In the panel's coordinates. The middle: the list's part below the header and above the input bar
         const box = panel.getBoundingClientRect();
         const ox = box.left + panel.clientLeft;
         const oy = box.top + panel.clientTop;
         const width = panel.clientWidth;
         const height = panel.clientHeight;
         const view = list.getBoundingClientRect();
+        const headerBottom = panel.querySelector('[data-et-role~="header"]')?.getBoundingClientRect().bottom ?? view.top;
+        const inputTop = panel.querySelector('[data-et-role~="input-bar"]')?.getBoundingClientRect().top ?? view.bottom;
+        const midTop = Math.max(view.top, headerBottom) - oy;
+        const midBottom = Math.min(view.bottom, inputTop) - oy;
+        // (all measured before anything is added, so the page is laid out once)
         const rect = bubble.getBoundingClientRect();
         const pad = 8;
         // Room for the bubble's growth (scale 1.05)
         const gap = 8 + rect.height * 0.025;
         const rowH = row ? row.outerHeight() : 0;
+        const rowW = row ? row.outerWidth() : 0;
         const menuW = menu.outerWidth() || 160;
         const menuH = menu.outerHeight() || 160;
+        const scrollTop = list.scrollTop;
+        const listEdge = list.clientTop;
+        const piece = (cls, css, host) => {
+            const el = document.createElement('div');
+            el.className = `et-focus-backdrop ${cls}`;
+            Object.assign(el.style, css);
+            host.appendChild(el);
+            el.addEventListener('wheel', stopScroll, { passive: false });
+            el.addEventListener('touchmove', stopScroll, { passive: false });
+            return el;
+        };
+        const backdrops = [
+            piece('et-focus-backdrop-top', { top: '0px', height: `${Math.max(0, midTop)}px` }, panel),
+            piece('et-focus-backdrop-list', {
+                top: `${scrollTop + midTop - (view.top - oy) - listEdge}px`, height: `${Math.max(0, midBottom - midTop)}px`,
+            }, list),
+            piece('et-focus-backdrop-bottom', { top: `${midBottom}px`, height: `${Math.max(0, height - midBottom)}px` }, panel),
+        ];
+        list.addEventListener('wheel', stopScroll, { passive: false });
+        list.addEventListener('touchmove', stopScroll, { passive: false });
+        bubbleFocus = { bubble, list, backdrops };
+        // A tap that starts and ends on the blur closes it (not the hold's own release,
+        // which the moving bubble can leave over it); so does a click outside the panel
+        let downOnBackdrop = false;
+        for (const el of backdrops) {
+            el.addEventListener('pointerdown', () => { downOnBackdrop = true; });
+            el.addEventListener('click', (e) => { e.stopPropagation(); if (downOnBackdrop) closeAllDotMenus(); });
+        }
+        setTimeout(() => {
+            if (bubbleFocus?.backdrops !== backdrops) return;
+            jQuery(document).on('click.et-focus', (e) => { if (!e.target.closest?.('#et-panel')) closeAllDotMenus(); });
+        }, 0);
+
+        // The bubble moves up (or down) as far as it must for the row above it and the
+        // menu under it, staying in the middle
         const top = rect.top - oy;
         const bottom = rect.bottom - oy;
         let shift = Math.min(0, height - pad - menuH - gap - bottom);
         if (row) shift = Math.max(shift, pad + rowH + gap - top);
-        shift = Math.max(shift, view.top - oy + pad - top);
-        if (shift > 0) shift = Math.min(shift, Math.max(0, view.bottom - oy - pad - bottom));
+        shift = Math.max(shift, midTop + pad - top);
+        if (shift > 0) shift = Math.min(shift, Math.max(0, midBottom - pad - bottom));
         const edge = (w) => Math.max(pad, Math.min(width - w - pad, (isUser ? rect.right - w : rect.left) - ox));
         const side = isUser ? 'right' : 'left';
         menu.css({
@@ -8084,42 +8123,251 @@
         });
         if (row) {
             row.css({
-                left: `${edge(row.outerWidth())}px`,
+                left: `${edge(rowW)}px`,
                 top: `${Math.max(pad, top + shift - gap - rowH)}px`,
                 'transform-origin': `bottom ${side}`,
             });
         }
+        // A data attribute, not a class: the list's watchers don't take it for a change to the chat
         bubble.style.setProperty('--et-focus-shift', `${shift}px`);
         bubble.style.setProperty('--et-focus-origin', side);
-        bubble.classList.add('et-bubble-lifting');
-        // Their resting style taken first, so the change from it animates (with or without a frame)
-        void backdrop.offsetWidth;
-        void bubble.offsetWidth;
-        backdrop.classList.add('et-focus-backdrop-open');
-        bubble.classList.add('et-bubble-focused');
+        backdrops.forEach(el => el.classList.add('et-focus-backdrop-open'));
+        bubble.dataset.etLift = 'up';
     }
 
     /** Puts a lifted bubble back: it settles, the blur fades, the list scrolls again. */
     function closeBubbleFocus() {
         if (!bubbleFocus) return;
-        const { bubble, list, backdrop } = bubbleFocus;
+        const { bubble, list, backdrops } = bubbleFocus;
         bubbleFocus = null;
         jQuery(document).off('click.et-focus');
-        for (const el of [backdrop, list]) {
-            el.removeEventListener('wheel', stopScroll);
-            el.removeEventListener('touchmove', stopScroll);
-        }
-        backdrop.classList.remove('et-focus-backdrop-open');
-        bubble.classList.remove('et-bubble-focused');
+        list.removeEventListener('wheel', stopScroll);
+        list.removeEventListener('touchmove', stopScroll);
+        backdrops.forEach(el => el.classList.replace('et-focus-backdrop-open', 'et-focus-backdrop-closing'));
+        bubble.dataset.etLift = 'down';
         setTimeout(() => {
-            backdrop.remove();
+            backdrops.forEach(el => el.remove());
             // Lifted again meanwhile: it stays up
             if (bubbleFocus?.bubble === bubble) return;
-            bubble.classList.remove('et-bubble-lifting');
+            delete bubble.dataset.etLift;
             bubble.style.removeProperty('--et-focus-shift');
             bubble.style.removeProperty('--et-focus-origin');
         }, 240);
     }
+
+    // ── Selecting messages (Select in a bubble's menu; WeChat's way, on every look) ──
+    // A circle by every bubble, the header saying how many are picked with Cancel, and the
+    // input bar standing in for Delete, Add Memory and Copy. A tap on a bubble picks it
+    // (nothing else in the list reacts meanwhile); acting, Cancel or Escape ends it.
+    // Keys are "message index:bubble", the bubble as a part of the message (the main one the last).
+    const SELECT_GUTTER = 34;
+    let selecting = null;
+
+    /** Where a bubble on screen is in the chat: { index, part }, or null. */
+    function bubblePart(bubble) {
+        const msgEl = bubble.closest('[data-et-role~="message"][data-index]');
+        const index = parseInt(msgEl?.dataset.index, 10);
+        const msg = getChatHistory()[index];
+        if (!msg) return null;
+        const bubbles = [...msgEl.querySelectorAll('[data-et-role~="bubble"]')];
+        const last = getMessageDisplayParts(msg).length - 1;
+        const part = bubble.matches('[data-et-role~="main"]') || bubbles.indexOf(bubble) === bubbles.length - 1 ? last : bubbles.indexOf(bubble);
+        return part < 0 ? null : { index, part };
+    }
+
+    function startSelecting(msgIndex, part) {
+        if (selecting || !panelOpen) return;
+        closeMenus();
+        closeAttachPanel();
+        jQuery('#et-input').trigger('blur');
+        const panel = document.getElementById('et-panel');
+        const list = document.getElementById('et-messages');
+        const inner = document.getElementById('et-messages-inner');
+        if (!panel || !list || !inner) return;
+        // Room for the circles: the bubble picked stays where it was on screen
+        const anchor = findMessageElement(msgIndex)[0];
+        const anchorTop = anchor?.getBoundingClientRect().top;
+        const padding = inner.style.paddingLeft;
+        inner.style.paddingLeft = `${(parseFloat(getComputedStyle(inner).paddingLeft) || 0) + SELECT_GUTTER}px`;
+        if (anchor) list.scrollTop += anchor.getBoundingClientRect().top - anchorTop;
+
+        const memory = !!(memorySystem && settings.memoryEnabled);
+        const head = jQuery(`<div class="et-select-head">
+                <button type="button" class="et-select-cancel" data-select="cancel">Cancel</button>
+                <span class="et-select-count"></span>
+            </div>`);
+        const bar = jQuery(`<div class="et-select-bar">
+                <button type="button" data-select="delete" title="Delete"><i class="fa-regular fa-trash-can"></i></button>
+                ${memory ? '<button type="button" data-select="memory" title="Add Memory"><i class="fa-solid fa-brain"></i></button>' : ''}
+                <button type="button" data-select="copy" title="Copy"><i class="fa-regular fa-copy"></i></button>
+            </div>`);
+        const marks = jQuery('<div class="et-select-marks"></div>');
+        jQuery(panel).append(head, bar);
+        jQuery(list).append(marks);
+        head.add(bar).on('click', '[data-select]', function (e) {
+            e.stopPropagation();
+            onSelectAction(this.dataset.select);
+        });
+        const header = panel.querySelector('[data-et-role~="header"]');
+        const inputBar = panel.querySelector('[data-et-role~="input-bar"]');
+        for (const el of [header, inputBar]) if (el) el.inert = true;
+
+        let queued = false;
+        const queue = () => {
+            if (queued) return;
+            queued = true;
+            Promise.resolve().then(() => { queued = false; drawSelection(); });
+        };
+        const mutations = new MutationObserver(queue);
+        mutations.observe(inner, { childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'class', 'hidden'] });
+        const sizes = new ResizeObserver(queue);
+        sizes.observe(inner);
+        sizes.observe(panel);
+        const onKey = (e) => { if (e.key === 'Escape') stopSelecting(); };
+        document.addEventListener('keydown', onKey);
+        list.addEventListener('click', onSelectClick, true);
+        panel.classList.add('et-selecting');
+        selecting = {
+            keys: new Set([`${msgIndex}:${part}`]),
+            head, bar, marks, header, inputBar, padding, mutations, sizes, onKey,
+        };
+        drawSelection();
+    }
+
+    function stopSelecting() {
+        if (!selecting) return;
+        const { head, bar, marks, header, inputBar, padding, mutations, sizes, onKey } = selecting;
+        selecting = null;
+        mutations.disconnect();
+        sizes.disconnect();
+        document.removeEventListener('keydown', onKey);
+        document.getElementById('et-messages')?.removeEventListener('click', onSelectClick, true);
+        head.remove();
+        bar.remove();
+        marks.remove();
+        for (const el of [header, inputBar]) if (el) el.inert = false;
+        const inner = document.getElementById('et-messages-inner');
+        if (inner) inner.style.paddingLeft = padding;
+        document.getElementById('et-panel')?.classList.remove('et-selecting');
+    }
+
+    /** The picked bubbles, in chat order: [{ index, part }]. Ones no longer in the chat are dropped. */
+    function selectedParts() {
+        const history = getChatHistory();
+        const parts = [];
+        for (const key of [...selecting.keys]) {
+            const [index, part] = key.split(':').map(Number);
+            if (history[index] && part < getMessageDisplayParts(history[index]).length) parts.push({ index, part });
+            else selecting.keys.delete(key);
+        }
+        return parts.sort((a, b) => a.index - b.index || a.part - b.part);
+    }
+
+    /** The circles beside the bubbles, the count and the bar's buttons, as the selection stands. */
+    function drawSelection() {
+        if (!selecting) return;
+        const panel = document.getElementById('et-panel');
+        const list = document.getElementById('et-messages');
+        const inner = document.getElementById('et-messages-inner');
+        if (!panel || !list || !inner) { stopSelecting(); return; }
+        const count = selectedParts().length;
+        selecting.head.find('.et-select-count').text(count ? `${count} selected` : 'Select messages');
+        selecting.bar.find('button').prop('disabled', !count);
+        // Over the header and the input bar
+        const box = panel.getBoundingClientRect();
+        const ox = box.left + panel.clientLeft;
+        const oy = box.top + panel.clientTop;
+        const cover = (el, target) => {
+            const r = target?.getBoundingClientRect();
+            if (!r || !r.height) { el.hide(); return; }
+            el.show().css({ left: `${r.left - ox}px`, top: `${r.top - oy}px`, width: `${r.width}px`, height: `${r.height}px` });
+        };
+        cover(selecting.head, selecting.header);
+        cover(selecting.bar, selecting.inputBar);
+        // A circle at the middle of each bubble shown, in the list's own coordinates
+        const listBox = list.getBoundingClientRect();
+        const marks = [];
+        for (const bubble of inner.querySelectorAll('[data-et-role~="message"][data-index] [data-et-role~="bubble"]')) {
+            const r = bubble.getBoundingClientRect();
+            if (!r.height) continue;
+            const ref = bubblePart(bubble);
+            if (!ref) continue;
+            const key = `${ref.index}:${ref.part}`;
+            const top = r.top - listBox.top - list.clientTop + list.scrollTop + r.height / 2;
+            marks.push(`<button type="button" class="et-select-mark${selecting.keys.has(key) ? ' et-select-mark-on' : ''}" data-key="${key}" style="top:${top}px" title="Select"><i class="fa-solid fa-check"></i></button>`);
+        }
+        selecting.marks.html(marks.join(''));
+    }
+
+    /** A tap in the list while selecting: on a bubble or its circle it picks it or lets it go; nothing else happens. */
+    function onSelectClick(e) {
+        if (!selecting) return;
+        e.preventDefault();
+        e.stopPropagation();
+        let key = e.target.closest?.('.et-select-mark')?.dataset.key;
+        if (!key) {
+            const bubble = e.target.closest?.('[data-et-role~="bubble"]');
+            const ref = bubble && bubblePart(bubble);
+            if (ref) key = `${ref.index}:${ref.part}`;
+        }
+        if (!key) return;
+        if (selecting.keys.has(key)) selecting.keys.delete(key);
+        else selecting.keys.add(key);
+        drawSelection();
+    }
+
+    async function onSelectAction(action) {
+        if (!selecting) return;
+        if (action === 'cancel') { stopSelecting(); return; }
+        const parts = selectedParts();
+        if (!parts.length) return;
+        const history = getChatHistory();
+        const text = parts.map(({ index, part }) => bubbleText(history[index], part)).filter(Boolean).join('\n');
+        if (action === 'copy') {
+            try { await navigator.clipboard.writeText(text); } catch (e) { /* noop */ }
+            stopSelecting();
+            return;
+        }
+        if (action === 'memory') {
+            stopSelecting();
+            showManualMemorySaveModal(text);
+            return;
+        }
+        if (action === 'delete') {
+            const context = SillyTavern.getContext();
+            const ok = await context.callGenericPopup(`Delete ${parts.length} message${parts.length === 1 ? '' : 's'}?`, context.POPUP_TYPE.CONFIRM);
+            if (!ok || !selecting) return;
+            stopSelecting();
+            deleteParts(history, parts);
+            saveChatHistory(history);
+            renderMessages(history, true);
+        }
+    }
+
+    /**
+     * Deletes bubbles, [{ index, part }]: a message all of whose bubbles go is deleted
+     * whole (its photos' images and generated image too), otherwise each bubble on its own.
+     */
+    function deleteParts(history, parts) {
+        const byMessage = new Map();
+        for (const { index, part } of parts) byMessage.set(index, [...(byMessage.get(index) || []), part]);
+        for (const index of [...byMessage.keys()].sort((a, b) => b - a)) {
+            const msg = history[index];
+            if (!msg) continue;
+            const picked = [...new Set(byMessage.get(index))].sort((a, b) => b - a);
+            const shown = findMessageElement(index)[0]?.querySelectorAll('[data-et-role~="bubble"]').length;
+            if (picked.length >= (shown || getMessageDisplayParts(msg).length)) {
+                allPhotoImagePaths(msg).forEach(forgetChatPhoto);
+                history.splice(index, 1);
+                continue;
+            }
+            for (const part of picked) {
+                if (history[index] !== msg) break;
+                deleteMessagePart(history, index, part);
+            }
+        }
+    }
+
 
     /**
      * Puts the active platform on the panel: its id in data-platform (its CSS is
@@ -8161,7 +8409,7 @@
         list.etSharedFill = true;
         list.addEventListener('scroll', queueSharedFill, { passive: true });
         list.addEventListener('animationend', queueSharedFill);
-        new MutationObserver(queueSharedFill).observe(list, { childList: true, subtree: true, attributes: true,
+        new MutationObserver(records => { if (!records.every(overlayMutation)) queueSharedFill(); }).observe(list, { childList: true, subtree: true, attributes: true,
             attributeFilter: ['class', 'hidden', 'aria-expanded', 'data-et-arrive', 'data-platform'] });
         if (window.ResizeObserver) new ResizeObserver(queueSharedFill).observe(list);
     }
@@ -8245,7 +8493,7 @@
         // Typing in a text being edited changes nothing to fit
         const editing = node => !!(node.nodeType === 1 ? node : node.parentElement)?.isContentEditable;
         new MutationObserver(records => {
-            if (records.some(r => !editing(r.target))) queueFitTexts();
+            if (records.some(r => !editing(r.target) && !overlayMutation(r))) queueFitTexts();
         }).observe(list, { childList: true, subtree: true, attributes: true,
             attributeFilter: ['hidden', 'aria-expanded', 'data-et-arrive', 'contenteditable', 'data-platform'] });
         let listWidth = 0;
@@ -8592,8 +8840,6 @@
     }
 
     // Track which delete button is pending 2nd click
-    let deleteConfirmIndex = -1;
-    let deleteConfirmTimer = null;
 
     function renderMessages(history, preserveScroll = false) {
         const inner = jQuery('#et-messages-inner');
@@ -8739,9 +8985,6 @@
             menu.addClass('et-dots-menu-closing');
             setTimeout(() => menu.remove(), 180);
         });
-        // Reset any pending delete confirm
-        if (deleteConfirmTimer) { clearTimeout(deleteConfirmTimer); deleteConfirmTimer = null; }
-        deleteConfirmIndex = -1;
     }
 
     /**
@@ -8760,10 +9003,10 @@
 
         const msg = getChatHistory()[msgIndex];
         const partCount = msg ? getMessageDisplayParts(msg).length : 1;
-        const deleteAllLabel = `Delete all (${partCount})`;
 
-        // Build menu items: every bubble's menu replies to, copies, remembers and
-        // deletes that bubble; the main (last) bubble's also acts on the whole message
+        // Build menu items: every bubble's menu replies to, copies and remembers that
+        // bubble; the main (last) bubble's also acts on the whole message. Deleting is
+        // from Select (several at once)
         const items = [{ id: 'copy_part', icon: 'fa-copy', label: 'Copy', cls: '' }];
         // A character's bubble takes a tapback: the row opens from here, so the menu never covers it
         if (!isUser && platformHas('react') && !focus) items.unshift({ id: 'react', icon: 'fa-face-smile', label: 'React', cls: '' });
@@ -8784,13 +9027,10 @@
         if (partIndex === null && runEnd) {
             items.push({ id: 'edit', icon: 'fa-pen', label: 'Edit', cls: '' });
             items.push({ id: 'regen', icon: 'fa-rotate-right', label: 'Regenerate', cls: '' });
-            items.push({ id: 'delete', icon: 'fa-trash', label: partCount > 1 ? 'Delete this' : 'Delete', cls: 'et-dots-item-delete' });
-            if (partCount > 1) items.push({ id: 'delete_all', icon: 'fa-trash-can', label: deleteAllLabel, cls: 'et-dots-item-delete' });
-        } else {
-            items.push({ id: 'delete', icon: 'fa-trash', label: 'Delete', cls: 'et-dots-item-delete' });
         }
-        if (partIndex === null) items.splice(items.findIndex(item => item.id === 'delete'), 0, { id: 'branch', icon: 'fa-code-branch', label: 'Branch', cls: '' });
-        // The footer menu's "Delete this" removes the main (last) bubble
+        if (partIndex === null) items.push({ id: 'branch', icon: 'fa-code-branch', label: 'Branch', cls: '' });
+        items.push({ id: 'select', icon: 'fa-list-check', label: 'Select', cls: '' });
+        // The main bubble's menu copies and remembers the last bubble
         const targetPart = partIndex !== null ? partIndex : (partCount > 1 ? partCount - 1 : null);
 
         const itemsHtml = items.map(item => `<button class="et-dots-item ${item.cls}" data-action="${item.id}">
@@ -9084,37 +9324,9 @@
             return;
         }
 
-        if (action === 'delete' || action === 'delete_all') {
-            // Only this message (or one of its bubbles) goes — later messages stay
-            const wholeMessage = action === 'delete_all' || partIndex === null;
-            const confirmKey = `${msgIndex}:${wholeMessage ? 'all' : partIndex}`;
-            if (deleteConfirmIndex === confirmKey) {
-                // Second click — execute delete
-                clearTimeout(deleteConfirmTimer);
-                deleteConfirmTimer = null;
-                deleteConfirmIndex = -1;
-
-                if (wholeMessage) {
-                    allPhotoImagePaths(msg).forEach(forgetChatPhoto);
-                    history.splice(msgIndex, 1);
-                } else deleteMessagePart(history, msgIndex, partIndex);
-
-                saveChatHistory(history);
-                closeAllDotMenus();
-                renderMessages(history, true);
-            } else {
-                // First click — highlight red and change text
-                const originalLabel = btn.find('span').text();
-                deleteConfirmIndex = confirmKey;
-                btn.addClass('et-dots-item-delete-confirm');
-                btn.find('span').text('Are You Sure?');
-
-                deleteConfirmTimer = setTimeout(() => {
-                    deleteConfirmIndex = -1;
-                    btn.removeClass('et-dots-item-delete-confirm');
-                    btn.find('span').text(originalLabel);
-                }, 3000);
-            }
+        if (action === 'select') {
+            closeAllDotMenus();
+            startSelecting(msgIndex, partIndex ?? getMessageDisplayParts(msg).length - 1);
             return;
         }
 

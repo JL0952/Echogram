@@ -628,7 +628,7 @@
         r.renderMessages(env.settings.chatHistory['mira.png']);
 
         // Every bubble's menu has Add Memory, after Copy (React is the row above the lifted bubble); old highlight marks are gone
-        res.partMenu = bubbleMenu(1, 1).map(i => i.dataset.action).join(',') === 'reply,copy_part,add_memory,delete';
+        res.partMenu = bubbleMenu(1, 1).map(i => i.dataset.action).join(',') === 'reply,copy_part,add_memory,select';
         res.userMenu = bubbleMenu(0, null).some(i => i.dataset.action === 'add_memory');
         res.noMarks = !panel.querySelector('mark');
 
@@ -841,7 +841,7 @@
         seed();
         const items = bubbleMenu(2);
         res.inMenu = items.some(b => b.dataset.action === 'branch' && b.textContent.trim() === 'Branch');
-        res.beforeDelete = items.findIndex(b => b.dataset.action === 'branch') === items.findIndex(b => b.dataset.action === 'delete') - 1;
+        res.beforeSelect = items.findIndex(b => b.dataset.action === 'branch') === items.findIndex(b => b.dataset.action === 'select') - 1;
         items.find(b => b.dataset.action === 'branch').click();
         await sleep(30);
         res.cut = texts() === 'line 0|line 1|line 2';
@@ -867,9 +867,8 @@
         photo(1, 'user/images/whole.jpg');
         env.saveLoadModal.saveBeforeBranch();
         r.removePhotoImage(0, 0);
-        const button = () => jQuery('<button><span>Delete</span></button>');
-        r.handleDotsAction('delete', 1, false, button(), null);
-        r.handleDotsAction('delete', 1, false, button(), null);
+        r.deleteParts(r.getChatHistory(), [{ index: 1, part: 0 }]);
+        r.saveChatHistory(r.getChatHistory());
         res.archivePhotosKept = deleted.length === 0 && r.getChatHistory().length === 5;
         photo(0, 'user/images/only-chat.jpg');
         r.removePhotoImage(0, 0);
@@ -1025,11 +1024,11 @@
         r.openBubbleMenu(row);
         res.menu = document.querySelector('.et-dots-menu .et-dots-item')?.dataset.action === 'reply' && !document.querySelector('.et-dots-menu [data-action="react"]');
         await sleep(400);
-        // (where the bubble settles: a hidden pane may not run its transition)
-        const lifted = row.querySelector('.et-bubble-lifting') || row;
-        lifted.style.transition = 'none';
+        // (where the bubble settles: a hidden pane may not run its animation)
+        const lifted = row.querySelector('[data-et-lift]') || row;
+        lifted.style.animation = 'none';
         const bar = document.querySelector('.et-react-overlay').getBoundingClientRect(), top = lifted.getBoundingClientRect().top;
-        lifted.style.removeProperty('transition');
+        lifted.style.removeProperty('animation');
         res.reactRow = !!bar.height && bar.bottom <= top + 1 && top - bar.bottom < 30;
 
         // A tapback on the first bubble shows as emoji on its lower edge, popping in
@@ -2585,6 +2584,96 @@
         return res;
     };
 
+    window.runSelectTest = async function () {
+        const res = {};
+        const s = env.settings;
+        const platformBefore = s.defaultPlatform;
+        const seed = () => {
+            s.chatHistory['mira.png'] = [
+                { is_user: true, mes: 'hey', send_date: Date.now() - 180000 },
+                { is_user: false, mes: 'one\ntwo\nthree', send_date: Date.now() - 120000 },
+                { is_user: true, mes: 'bye', send_date: Date.now() - 60000 },
+            ];
+            r.renderMessages(s.chatHistory['mira.png']);
+        };
+        const chat = () => s.chatHistory['mira.png'];
+        const bubbleAt = (i, at) => panel.querySelectorAll(`[data-et-role~="message"][data-index="${i}"] [data-et-role~="bubble"]`)[at];
+        const count = () => panel.querySelector('.et-select-count')?.textContent;
+        const on = () => [...panel.querySelectorAll('.et-select-mark-on')].map(m => m.dataset.key).join();
+        const selectingNow = () => panel.classList.contains('et-selecting');
+        const realST = window.SillyTavern;
+        let asked = null;
+        window.SillyTavern = { ...realST, getContext: () => ({ ...(realST?.getContext?.() || {}), POPUP_TYPE: { CONFIRM: 1 }, callGenericPopup: async (text) => { asked = text; return 1; } }) };
+        let copied = null;
+        const realWrite = navigator.clipboard?.writeText;
+        if (navigator.clipboard) navigator.clipboard.writeText = async t => { copied = t; };
+        r.bindMessageActions();
+        for (const id of ['echotext', 'wechat', 'instagram']) {
+            s.defaultPlatform = id;
+            seed();
+            await sleep(300);
+            const out = {};
+            // Select in a bubble's menu, no Delete there; the bubble it was opened on picked
+            bubbleAt(1, 1).dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+            const items = [...document.querySelectorAll('.et-dots-menu:not(.et-dots-menu-closing) .et-dots-item')].map(i => i.dataset.action);
+            out.menu = items.at(-1) === 'select' && !items.some(a => a.startsWith('delete'));
+            document.querySelector('.et-dots-menu:not(.et-dots-menu-closing) [data-action="select"]').click();
+            r.closeBubbleFocus();
+            document.querySelectorAll('.et-dots-menu, .et-react-overlay').forEach(m => m.remove());
+            await sleep(50);
+            const inputBar = panel.querySelector('[data-et-role~="input-bar"]');
+            out.entered = selectingNow() && panel.querySelectorAll('.et-select-mark').length === 5 && on() === '1:1' && count() === '1 selected'
+                && inputBar.inert && !!panel.querySelector('.et-select-bar [data-select="delete"]') && !!panel.querySelector('.et-select-bar [data-select="copy"]');
+            // Over the header and the input bar; the circles beside their bubbles
+            const bar = panel.querySelector('.et-select-bar').getBoundingClientRect(), ib = inputBar.getBoundingClientRect();
+            out.barCovers = Math.abs(bar.top - ib.top) < 1 && Math.abs(bar.height - ib.height) < 1;
+            const mark = panel.querySelector('.et-select-mark[data-key="2:0"]').getBoundingClientRect(), b2 = bubbleAt(2, 0).getBoundingClientRect();
+            out.markBeside = Math.abs((mark.top + mark.bottom) / 2 - (b2.top + b2.bottom) / 2) < 2 && mark.right <= b2.left;
+            // A tap on a bubble or its circle picks it or lets it go; a hold opens nothing
+            bubbleAt(1, 0).click();
+            bubbleAt(2, 0).click();
+            panel.querySelector('.et-select-mark[data-key="1:0"]').click();
+            out.toggles = on() === '1:1,2:0' && count() === '2 selected';
+            bubbleAt(2, 0).dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+            out.noMenu = !document.querySelector('.et-dots-menu:not(.et-dots-menu-closing)');
+            // Copy: the picked bubbles in chat order, and the mode ends
+            panel.querySelector('.et-select-bar [data-select="copy"]').click();
+            await sleep(30);
+            out.copy = copied === 'two\nbye' && !selectingNow() && !panel.querySelector('.et-select-mark, .et-select-head, .et-select-bar') && !inputBar.inert;
+            // Delete: asked first; a message all of whose bubbles are picked goes whole, else only those bubbles
+            r.handleDotsAction('select', 1, false, jQuery('<b>'), 0);
+            bubbleAt(1, 2).click();
+            bubbleAt(0, 0).click();
+            panel.querySelector('.et-select-bar [data-select="delete"]').click();
+            await sleep(30);
+            out.deletePart = asked === 'Delete 3 messages?' && chat().map(m => m.mes).join('|') === 'two|bye' && !selectingNow();
+            seed();
+            await sleep(50);
+            r.handleDotsAction('select', 1, false, jQuery('<b>'), null);
+            bubbleAt(1, 0).click();
+            bubbleAt(1, 1).click();
+            panel.querySelector('.et-select-bar [data-select="delete"]').click();
+            await sleep(30);
+            out.deleteWhole = chat().map(m => m.mes).join('|') === 'hey|bye';
+            // Nothing picked: the buttons are off; Cancel ends it
+            seed();
+            await sleep(50);
+            r.handleDotsAction('select', 0, true, jQuery('<b>'), null);
+            bubbleAt(0, 0).click();
+            out.noneOff = count() === 'Select messages' && [...panel.querySelectorAll('.et-select-bar button')].every(b => b.disabled);
+            panel.querySelector('.et-select-cancel').click();
+            out.cancel = !selectingNow() && chat().length === 3;
+            out.ok = Object.values(out).every(Boolean);
+            res[id] = out;
+        }
+        window.SillyTavern = realST;
+        if (navigator.clipboard && realWrite) navigator.clipboard.writeText = realWrite;
+        s.defaultPlatform = platformBefore;
+        seed();
+        res.ok = ['echotext', 'wechat', 'instagram'].every(id => res[id].ok);
+        return res;
+    };
+
     window.runHoldTest = async function () {
         const res = {};
         const s = env.settings;
@@ -2628,30 +2717,30 @@
             out.opened = !!menu() && [...menu().querySelectorAll('.et-dots-item')].some(i => i.dataset.action === 'photo_add')
                 && !menu().querySelector('[data-action="edit"]');
             out.tapbacks = !menu().querySelector('[data-action="react"]') && focus === !!row();
-            // (where the bubble settles: a hidden pane may not run its transition)
-            if (focus) photo.style.transition = 'none';
+            // (where the bubble settles: a hidden pane may not run its animation)
+            if (focus) photo.style.animation = 'none';
             const m = menu().getBoundingClientRect(), b = photo.getBoundingClientRect();
-            photo.style.removeProperty('transition');
+            photo.style.removeProperty('animation');
             // Beside the bubble; with no room above or below it (a tall photo), inside the visible list
             const shown = document.getElementById('et-messages').getBoundingClientRect();
             const noRoom = b.top - shown.top < m.height + 6 && shown.bottom - b.bottom < m.height + 6;
             out.under = m.top >= b.bottom - 1 || m.bottom <= b.top + 1 || (noRoom && m.top >= shown.top && m.bottom <= shown.bottom);
             // The click that ends the hold, wherever it lands (the lifted bubble may have moved off the finger): nothing closes
             press(photoEl, 'pointerup');
-            const releaseOn = focus ? panel.querySelector('.et-focus-backdrop') : photoEl;
+            const releaseOn = focus ? panel.querySelector('.et-focus-backdrop-list') : photoEl;
             releaseOn.click();
             out.clickSwallowed = photoEl.getAttribute('aria-expanded') !== 'true' && !!menu() && focus === !!row();
             if (focus) {
                 const bar = row().getBoundingClientRect();
                 out.reactRow = bar.bottom <= b.top + 1 && b.top - bar.bottom < 30;
-                out.lifted = photo.classList.contains('et-bubble-focused') && !!panel.querySelector('.et-focus-backdrop-open')
+                out.lifted = photo.dataset.etLift === 'up' && !!panel.querySelector('.et-focus-backdrop-open')
                     && menu().parentElement.id === 'et-panel' && row().parentElement.id === 'et-panel';
                 out.listLocked = lockedWheel();
                 clear();
                 await sleep(300);
-                out.putBack = !panel.querySelector('.et-focus-backdrop') && !photo.classList.contains('et-bubble-lifting') && !lockedWheel();
+                out.putBack = !panel.querySelector('.et-focus-backdrop') && !photo.dataset.etLift && !lockedWheel();
             } else {
-                out.notLifted = !panel.querySelector('.et-focus-backdrop') && !photo.classList.contains('et-bubble-lifting') && !lockedWheel();
+                out.notLifted = !panel.querySelector('.et-focus-backdrop') && !photo.dataset.etLift && !lockedWheel();
                 // Scrolled: the menu goes (a finger past the hold's slop, or the wheel); a jitter or a scroll inside it doesn't
                 const list = document.getElementById('et-messages');
                 const closes = [];
@@ -2694,9 +2783,9 @@
             r.renderMessages(chat(), true);
             const redrawn = bubbles(1)[0];
             await sleep(450);
-            redrawn.style.transition = 'none';
+            redrawn.style.animation = 'none';
             const rb = redrawn.getBoundingClientRect(), rm = menu()?.getBoundingClientRect();
-            redrawn.style.removeProperty('transition');
+            redrawn.style.removeProperty('animation');
             out.redrawnHold = redrawn !== text && !!rm && (Math.abs(rm.top - rb.bottom) < 40 || Math.abs(rm.bottom - rb.top) < 40);
             press(redrawn, 'pointerup');
             redrawn.click();
@@ -3799,7 +3888,8 @@
         const typingTest = await window.runTypingTest();
         const stickerTest = await window.runStickerTest();
         const holdTest = await window.runHoldTest();
-        fetch('/__log', { method: 'POST', body: JSON.stringify({ runChatMemoryTest: chatMemory, runControlsTest: controls, runTogetherTest: together, runStoryPauseTest: storyPause, runTargetTest: target, runTypingTest: typingTest, runStickerTest: stickerTest, runHoldTest: holdTest, runReplyLengthTest: replyLength, runLifeReportTest: lifeReport, runUnseenTest: unseen, runCatchUpTest: catchUp, runPlanTest: plan, runLifeMemoryTest: lifeMemory, runRenameTest: rename, runEmotionTest: result, runAutoTest: auto, runReplyTest: reply, runTapbackTest: tapback, runMemoryTest: memory, runSummaryTest: summary, runInstagramTest: instagram, runScheduleTest: schedule, runLifeTest: life }) }).catch(() => {});
+        const selectTest = await window.runSelectTest();
+        fetch('/__log', { method: 'POST', body: JSON.stringify({ runChatMemoryTest: chatMemory, runControlsTest: controls, runTogetherTest: together, runStoryPauseTest: storyPause, runTargetTest: target, runTypingTest: typingTest, runStickerTest: stickerTest, runHoldTest: holdTest, runSelectTest: selectTest, runReplyLengthTest: replyLength, runLifeReportTest: lifeReport, runUnseenTest: unseen, runCatchUpTest: catchUp, runPlanTest: plan, runLifeMemoryTest: lifeMemory, runRenameTest: rename, runEmotionTest: result, runAutoTest: auto, runReplyTest: reply, runTapbackTest: tapback, runMemoryTest: memory, runSummaryTest: summary, runInstagramTest: instagram, runScheduleTest: schedule, runLifeTest: life }) }).catch(() => {});
     } else if (params.has('memory')) {
         // Two memories, one pinned, the other in the last prompt; Add Memory open on a bubble
         env.settings.characterMemories = { 'mira.png': [

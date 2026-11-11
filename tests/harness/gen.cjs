@@ -30,7 +30,7 @@ const WANT = [
     'listMenuArea', 'escapeHtml', 'convertEmoticonsToEmojis', 'formatMessageText', 'buildAvatarHtml', 'applyMemoryHighlights', '_highlightTextNode',
     // rendering and actions
     'renderMessages', 'showPrevSwipe', 'showNextSwipe', 'openImageAttachment', 'MESSAGE_ACTIONS', 'onMessageAction', 'bindMessageActions', 'onBubbleTap',
-    'BUBBLE_HOLD_MS', 'BUBBLE_HOLD_SLOP', 'bubbleHold', 'bubbleHeld', 'bubbleTarget', 'onBubblePointerDown', 'onBubblePointerMove', 'cancelBubbleHold', 'onBubbleContextMenu', 'swallowHeldClick', 'listTouch', 'noteListTouch', 'onListTouchMove', 'closeListMenusOnScroll', 'openBubbleMenu', 'bubbleFocus', 'stopScroll', 'openBubbleFocus', 'closeBubbleFocus', 'bubbleRef', 'findBubble', 'closeMenus', 'closeMenusForKeyboard', 'KEYBOARD_MIN_PX',
+    'BUBBLE_HOLD_MS', 'BUBBLE_HOLD_SLOP', 'bubbleHold', 'bubbleHeld', 'bubbleTarget', 'onBubblePointerDown', 'onBubblePointerMove', 'cancelBubbleHold', 'onBubbleContextMenu', 'swallowHeldClick', 'listTouch', 'noteListTouch', 'onListTouchMove', 'closeListMenusOnScroll', 'openBubbleMenu', 'bubbleFocus', 'stopScroll', 'LIST_OVERLAYS', 'overlayMutation', 'openBubbleFocus', 'closeBubbleFocus', 'bubbleRef', 'findBubble', 'closeMenus', 'closeMenusForKeyboard', 'KEYBOARD_MIN_PX',
     'renderedViews', 'renderedFrame', 'getRenderFrame', 'updateMessageList', 'replaceMessageElement', 'scrollMessagesToEnd',
     'getChatViewOptions', 'getMessageRenderContext', 'getCharacterUsername', 'findMessageElement', 'decorateMessage', 'refreshMessages',
     'renderedEntry', 'tapbackMarks', 'keepInPlace',
