@@ -441,6 +441,29 @@ html.et-bg-light {
     pointer-events: auto;
 }
 
+/* A look's stylesheet still loading (index.js syncPlatformChrome): its contents wait behind a spinner */
+.et-panel[data-et-loading] > * {
+    visibility: hidden;
+}
+
+.et-panel[data-et-loading]::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 26px;
+    height: 26px;
+    margin: -13px 0 0 -13px;
+    border: 2.5px solid color-mix(in srgb, var(--et-text) 25%, transparent);
+    border-top-color: var(--et-text);
+    border-radius: 50%;
+    animation: et-loading-spin 0.8s linear infinite;
+}
+
+@keyframes et-loading-spin {
+    to { transform: rotate(360deg); }
+}
+
 .et-panel-content {
     flex: 1;
     display: flex;

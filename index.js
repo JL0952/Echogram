@@ -8501,6 +8501,9 @@
         document.fonts?.addEventListener?.('loadingdone', queueFitTexts);
     }
 
+    // The longest the panel waits for a look's stylesheet before showing anyway
+    const PLATFORM_CSS_WAIT_MS = 5000;
+
     function syncPlatformChrome() {
         const platform = getActivePlatform();
         watchSharedFill();
@@ -8526,7 +8529,19 @@
             link.id = 'et-platform-css';
             link.rel = 'stylesheet';
             link.href = href;
+            // Until the look's stylesheet is in, the panel's contents wait behind a spinner:
+            // drawn without it they come out unstyled (an avatar at its full size)
+            const panel = document.getElementById('et-panel');
+            panel?.setAttribute('data-et-loading', '');
+            const loaded = () => {
+                if (document.getElementById('et-platform-css') === link) document.getElementById('et-panel')?.removeAttribute('data-et-loading');
+            };
+            link.addEventListener('load', loaded);
+            link.addEventListener('error', loaded);
+            setTimeout(loaded, PLATFORM_CSS_WAIT_MS);
             document.head.appendChild(link);
+        } else if (!href) {
+            document.getElementById('et-panel')?.removeAttribute('data-et-loading');
         }
 
         const modes = Features.getComposerModes(platform.features);
