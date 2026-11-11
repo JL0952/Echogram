@@ -860,6 +860,7 @@
             updatePanelStatusRow();
             updateImageGenerationVisibility();
             jQuery('#et-overflow-saveload, #et-overflow-char-divider, #et-overflow-clear').show();
+            jQuery('#et-overflow-export, #et-overflow-import').hide();
             const history = getChatHistory();
             renderMessages(history);
             return;
@@ -884,6 +885,7 @@
 
         // Show/hide character-dependent overflow menu items
         jQuery('#et-overflow-saveload, #et-overflow-char-divider, #et-overflow-clear').toggle(hasChar);
+        jQuery('#et-overflow-export, #et-overflow-import').toggle(hasChar && !inGroup);
 
         const history = getChatHistory();
         renderMessages(history);
@@ -4504,6 +4506,14 @@
                             <i class="fa-solid fa-floppy-disk"></i>
                             <span>Archives</span>
                         </div>
+                        <div class="et-overflow-menu-item" id="et-overflow-export" style="display:none">
+                            <i class="fa-solid fa-file-export"></i>
+                            <span>Export Setup</span>
+                        </div>
+                        <div class="et-overflow-menu-item" id="et-overflow-import" style="display:none">
+                            <i class="fa-solid fa-file-import"></i>
+                            <span>Import Setup</span>
+                        </div>
                         <div class="et-overflow-menu-divider" id="et-overflow-char-divider" style="display:none"></div>
                         <div class="et-overflow-menu-item" id="et-overflow-clear" style="display:none">
                             <i class="fa-solid fa-trash-can"></i>
@@ -4727,6 +4737,18 @@
             e.stopPropagation();
             closeOverflowMenu();
             openSaveLoadModal();
+        });
+
+        jQuery('#et-overflow-export').on('click', (e) => {
+            e.stopPropagation();
+            closeOverflowMenu();
+            exportCharacterSetup();
+        });
+
+        jQuery('#et-overflow-import').on('click', (e) => {
+            e.stopPropagation();
+            closeOverflowMenu();
+            pickCharacterSetup();
         });
 
         jQuery('#et-overflow-settings').on('click', (e) => {
@@ -5256,14 +5278,15 @@
         if (panelOpen) updatePanelStatusRow();
     }
 
-    /** Saves a JPEG data URL to the user's images, in the character's folder; resolves with its path (user/images/Mira/…). */
+    /** Saves an image data URL (JPEG unless it says otherwise) to the user's images, in the character's folder; resolves with its path (user/images/Mira/…). */
     async function uploadUserImage(dataUrl, charName, prefix) {
+        const type = /^data:image\/([a-z]+)/i.exec(dataUrl)?.[1]?.toLowerCase();
         const response = await fetch('/api/images/upload', {
             method: 'POST',
             headers: SillyTavern.getContext().getRequestHeaders(),
             body: JSON.stringify({
                 image: dataUrl.split(',')[1],
-                format: 'jpeg',
+                format: ['png', 'webp', 'gif'].includes(type) ? type : 'jpeg',
                 ch_name: charName,
                 filename: `${prefix}-${Date.now()}`,
             }),
@@ -5363,9 +5386,14 @@
 
     /** Opens the file dialog for one image; resolves with it, or null if cancelled. */
     function pickImageFile() {
+        return pickFile('image/*');
+    }
+
+    /** Opens the file dialog for one file of the `accept` types; resolves with it, or null if cancelled. */
+    function pickFile(accept) {
         return new Promise((resolve) => {
             // In the document: iOS won't open the dialog for a detached input
-            const input = jQuery('<input type="file" accept="image/*" style="display:none">').appendTo('body');
+            const input = jQuery('<input type="file" style="display:none">').attr('accept', accept).appendTo('body');
             const done = (file) => { input.remove(); resolve(file); };
             input.on('change', () => done(input[0].files?.[0] || null));
             input.on('cancel', () => done(null));
@@ -6412,6 +6440,75 @@
     // ============================================================
 
     const CharacterData = window.EchoTextCharacterData;
+
+    // ── Export / Import Setup (the chat's ⋯ menu) ────────────────────────────
+    // The current character's setup as one JSON file, its images in it, for another
+    // install; importing one replaces this character's setup (lib/character-data.js).
+
+    /** An image of the user's (its path as stored) as a data URL; '' when it can't be read. */
+    async function imagePathAsDataUrl(path) {
+        try {
+            const url = /^(\/|[a-z][a-z0-9+.-]*:)/i.test(path) ? path : `/${path}`;
+            const response = await fetch(url);
+            if (!response.ok) return '';
+            return await readFileAsDataUrl(await response.blob());
+        } catch (err) {
+            warn('Could not read an image for the setup:', err);
+            return '';
+        }
+    }
+
+    async function exportCharacterSetup() {
+        const key = getCharacterKey();
+        if (!key) return;
+        try {
+            const name = getCharacterName();
+            const file = CharacterData.exportSetup(settings, key, name);
+            file.setup = await CharacterData.mapSetupImages(file.setup, imagePathAsDataUrl);
+            const blob = new Blob([JSON.stringify(file, null, 1)], { type: 'application/json' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = `${name.replace(/[\\/:*?"<>|]+/g, '_')} - Echogram.json`;
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            setTimeout(() => URL.revokeObjectURL(link.href), 10000);
+        } catch (err) {
+            error('Could not export the setup:', err);
+            toastr.error(`Could not export the setup: ${err.message}`, 'Echogram');
+        }
+    }
+
+    async function pickCharacterSetup() {
+        const key = getCharacterKey();
+        const picked = key && await pickFile('.json,application/json');
+        if (!picked) return;
+        const uploaded = [];
+        try {
+            const file = CharacterData.readSetup(await picked.text());
+            const name = getCharacterName();
+            const context = SillyTavern.getContext();
+            const from = file.name && file.name !== name ? ` with ${file.name}'s` : '';
+            const ok = await context.callGenericPopup(`Replace ${name}'s setup${from}?`, context.POPUP_TYPE.CONFIRM);
+            if (!ok || getCharacterKey() !== key) return;
+            file.setup = await CharacterData.mapSetupImages(file.setup, async (value) => {
+                if (!value.startsWith('data:image/')) return '';
+                const path = await uploadUserImage(value, name, 'echogram-setup');
+                uploaded.push(path);
+                return path;
+            });
+            const unused = CharacterData.importSetup(settings, key, file);
+            saveSettings();
+            unused.forEach(deleteUserImage);
+            onPlatformChoiceChanged();
+            applySelectedCharacterToPanel();
+            toastr.success(`Imported ${name}'s setup`, 'Echogram');
+        } catch (err) {
+            uploaded.forEach(deleteUserImage);
+            error('Could not import the setup:', err);
+            toastr.error(`Could not import the setup: ${err.message}`, 'Echogram');
+        }
+    }
 
     /**
      * SillyTavern renamed a character, and with it their card's file: what Echogram keeps
@@ -7792,9 +7889,44 @@
             el.addEventListener('pointermove', onBubblePointerMove, { passive: true });
             for (const type of ['pointerup', 'pointercancel', 'pointerleave']) el.addEventListener(type, cancelBubbleHold);
             el.addEventListener('contextmenu', onBubbleContextMenu);
-            // Capture phase: the click that ends a hold does nothing else (a photo's, a voice message's)
-            el.addEventListener('click', swallowHeldClick, true);
         }
+        // A scroll closes a menu that sits in the list (WeChat's; a tapback row opened from a tapback)
+        const list = document.getElementById('et-messages');
+        if (list && !list._etScrollCloseBound) {
+            list._etScrollCloseBound = true;
+            list.addEventListener('touchstart', noteListTouch, { passive: true });
+            list.addEventListener('touchmove', onListTouchMove, { passive: true });
+            list.addEventListener('wheel', closeListMenusOnScroll, { passive: true });
+        }
+        // Capture phase, on the document: the click that ends a hold does nothing else (a photo's,
+        // a voice message's), wherever it lands (a lifted bubble may have moved from under it);
+        // any press after the hold's means that click isn't coming
+        if (!document._etHeldClickBound) {
+            document._etHeldClickBound = true;
+            document.addEventListener('click', swallowHeldClick, true);
+            document.addEventListener('pointerdown', () => { bubbleHeld = null; }, true);
+        }
+    }
+
+    let listTouch = null;
+
+    function noteListTouch(e) {
+        const t = e.touches[0];
+        listTouch = t ? { x: t.clientX, y: t.clientY } : null;
+    }
+
+    /** A finger moved further than a hold allows: the list is being scrolled. */
+    function onListTouchMove(e) {
+        const t = e.touches[0];
+        if (listTouch && t && Math.hypot(t.clientX - listTouch.x, t.clientY - listTouch.y) > BUBBLE_HOLD_SLOP) closeListMenusOnScroll(e);
+    }
+
+    function closeListMenusOnScroll(e) {
+        // A lifted bubble's list doesn't scroll; scrolling inside a menu isn't the list's
+        if (bubbleFocus || e.target.closest?.('.et-dots-menu, .et-react-overlay')) return;
+        if (!document.querySelector('#et-messages > .et-dots-menu:not(.et-dots-menu-closing), #et-messages > .et-react-overlay:not(.et-react-overlay-closing)')) return;
+        closeAllDotMenus();
+        closeAllReactOverlays();
     }
 
     // ── A bubble's menu: held down (touch, or a mouse button) or right-clicked ──
@@ -7868,7 +8000,7 @@
     }
 
     function swallowHeldClick(e) {
-        if (!bubbleHeld || !bubbleHeld.contains(e.target)) return;
+        if (!bubbleHeld) return;
         e.stopPropagation();
         e.preventDefault();
         bubbleHeld = null;
@@ -7885,7 +8017,108 @@
         const bubbles = [...msgEl.querySelectorAll('[data-et-role~="bubble"]')];
         const part = bubble.matches('[data-et-role~="main"]') || bubbles.indexOf(bubble) === bubbles.length - 1 ? null : bubbles.indexOf(bubble);
         closeAllReactOverlays();
-        toggleDotsMenu(jQuery(bubble), msgIndex, !!msg.is_user, part);
+        if (getActivePlatform().holdFocus) openBubbleFocus(bubble, msgIndex, !!msg.is_user, part);
+        else toggleDotsMenu(jQuery(bubble), msgIndex, !!msg.is_user, part);
+    }
+
+    // ── A lifted bubble (platforms with holdFocus: Echogram's, Instagram) ──
+    // A held bubble lifts in place over the chat, which blurs behind it; its tapback row
+    // (a character's, where the platform has tapbacks) pops in above and its menu below.
+    // The list doesn't scroll meanwhile; a tap anywhere else puts the bubble back.
+    let bubbleFocus = null;
+
+    const stopScroll = (e) => { if (e.cancelable) e.preventDefault(); };
+
+    function openBubbleFocus(bubble, msgIndex, isUser, part) {
+        closeBubbleFocus();
+        const menu = toggleDotsMenu(jQuery(bubble), msgIndex, isUser, part, true);
+        if (!menu) return;
+        const panel = document.getElementById('et-panel');
+        const list = document.getElementById('et-messages');
+        const row = !isUser && platformHas('react') ? toggleReactOverlay(jQuery(bubble), msgIndex, part, true) : null;
+        const backdrop = document.createElement('div');
+        backdrop.className = 'et-focus-backdrop';
+        panel.appendChild(backdrop);
+        for (const el of [backdrop, list]) {
+            el.addEventListener('wheel', stopScroll, { passive: false });
+            el.addEventListener('touchmove', stopScroll, { passive: false });
+        }
+        bubbleFocus = { bubble, list, backdrop };
+        // A tap that starts and ends on the blur closes it (not the hold's own release,
+        // which the moving bubble can leave over it); so does a click outside the panel
+        let downOnBackdrop = false;
+        backdrop.addEventListener('pointerdown', () => { downOnBackdrop = true; });
+        backdrop.addEventListener('click', () => { if (downOnBackdrop) closeAllDotMenus(); });
+        setTimeout(() => {
+            if (bubbleFocus?.backdrop !== backdrop) return;
+            jQuery(document).on('click.et-focus', (e) => { if (!e.target.closest?.('#et-panel')) closeAllDotMenus(); });
+        }, 0);
+
+        // In the panel's coordinates. The bubble moves up (or down) as far as it must for
+        // the row above it and the menu under it, staying within the list's view
+        const box = panel.getBoundingClientRect();
+        const ox = box.left + panel.clientLeft;
+        const oy = box.top + panel.clientTop;
+        const width = panel.clientWidth;
+        const height = panel.clientHeight;
+        const view = list.getBoundingClientRect();
+        const rect = bubble.getBoundingClientRect();
+        const pad = 8;
+        // Room for the bubble's growth (scale 1.05)
+        const gap = 8 + rect.height * 0.025;
+        const rowH = row ? row.outerHeight() : 0;
+        const menuW = menu.outerWidth() || 160;
+        const menuH = menu.outerHeight() || 160;
+        const top = rect.top - oy;
+        const bottom = rect.bottom - oy;
+        let shift = Math.min(0, height - pad - menuH - gap - bottom);
+        if (row) shift = Math.max(shift, pad + rowH + gap - top);
+        shift = Math.max(shift, view.top - oy + pad - top);
+        if (shift > 0) shift = Math.min(shift, Math.max(0, view.bottom - oy - pad - bottom));
+        const edge = (w) => Math.max(pad, Math.min(width - w - pad, (isUser ? rect.right - w : rect.left) - ox));
+        const side = isUser ? 'right' : 'left';
+        menu.css({
+            left: `${edge(menuW)}px`,
+            top: `${Math.max(pad, Math.min(height - pad - menuH, bottom + shift + gap))}px`,
+            'transform-origin': `top ${side}`,
+        });
+        if (row) {
+            row.css({
+                left: `${edge(row.outerWidth())}px`,
+                top: `${Math.max(pad, top + shift - gap - rowH)}px`,
+                'transform-origin': `bottom ${side}`,
+            });
+        }
+        bubble.style.setProperty('--et-focus-shift', `${shift}px`);
+        bubble.style.setProperty('--et-focus-origin', side);
+        bubble.classList.add('et-bubble-lifting');
+        // Their resting style taken first, so the change from it animates (with or without a frame)
+        void backdrop.offsetWidth;
+        void bubble.offsetWidth;
+        backdrop.classList.add('et-focus-backdrop-open');
+        bubble.classList.add('et-bubble-focused');
+    }
+
+    /** Puts a lifted bubble back: it settles, the blur fades, the list scrolls again. */
+    function closeBubbleFocus() {
+        if (!bubbleFocus) return;
+        const { bubble, list, backdrop } = bubbleFocus;
+        bubbleFocus = null;
+        jQuery(document).off('click.et-focus');
+        for (const el of [backdrop, list]) {
+            el.removeEventListener('wheel', stopScroll);
+            el.removeEventListener('touchmove', stopScroll);
+        }
+        backdrop.classList.remove('et-focus-backdrop-open');
+        bubble.classList.remove('et-bubble-focused');
+        setTimeout(() => {
+            backdrop.remove();
+            // Lifted again meanwhile: it stays up
+            if (bubbleFocus?.bubble === bubble) return;
+            bubble.classList.remove('et-bubble-lifting');
+            bubble.style.removeProperty('--et-focus-shift');
+            bubble.style.removeProperty('--et-focus-origin');
+        }, 240);
     }
 
     /**
@@ -8499,6 +8732,7 @@
     }
 
     function closeAllDotMenus() {
+        closeBubbleFocus();
         jQuery('#et-attach-btn').removeClass('et-attach-open');
         jQuery('.et-dots-menu').each(function () {
             const menu = jQuery(this);
@@ -8514,11 +8748,14 @@
      * @param {number|null} partIndex - set when opened from a single bubble of a
      *   multi-bubble message; the footer menu (null) acts on the whole message,
      *   except that its Delete removes only the last bubble
+     * @param {boolean} focus - for a lifted bubble (openBubbleFocus): the menu goes on the
+     *   panel, placed by that, and has no React (the tapback row is open already)
+     * @returns the menu, or null when this closed it
      */
-    function toggleDotsMenu(btn, msgIndex, isUser, partIndex = null) {
+    function toggleDotsMenu(btn, msgIndex, isUser, partIndex = null, focus = false) {
         const partKey = partIndex === null ? 'main' : partIndex;
         const existing = jQuery(`.et-dots-menu[data-for="${msgIndex}"][data-is-user="${isUser ? 1 : 0}"][data-part="${partKey}"]`);
-        if (existing.length) { closeAllDotMenus(); return; }
+        if (existing.length) { closeAllDotMenus(); return null; }
         closeMenus();
 
         const msg = getChatHistory()[msgIndex];
@@ -8529,7 +8766,7 @@
         // deletes that bubble; the main (last) bubble's also acts on the whole message
         const items = [{ id: 'copy_part', icon: 'fa-copy', label: 'Copy', cls: '' }];
         // A character's bubble takes a tapback: the row opens from here, so the menu never covers it
-        if (!isUser && platformHas('react')) items.unshift({ id: 'react', icon: 'fa-face-smile', label: 'React', cls: '' });
+        if (!isUser && platformHas('react') && !focus) items.unshift({ id: 'react', icon: 'fa-face-smile', label: 'React', cls: '' });
         if (platformHas('reply')) items.unshift({ id: 'reply', icon: 'fa-reply', label: 'Reply', cls: '' });
         if (memorySystem && settings.memoryEnabled) items.push({ id: 'add_memory', icon: 'fa-brain', label: 'Add Memory', cls: '' });
         // A photo bubble takes a real image (the footer menu's is the last bubble's)
@@ -8566,29 +8803,14 @@
             </div>
         `);
 
-        jQuery('#et-messages').append(menu);
+        jQuery(focus ? '#et-panel' : '#et-messages').append(menu);
 
-        // Under the bubble, lined up with its outer edge (yours on the right, theirs on the
-        // left); above it when there's no room below, and within the visible list either way
-        const anchor = btn[0].getBoundingClientRect();
-        const area = listMenuArea();
-        const menuW = menu.outerWidth() || 160;
-        const menuH = menu.outerHeight() || 160;
-        const side = isUser ? 'right' : 'left';
-        let left = (isUser ? anchor.right - menuW : anchor.left) - area.x;
-        left = Math.max(8, Math.min(area.width - menuW - 8, left));
-        let top = anchor.bottom - area.y + 6;
-        let origin = `top ${side}`;
-        if (top + menuH > area.bottom) {
-            top = anchor.top - area.y - menuH - 6;
-            origin = `bottom ${side}`;
-        }
-        top = Math.max(area.top, Math.min(area.bottom - menuH, top));
-        menu.css({ left: left + 'px', top: top + 'px', 'transform-origin': origin });
+        // A lifted bubble's is placed with its tapback row (openBubbleFocus)
+        if (!focus) placeDotsMenu(menu, btn, isUser);
         requestAnimationFrame(() => menu.addClass('et-dots-menu-open'));
 
-        // Close on outside click (once)
-        setTimeout(() => {
+        // Close on outside click (once); a lifted bubble's backdrop closes its own
+        if (!focus) setTimeout(() => {
             jQuery(document).one('click.et-dots-outside', function (e) {
                 if (!jQuery(e.target).closest('.et-dots-menu').length) {
                     closeAllDotMenus();
@@ -8609,6 +8831,29 @@
             }
             handleDotsAction(action, msgIndex, isUser, jQuery(this), targetPart);
         });
+        return menu;
+    }
+
+    /**
+     * A bubble's menu under it, lined up with its outer edge (yours on the right, theirs
+     * on the left); above it when there's no room below, within the visible list either way.
+     */
+    function placeDotsMenu(menu, btn, isUser) {
+        const anchor = btn[0].getBoundingClientRect();
+        const area = listMenuArea();
+        const menuW = menu.outerWidth() || 160;
+        const menuH = menu.outerHeight() || 160;
+        const side = isUser ? 'right' : 'left';
+        let left = (isUser ? anchor.right - menuW : anchor.left) - area.x;
+        left = Math.max(8, Math.min(area.width - menuW - 8, left));
+        let top = anchor.bottom - area.y + 6;
+        let origin = `top ${side}`;
+        if (top + menuH > area.bottom) {
+            top = anchor.top - area.y - menuH - 6;
+            origin = `bottom ${side}`;
+        }
+        top = Math.max(area.top, Math.min(area.bottom - menuH, top));
+        menu.css({ left: left + 'px', top: top + 'px', 'transform-origin': origin });
     }
 
     /**
@@ -8957,9 +9202,10 @@
     /**
      * The tapback picker for one bubble of a character message (the last when
      * `partIndex` is null), above its button; the tapbacks already on that bubble
-     * are marked, and picking one adds or takes it off.
+     * are marked, and picking one adds or takes it off. With `focus` (a lifted bubble's,
+     * openBubbleFocus) it goes on the panel beside the bubble's menu, placed by that.
      */
-    function toggleReactOverlay(reactBtn, msgIndex, partIndex = null) {
+    function toggleReactOverlay(reactBtn, msgIndex, partIndex = null, focus = false) {
         const msg = getChatHistory()[msgIndex];
         if (!msg) return;
         const partCount = getMessageDisplayParts(msg).length;
@@ -8968,10 +9214,10 @@
         const existing = jQuery(`.et-react-overlay[data-for="${msgIndex}"][data-part="${part}"]`);
         if (existing.length) {
             closeAllReactOverlays();
-            return;
+            return null;
         }
 
-        closeMenus();
+        if (!focus) closeMenus();
 
         const chosen = ChatViewModel.getUserTapbacks(msg, partCount, getReactionIds())[part] || [];
         const emojiHtml = FA_REACTIONS.map(r =>
@@ -8988,6 +9234,22 @@
                 </div>
             </div>
         `);
+
+        // Bind emoji clicks
+        overlay.find('.et-overlay-emoji').on('click', function (e) {
+            e.stopPropagation();
+            const emoji = jQuery(this).data('emoji');
+            addReaction(msgIndex, emoji, part);
+            closeAllReactOverlays();
+            // A menu still open goes too
+            closeAllDotMenus();
+        });
+
+        if (focus) {
+            jQuery('#et-panel').append(overlay);
+            requestAnimationFrame(() => overlay.addClass('et-react-overlay-open'));
+            return overlay;
+        }
 
         // Position overlay above the react button
         jQuery('#et-messages').append(overlay);
@@ -9012,16 +9274,7 @@
         requestAnimationFrame(() => {
             overlay.addClass('et-react-overlay-open');
         });
-
-        // Bind emoji clicks
-        overlay.find('.et-overlay-emoji').on('click', function (e) {
-            e.stopPropagation();
-            const emoji = jQuery(this).data('emoji');
-            addReaction(msgIndex, emoji, part);
-            closeAllReactOverlays();
-            // A menu still open goes too
-            closeAllDotMenus();
-        });
+        return overlay;
     }
 
     // At most this many of the user's tapbacks on one bubble

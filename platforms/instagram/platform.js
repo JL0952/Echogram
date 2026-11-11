@@ -295,6 +295,8 @@
         name: 'Instagram',
         // Links show as a preview card; Instagram has no files or transfers
         features: ['photo', 'voice', 'sticker', 'location', 'react', 'reply', 'link', 'music'],
+        // A held bubble lifts over the blurred chat, tapbacks above it and its menu below (index.js openBubbleFocus)
+        holdFocus: true,
         // A photo starts from the picture in the field, not from the camera's menu
         photoButton: true,
         stylesheet: 'platform.css',

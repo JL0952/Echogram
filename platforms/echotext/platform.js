@@ -390,6 +390,8 @@
         name: 'Echogram',
         // Rich-message features this look supports (lib/features.js)
         features: ['photo', 'voice', 'sticker', 'location', 'react', 'reply', 'transfer', 'file', 'link', 'music'],
+        // A held bubble lifts over the blurred chat, tapbacks above it and its menu below (index.js openBubbleFocus)
+        holdFocus: true,
         templates: {
             message,
             part,

@@ -590,6 +590,7 @@
     const bubbleOf = (msgIndex, part) => { const all = [...document.querySelectorAll(`[data-et-role~="message"][data-index="${msgIndex}"] [data-et-role~="bubble"]`)]; return all[part ?? all.length - 1]; };
     // A bubble's menu, as holding it down opens it
     const bubbleMenu = (msgIndex, part) => {
+        r.closeBubbleFocus();
         document.querySelectorAll('.et-dots-menu, .et-react-overlay').forEach(m => m.remove());
         r.openBubbleMenu(bubbleOf(msgIndex, part));
         return [...document.querySelectorAll('.et-dots-menu .et-dots-item')];
@@ -626,8 +627,8 @@
         env.settings.chatHistory['mira.png'] = memoryChat();
         r.renderMessages(env.settings.chatHistory['mira.png']);
 
-        // Every bubble's menu has Add Memory, after Copy; old highlight marks are gone
-        res.partMenu = bubbleMenu(1, 1).map(i => i.dataset.action).join(',') === 'reply,react,copy_part,add_memory,delete';
+        // Every bubble's menu has Add Memory, after Copy (React is the row above the lifted bubble); old highlight marks are gone
+        res.partMenu = bubbleMenu(1, 1).map(i => i.dataset.action).join(',') === 'reply,copy_part,add_memory,delete';
         res.userMenu = bubbleMenu(0, null).some(i => i.dataset.action === 'add_memory');
         res.noMarks = !panel.querySelector('mark');
 
@@ -1015,18 +1016,21 @@
         delete env.pickImageFile;
         window.SillyTavern.getContext = contextBefore;
 
-        // No controls beside a bubble; held down, the menu starts with Reply, Instagram's emoji bar above it
+        // No controls beside a bubble; held down, it lifts with the menu under it starting with Reply, Instagram's emoji bar above it
         const row = rows(2)[0];
         res.noTools = !panel.querySelector('.ig-tools, .et-bubble-tool');
         // (the page stubs closeAllReactOverlays: one left from the photo's menu goes here)
+        r.closeBubbleFocus();
         document.querySelectorAll('.et-dots-menu, .et-react-overlay').forEach(m => m.remove());
         r.openBubbleMenu(row);
-        res.menu = document.querySelector('.et-dots-menu .et-dots-item')?.dataset.action === 'reply' && !document.querySelector('.et-react-overlay');
-        // React in it: the menu goes, the emoji bar sits on the bubble's top edge
-        document.querySelector('.et-dots-menu [data-action="react"]').click();
+        res.menu = document.querySelector('.et-dots-menu .et-dots-item')?.dataset.action === 'reply' && !document.querySelector('.et-dots-menu [data-action="react"]');
         await sleep(400);
-        const bar = document.querySelector('.et-react-overlay').getBoundingClientRect();
-        res.reactFromMenu = !!bar.height && Math.abs(row.getBoundingClientRect().top - bar.bottom - 4) <= 1;
+        // (where the bubble settles: a hidden pane may not run its transition)
+        const lifted = row.querySelector('.et-bubble-lifting') || row;
+        lifted.style.transition = 'none';
+        const bar = document.querySelector('.et-react-overlay').getBoundingClientRect(), top = lifted.getBoundingClientRect().top;
+        lifted.style.removeProperty('transition');
+        res.reactRow = !!bar.height && bar.bottom <= top + 1 && top - bar.bottom < 30;
 
         // A tapback on the first bubble shows as emoji on its lower edge, popping in
         // The picker is Instagram's emoji bar
@@ -1035,7 +1039,8 @@
             && getComputedStyle(document.querySelector('.et-react-overlay [data-emoji="haha"]'), '::before').content === '"😂"';
         heartBtn.click();
         await sleep(450);
-        document.querySelectorAll('.et-react-overlay').forEach(o => o.remove());
+        r.closeBubbleFocus();
+        document.querySelectorAll('.et-dots-menu, .et-react-overlay').forEach(o => o.remove());
         const pill = rows(2)[0].querySelector('.ig-reactions');
         res.tapback = JSON.stringify(chat()[2].bubbleReactions) === '{"0":["heart"]}' && pill?.textContent === '❤️'
             && pill.classList.contains('ig-reactions-new') && pill.dataset.etAction === 'react'
@@ -2592,7 +2597,13 @@
         r.bindMessageActions();
         const menu = () => document.querySelector('.et-dots-menu:not(.et-dots-menu-closing)');
         const row = () => document.querySelector('.et-react-overlay:not(.et-react-overlay-closing)');
-        const clear = () => document.querySelectorAll('.et-dots-menu, .et-react-overlay').forEach(m => m.remove());
+        // (closeAllDotMenus is the page's stub: a lifted bubble is put back here)
+        const clear = () => { r.closeBubbleFocus(); document.querySelectorAll('.et-dots-menu, .et-react-overlay').forEach(m => m.remove()); };
+        const lockedWheel = () => {
+            const wheel = new WheelEvent('wheel', { bubbles: true, cancelable: true, deltaY: 100 });
+            document.getElementById('et-messages').dispatchEvent(wheel);
+            return wheel.defaultPrevented;
+        };
         const bubbles = i => [...panel.querySelectorAll(`[data-et-role~="message"][data-index="${i}"] [data-et-role~="bubble"]`)];
         const press = (el, type, extra = {}) => {
             const box = el.getBoundingClientRect();
@@ -2604,6 +2615,8 @@
             await sleep(400);
             clear();
             const out = {};
+            // Echogram's and Instagram's lift the bubble, its tapback row above and menu below; WeChat's only has the menu
+            const focus = id !== 'wechat';
             out.noTools = !panel.querySelector('.et-bubble-tool, .ig-tools, .wx-more, [data-et-action="menu"], [data-et-action="part-menu"]');
             // The photo bubble held: its menu (Add Photo: that bubble's; React where there are tapbacks), no tapback row yet
             const photo = bubbles(1)[1];
@@ -2614,22 +2627,48 @@
             await sleep(350);
             out.opened = !!menu() && [...menu().querySelectorAll('.et-dots-item')].some(i => i.dataset.action === 'photo_add')
                 && !menu().querySelector('[data-action="edit"]');
-            out.tapbacks = !row() && (id === 'wechat') === !menu().querySelector('[data-action="react"]');
+            out.tapbacks = !menu().querySelector('[data-action="react"]') && focus === !!row();
+            // (where the bubble settles: a hidden pane may not run its transition)
+            if (focus) photo.style.transition = 'none';
             const m = menu().getBoundingClientRect(), b = photo.getBoundingClientRect();
+            photo.style.removeProperty('transition');
             // Beside the bubble; with no room above or below it (a tall photo), inside the visible list
             const shown = document.getElementById('et-messages').getBoundingClientRect();
             const noRoom = b.top - shown.top < m.height + 6 && shown.bottom - b.bottom < m.height + 6;
             out.under = m.top >= b.bottom - 1 || m.bottom <= b.top + 1 || (noRoom && m.top >= shown.top && m.bottom <= shown.bottom);
+            // The click that ends the hold, wherever it lands (the lifted bubble may have moved off the finger): nothing closes
             press(photoEl, 'pointerup');
-            photoEl.click();
-            out.clickSwallowed = photoEl.getAttribute('aria-expanded') !== 'true';
-            if (id !== 'wechat') {
-                menu().querySelector('[data-action="react"]').click();
-                // (measured once it has popped in; the page stubs the menu's closing)
-                await sleep(400);
-                const bar = row()?.getBoundingClientRect();
-                out.reactRow = !!bar && Math.abs(photo.getBoundingClientRect().top - bar.bottom - 4) <= 1;
+            const releaseOn = focus ? panel.querySelector('.et-focus-backdrop') : photoEl;
+            releaseOn.click();
+            out.clickSwallowed = photoEl.getAttribute('aria-expanded') !== 'true' && !!menu() && focus === !!row();
+            if (focus) {
+                const bar = row().getBoundingClientRect();
+                out.reactRow = bar.bottom <= b.top + 1 && b.top - bar.bottom < 30;
+                out.lifted = photo.classList.contains('et-bubble-focused') && !!panel.querySelector('.et-focus-backdrop-open')
+                    && menu().parentElement.id === 'et-panel' && row().parentElement.id === 'et-panel';
+                out.listLocked = lockedWheel();
                 clear();
+                await sleep(300);
+                out.putBack = !panel.querySelector('.et-focus-backdrop') && !photo.classList.contains('et-bubble-lifting') && !lockedWheel();
+            } else {
+                out.notLifted = !panel.querySelector('.et-focus-backdrop') && !photo.classList.contains('et-bubble-lifting') && !lockedWheel();
+                // Scrolled: the menu goes (a finger past the hold's slop, or the wheel); a jitter or a scroll inside it doesn't
+                const list = document.getElementById('et-messages');
+                const closes = [];
+                const stub = env.closeAllDotMenus;
+                env.closeAllDotMenus = () => closes.push('menu');
+                const touch = (type, y, target = list) => target.dispatchEvent(new TouchEvent(type, { bubbles: true,
+                    touches: [new Touch({ identifier: 1, target, clientX: 50, clientY: y })] }));
+                touch('touchstart', 300);
+                touch('touchmove', 305);
+                const jitter = closes.length;
+                menu().dispatchEvent(new WheelEvent('wheel', { bubbles: true, deltaY: 40 }));
+                const inside = closes.length;
+                touch('touchmove', 340);
+                const dragged = closes.length;
+                list.dispatchEvent(new WheelEvent('wheel', { bubbles: true, deltaY: 40 }));
+                out.scrollCloses = jitter === 0 && inside === 0 && dragged === 1 && closes.length === 2;
+                env.closeAllDotMenus = stub;
             }
             photoEl.click();
             out.nextClickWorks = photoEl.getAttribute('aria-expanded') === 'true';
@@ -2655,7 +2694,9 @@
             r.renderMessages(chat(), true);
             const redrawn = bubbles(1)[0];
             await sleep(450);
+            redrawn.style.transition = 'none';
             const rb = redrawn.getBoundingClientRect(), rm = menu()?.getBoundingClientRect();
+            redrawn.style.removeProperty('transition');
             out.redrawnHold = redrawn !== text && !!rm && (Math.abs(rm.top - rb.bottom) < 40 || Math.abs(rm.bottom - rb.top) < 40);
             press(redrawn, 'pointerup');
             redrawn.click();
@@ -2682,7 +2723,7 @@
             out.rightClick = !!menu() && !!menu().querySelector('[data-action="edit"]');
             clear();
             bubbles(0)[0].dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
-            out.yoursNoReact = !!menu() && !menu().querySelector('[data-action="react"]');
+            out.yoursNoReact = !!menu() && !menu().querySelector('[data-action="react"]') && !row();
             clear();
             out.ok = Object.values(out).every(Boolean);
             res[id] = out;

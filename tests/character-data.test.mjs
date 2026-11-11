@@ -128,3 +128,45 @@ test('the names cards had, for naming their data once they\'re gone', () => {
     s.chatHistory['unnamed.png'] = [{ mes: 'x' }];
     assert.equal(D.orphanedKeys(s, [])[0].name, 'unnamed');
 });
+
+test('a setup exports what the user set up, not what happened in chats, and imports onto another key', async () => {
+    const s = settings();
+    s.characterProfiles = { 'mira.png': { bigFive: { E: 'high' } } };
+    s.avatarByCharacter = { 'mira.png': '/user/images/Mira/a.jpeg' };
+    s.socialAccounts = { 'mira.png': { name: 'M', banner: '/user/images/Mira/b.jpeg', posts: [{ id: 'p1' }], pinnedId: 'p1' } };
+    s.socialPosts = { 'mira.png': [{ id: 'p2' }] };
+    const file = D.exportSetup(s, 'mira.png', 'Mira');
+    assert.deepEqual(Object.keys(file.setup).sort(),
+        ['avatarByCharacter', 'characterProfiles', 'characterSchedules', 'platformByCharacter', 'proactiveTemperament', 'socialAccounts']);
+    assert.deepEqual(file.setup.socialAccounts, { name: 'M', banner: '/user/images/Mira/b.jpeg' });
+    assert.equal(file.memories.length, 1);
+    assert.deepEqual(D.setupImages(file.setup), ['/user/images/Mira/a.jpeg', '/user/images/Mira/b.jpeg']);
+
+    // Images become data URLs in the file; one that can't be read is left out
+    const out = await D.mapSetupImages(file.setup, async v => (v.endsWith('a.jpeg') ? 'data:image/jpeg;base64,AA' : ''));
+    assert.equal(out.avatarByCharacter, 'data:image/jpeg;base64,AA');
+    assert.ok(!('banner' in out.socialAccounts));
+    assert.equal(file.setup.socialAccounts.banner, '/user/images/Mira/b.jpeg');
+
+    const read = D.readSetup(JSON.stringify({ ...file, setup: { ...out, lifeState: { x: 1 } } }));
+    assert.ok(!('lifeState' in read.setup));
+    assert.throws(() => D.readSetup('{"a":1}'), /not an Echogram setup file/);
+    assert.throws(() => D.readSetup('nope'), /not an Echogram setup file/);
+
+    // Onto qi: their setup replaced (verbosity they had, the file hasn't: cleared), posts kept, memories joined
+    s.verbosityByCharacter = { 'qi.png': 'long' };
+    s.avatarByCharacter['qi.png'] = '/user/images/Qi/old.jpeg';
+    s.socialAccounts['qi.png'] = { name: 'Q', posts: [{ id: 'q1' }] };
+    s.characterMemories['qi.png'] = [{ id: 'm1', content: 'a' }, { id: 'm9', content: 'z' }];
+    const unused = D.importSetup(s, 'qi.png', { ...read, setup: { ...read.setup, avatarByCharacter: '/user/images/Qi/new.jpeg' } });
+    assert.deepEqual(unused, ['/user/images/Qi/old.jpeg']);
+    assert.equal(s.proactiveTemperament['qi.png'], 'clingy');
+    assert.equal(s.platformByCharacter['qi.png'], 'wechat');
+    assert.ok(!('qi.png' in s.verbosityByCharacter));
+    assert.deepEqual(s.socialAccounts['qi.png'], { name: 'M', posts: [{ id: 'q1' }] });
+    assert.deepEqual(s.characterMemories['qi.png'].map(m => m.id), ['m1', 'm9']);
+    assert.ok(!('qi.png' in (s.lifeState || {})));
+    // Mira's own stays as it was
+    assert.equal(s.socialAccounts['mira.png'].pinnedId, 'p1');
+    assert.equal(s.avatarByCharacter['mira.png'], '/user/images/Mira/a.jpeg');
+});

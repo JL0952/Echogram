@@ -20,6 +20,7 @@ A messaging companion for SillyTavern, where characters remember your story, tex
 - React to messages, quote replies, and customize photos with your own images.
 - Import your own sticker packs from ZIP files.
 - Group chats, message swipes, saved conversations, custom themes, avatars, and fonts.
+- Export a character's setup to a file and import it on another device.
 
 ### 🕒 Characters with lives of their own
 
