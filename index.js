@@ -4880,8 +4880,9 @@
             if (isGenerating) updateSendButton(true);
         }).on('compositionstart compositionupdate', noteTyping);
 
-        // Close emoji overlays when clicking outside
+        // Close emoji overlays when clicking outside (a lifted bubble's row goes with the rest of it: openBubbleFocus)
         jQuery(document).on('click.et-react', function (e) {
+            if (bubbleFocus) return;
             if (!jQuery(e.target).closest('.et-react-overlay, [data-et-action="react"]').length) {
                 closeAllReactOverlays();
             }
@@ -8033,9 +8034,16 @@
         ];
         list.addEventListener('wheel', stopScroll, { passive: false });
         list.addEventListener('touchmove', stopScroll, { passive: false });
-        bubbleFocus = { bubble, list, backdrops };
+        // The chat changing under it (the typing dots, a reply, a message redrawn) puts it back
+        // first: the list would scroll to the new end and the blur inside it with it, leaving
+        // the menu open over a list taps go straight through to
+        const changes = new MutationObserver(() => closeAllDotMenus());
+        const inner = document.getElementById('et-messages-inner');
+        if (inner) changes.observe(inner, { childList: true });
+        bubbleFocus = { bubble, list, backdrops, changes };
         // A tap that starts and ends on the blur closes it (not the hold's own release,
-        // which the moving bubble can leave over it); so does a click outside the panel
+        // which the moving bubble can leave over it); so does any other click but on the
+        // menu or the tapback row (on the bubble, or on the list wherever the blur isn't)
         let downOnBackdrop = false;
         for (const el of backdrops) {
             el.addEventListener('pointerdown', () => { downOnBackdrop = true; });
@@ -8043,7 +8051,7 @@
         }
         setTimeout(() => {
             if (bubbleFocus?.backdrops !== backdrops) return;
-            jQuery(document).on('click.et-focus', (e) => { if (!e.target.closest?.('#et-panel')) closeAllDotMenus(); });
+            jQuery(document).on('click.et-focus', (e) => { if (!e.target.closest?.('.et-dots-menu, .et-react-overlay')) closeAllDotMenus(); });
         }, 0);
 
         // The bubble moves up (or down) as far as it must for the row above it and the
@@ -8080,8 +8088,9 @@
     /** Puts a lifted bubble back: it settles, the blur fades, the list scrolls again. */
     function closeBubbleFocus() {
         if (!bubbleFocus) return;
-        const { bubble, list, backdrops } = bubbleFocus;
+        const { bubble, list, backdrops, changes } = bubbleFocus;
         bubbleFocus = null;
+        changes.disconnect();
         // Its tapback row goes with it (the blur keeps its clicks from the document's own closing)
         closeAllReactOverlays();
         jQuery(document).off('click.et-focus');
