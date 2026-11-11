@@ -60,13 +60,14 @@ test('what the model is told for each of her texts: how many are unanswered, the
     assert.equal(first, "Qi hasn't replied to Mira's last text. Mira texts Qi now (it is 20:06, 6 minutes after Mira's last one · 18:00–21:00 逛街 (城里)). "
         + 'It is a fresh decision Mira makes now. '
         + "What Mira brings up and how Mira says it come from who Mira is: Mira's age and stage of life, personality, outlook, interests, and what's going on in Mira's life. "
-        + "You just thought of Qi. If it feels natural, send a <photo>. Reply only with what Mira sends now.");
+        + "You just thought of Qi. That is what's on Mira's mind, not words to use: don't restate it, and don't say what made Mira text — no \"random\", \"out of nowhere\", \"just thinking of you\". Start with the thing itself. "
+        + "If it feels natural, send a <photo>. Reply only with what Mira sends now.");
     const third = R.outreachInstruction({ charName: 'Mira', userName: 'Qi', unanswered: 3, now: t(22), lastAt: t(20, 45) });
     assert.match(third, /^Qi hasn't replied to Mira's last 3 texts\. Mira texts Qi now \(it is 22:00, an hour after Mira's last one\)\. It is a fresh decision Mira makes now\. /);
     // That they're unanswered is said once
     assert.equal(third.match(/hasn't replied/g).length, 1);
     assert.doesNotMatch(third, /unanswered/);
-    assert.doesNotMatch(third, /on Mira's mind/);
+    assert.doesNotMatch(third, /on Mira's mind|not words to use/);
     // Said with or without a topic
     assert.match(third, /What Mira brings up and how Mira says it come from who Mira is/);
     // Days are said as days
@@ -79,8 +80,28 @@ test('a catch-up\'s texts: how they\'re written, said once', () => {
     // Not said again that you didn't reply, no choice of what it's about: that's the topic's
     assert.doesNotMatch(guide, /reply|unanswered|silence|if it fits/);
     assert.match(guide, /not chapters of a planned emotional arc/);
-    assert.match(guide, /not chapters of a planned emotional arc\. What Mira brings up and how Mira says it come from who Mira is: .+, and what's going on in Mira's life\.$/);
+    assert.match(guide, /not chapters of a planned emotional arc\. What Mira brings up and how Mira says it come from who Mira is: .+, and what's going on in Mira's life\. /);
     assert.equal(guide.match(/come from who Mira is/g).length, 1);
+    // What's on her mind with each is hers, not words to use
+    assert.match(guide, /What's on Mira's mind with each is for Mira, not words to use: don't restate it, and don't say what made Mira text — no "random", "out of nowhere", "just thinking of you"\. Start with the thing itself\.$/);
+    // With her last texts: how they began, to start differently
+    assert.match(R.catchUpGuidance({ charName: 'Mira', openings: ['ok random but'] }), /Start with the thing itself\. Mira's last texts began like this — start differently, and don't bring the same thing up again: "ok random but"\.$/);
+});
+
+test('how her last texts of her own began: the latest five, their first line of words, cut short', () => {
+    const own = mes => ({ is_user: false, mes, meta: { proactive: true } });
+    const history = [
+        own('first'), own('second'), { is_user: false, mes: 'a reply, not hers' }, { is_user: true, mes: 'mine' },
+        own('<photo>a cat</photo>\nlook at this'), own('ok random but i just checked my portfolio and the position i\'ve been holding for like 3 weeks finally went green'),
+        own('hey\nrandom thought'), own('  '), own('third'), own('fourth'),
+    ];
+    assert.deepEqual(R.recentOpenings(history), ['look at this', 'ok random but i just checked my…', 'hey / random thought', 'third', 'fourth']);
+    assert.deepEqual(R.recentOpenings([]), []);
+    // Chinese has no spaces: cut at the length
+    assert.deepEqual(R.recentOpenings([own('宝贝，爸爸刚才在实验室里，脑子里一直绕着一首曲子，绕得心里软乎乎的，就想起你蜷在笼子里等我的样子了')]), ['宝贝，爸爸刚才在实验室里，脑子里一直绕着一首曲子，绕得心里软乎乎的，就想起你蜷在…']);
+    // In the instruction for her text, after what's on her mind
+    const text = R.outreachInstruction({ charName: 'Mira', userName: 'Qi', now: 0, material: 'x.', openings: ['hey', 'third'] });
+    assert.match(text, /Start with the thing itself\. Mira's last texts began like this — start differently, and don't bring the same thing up again: "hey"; "third"\.$/);
 });
 
 test('just got free: within half an hour of a busy or sleeping stretch ending', () => {
@@ -170,6 +191,12 @@ test('each kind and when it can be picked', () => {
     assert.ok(kind(calm, 'share').ok);
     assert.ok(!typesOf(calm, 'share').includes('dream_mention'));
     assert.ok(typesOf(kindsAt({ now: new Date(2026, 10, 3, 8, 0) }), 'share').includes('dream_mention'));
+    // With a schedule: only within 90 minutes of waking up, whatever the clock says
+    const dreams = over => typesOf(kindsAt({ life: [], ...over }), 'share').includes('dream_mention');
+    assert.equal(dreams({ now: new Date(2026, 10, 3, 8, 0), wokeAgo: null }), false);
+    assert.equal(dreams({ now: new Date(2026, 10, 3, 11, 30), wokeAgo: 30 * MIN }), true);
+    assert.equal(dreams({ now: new Date(2026, 10, 3, 11, 30), wokeAgo: 90 * MIN }), true);
+    assert.equal(dreams({ now: new Date(2026, 10, 3, 11, 30), wokeAgo: 91 * MIN }), false);
     assert.ok(typesOf(calm, 'share').includes('boredom_break'));
     assert.ok(!typesOf(kindsAt({ feelings: { joy: 90, anticipation: 70 } }), 'share').includes('boredom_break'));
     assert.ok(typesOf(kindsAt({ feelings: { joy: 40, anticipation: 70 } }), 'share').includes('pride_share'));
